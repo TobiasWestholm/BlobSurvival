@@ -1,0 +1,161 @@
+Game specification
+
+# Game Specification: Rogue Survival (HTML5 Canvas)
+
+## 1. Executive Summary & Architecture
+
+* **Target Stack:** Single-file implementation using `index.html` containing semantic HTML5, localized CSS (`<style>`), and modular, object-oriented Vanilla JavaScript (`<script>`).
+* **Rendering Engine:** HTML5 2D Canvas API (`requestAnimationFrame` game loop).
+* **Performance Targets:** 60 FPS continuous rendering handling up to 500 simultaneous active on-screen entities using simple spatial grouping/distance-squared calculations.
+
+---
+
+## 2. Global Game State Machine
+
+The game must strict-manage exactly four independent operational states:
+
+```
+[ START_MENU ] ---> (Click Play) ---> [ GAMEPLAY ]
+                                         |    ^
+                        (Level Up) ----- v    | ----- (Select Upgrade)
+                                     [ LEVEL_UP ]
+                                         |
+                            (HP <= 0) --- v
+                                     [ GAME_OVER ]
+
+```
+
+---
+
+## 3. Core Mechanics & Mathematical Data Models
+
+### A. Player Entity
+
+* **Properties:** Position ($x, y$), Base Velocity ($v = 3\text{ px/frame}$), Maximum Health ($HP_{max} = 100$), Current Health ($HP_{cur}$), Radius ($r = 15\text{ px}$), Level ($1$), Current XP ($0$), Next Level XP ($100$).
+* **Input Handling:** Continuous multi-key listener for WASD/Arrow keys. Normalize diagonal vector movement to prevent speed doubling:
+
+$$\text{If } |dx| > 0 \text{ and } |dy| > 0: dx = dx \cdot 0.7071, \quad dy = dy \cdot 0.7071$$
+
+
+* **Screen Bounds:** Strict clamping to prevent moving past Canvas edges.
+
+### B. Enemy Spawning & AI System
+
+* **Spawning Loop:** Every $2.0$ seconds, spawn an enemy just outside the viewport boundaries at a random angle $\theta \in [0, 2\pi]$ relative to the player:
+
+$$x_{spawn} = x_{player} + (width_{viewport}/2 + 40) \cdot \cos(\theta)$$
+
+
+$$y_{spawn} = y_{player} + (height_{viewport}/2 + 40) \cdot \sin(\theta)$$
+
+
+* **Enemy Data Schema:**
+* **Type 1 (Swarm):** $HP = 10$, $Speed = 1.5$, $Damage = 5$, $Color = \text{"#ff4444"}$, $Radius = 10$.
+* **Type 2 (Brute - spawns after 1 min):** $HP = 40$, $Speed = 0.8$, $Damage = 15$, $Color = \text{"#aa0000"}$, $Radius = 18$.
+
+
+* **AI Pathfinding:** Linear vector tracking towards the player's coordinates on every frame update.
+
+### C. Weapons & Projectiles System (The Auto-Battler Loop)
+
+The game initializes with **Weapon 1 (Magic Missile)**. Weapons operate entirely on automated interval timers.
+
+```
+       Interval Fires
+[Timer] -------------> Find Nearest Enemy -------------> Spawn Projectile 
+                                                              |
+                                                              v
+                                                    Move along fixed angle
+
+```
+
+* **Weapon 1: Magic Missile (Targeted Single-Target)**
+* *Behavior:* Scans global `enemies` array. Finds the enemy with the smallest distance-squared value $(x_2 - x_1)^2 + (y_2 - y_1)^2$. Fires a fast projectile toward that position.
+* *Stats:* Cooldown = $1000\text{ms}$, Damage = $15$, Speed = $7$.
+
+
+* **Weapon 2: Fire Ring (AoE Orbit - Unlockable)**
+* *Behavior:* Spawns projectiles that continuously rotate at a fixed radius around the player position, piercing through all intersecting enemies.
+* *Stats:* Cooldown = $3000\text{ms}$, Damage = $10$, Rotation Speed = $0.05\text{ rad/frame}$.
+
+
+
+### D. Loot & Progression System
+
+* **Drop Table:** When an enemy's HP reaches $\le 0$, remove it from the array and push an `XPGem` object to the `gems` array at the enemy's final $(x, y)$ coordinate.
+* **Gem Attraction (Vacuum):** If distance between Player and Gem is less than $100\text{ px}$, flip the gem's state to `attracted = true`. Attracted gems fly directly into the player's bounding box at a scaling speed of $5\text{ px/frame}$.
+* **Level-Up Math Formula:** Upon gem collection, increment `Current XP` by $10$. When `Current XP` $\ge$ `Next Level XP`:
+1. Pause game loop.
+2. Set state to `LEVEL_UP`.
+3. Calculate next milestone: $\text{Next Level XP} = \lfloor \text{Previous Next Level XP} \cdot 1.2 \rfloor + 50$.
+
+
+
+---
+
+## 4. UI Layout & Upgrade System Data Structures
+
+The upgrade screen displays an overlay with **three random selections** from the following declarative upgrade matrix array:
+
+```javascript
+const UPGRADE_POOL = [
+  { id: 'speed', name: 'Agility Boost', desc: 'Increase movement speed by 15%', effect: (p) => p.speed *= 1.15 },
+  { id: 'damage', name: 'Heavy Impact', desc: 'Increase all weapon damage by 20%', effect: (p) => p.damageModifier *= 1.20 },
+  { id: 'cooldown', name: 'Hyper-drive', desc: 'Reduce attack cooldowns by 10%', effect: (p) => p.cooldownModifier *= 0.90 },
+  { id: 'unlock_ring', name: 'Fire Ring', desc: 'Unlock an orbiting barrier of fire', effect: (p) => p.unlockWeapon('fire_ring') }
+];
+
+```
+
+---
+
+## 5. Minimal Reference Architecture Code
+
+Below is the boilerplate framework structural base to initialize development:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Horde Survival 2D</title>
+    <style>
+        body { margin: 0; background: #111; overflow: hidden; font-family: sans-serif; color: white; }
+        canvas { display: block; margin: 0 auto; background: #1a1a1a; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+        .ui-layer { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 90%; pointer-events: none; }
+        .xp-bar-container { width: 100%; height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
+        .xp-bar { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s ease; }
+        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); padding: 30px; border: 2px solid #00ffcc; border-radius: 10px; pointer-events: auto; text-align: center; }
+        .upgrade-btn { background: #222; color: #fff; border: 1px solid #555; padding: 12px 24px; margin: 10px; cursor: pointer; border-radius: 4px; }
+        .upgrade-btn:hover { background: #00ffcc; color: #000; }
+    </style>
+</head>
+<body>
+
+<div class="ui-layer">
+    <div class="xp-bar-container"><div id="xpBar" class="xp-bar"></div></div>
+    <div id="stats" style="margin-top: 5px;">Level: 1 | HP: 100/100</div>
+</div>
+
+<div id="levelUpModal" class="modal">
+    <h2>Level Up! Choose an Upgrade</h2>
+    <div id="upgradeOptions"></div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth > 1024 ? 1024 : window.innerWidth;
+canvas.height = window.innerHeight > 768 ? 768 : window.innerHeight;
+
+// Configuration State Objects
+const GAME_STATE = { current: 'PLAY', player: null, enemies: [], projectiles: [], gems: [], particles: [] };
+
+// Game loop initialized via agent goes here...
+</script>
+</body>
+</html>
+
+```
