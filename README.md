@@ -2,6 +2,8 @@
 
 A fast-paced, high-density 2D arcade survival auto-battler built from the ground up in zero-dependency Vanilla JavaScript and HTML5 Canvas. Survive escalating hordes of unique monsters, unlock powerful weapon synergies, and defeat multi-phase bosses in single-player or up to 4-player local co-op.
 
+## **[🎮 PLAY GAME 🎮](https://tobiaswestholm.github.io/BlobSurvival/)**
+
 ---
 
 ## 🌟 Key Features
