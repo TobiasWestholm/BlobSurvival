@@ -1,34 +1,27 @@
 # Blob Survival 🎮
 
-A fast-paced, high-density 2D arcade survival auto-battler built from the ground up in zero-dependency Vanilla JavaScript and HTML5 Canvas. Survive escalating hordes of unique monsters, unlock powerful weapon synergies, and defeat multi-phase bosses in single-player or 4-player local co-op.
+A fast-paced, high-density 2D arcade survival auto-battler built from the ground up in zero-dependency Vanilla JavaScript and HTML5 Canvas. Survive escalating hordes of unique monsters, unlock powerful weapon synergies, and defeat multi-phase bosses in single-player or up to 4-player local co-op.
 
 ---
 
 ## 🌟 Key Features
 
-* **Local Co-Op (1–4 Players):** Simultaneous local multiplayer with per-player key bindings, independent level-up panels, and dynamic difficulty scaling based on active player count.
-* **Synergistic Arsenal & Talent Trees:** Auto-firing weapons and passive upgrades featuring Magic Missiles, Orbiting Fire Rings, Proximity Mines, Cryo Freeze, Siphon Cells, Martyrdom Auras, Deployable Turrets, and Laser Sniper trails.
-* **RTS-Inspired Tactical Monster AI:** Escalating monster waves introducing unique behavioral archetypes:
-  * **Baneling:** Proximity AOE detonation upon contact or death.
-  * **Marauder:** Aiming windups and concussive slowing projectiles.
-  * **Spine Crawler:** High-HP tank unit that bursts into rapid Zerglings upon death.
-  * **Blink Stalker:** Teleports past orbital defenses directly to combat range.
-  * **Felhound (Boss Wave):** Momentum physics driving an unstable inward-spiraling orbit.
-  * **Sentry:** Projects a Guardian Shield aura reducing incoming damage to allies by 75%.
-  * **Medivac:** Dedicated dropship AI executing dual-target healing beams and unit formation following.
-  * **Hellion:** Fast skirmisher using 0.4-second telegraph line-of-fire flame stream attacks.
-* **Developer & Testing Suite:** Built-in testing mode modal with minute-based time jumps and difficulty toggles (Easy, Normal, Hard).
+* **Local Co-Op (1–4 Players):** Simultaneous local multiplayer with shared XP and individual upgrades, and dynamic difficulty scaling based on active player count.
+* **Three different difficulty settings:** Choose Easy, Medium or Hard.
+* **Synergistic Talent Trees:** Auto-firing weapons and passive upgrades, starting out with ranged, melee, explosives, or turrets.
+
+[![Teaser](https://raw.githubusercontent.com/TobiasWestholm/BlobSurvival/refs/heads/main/thumbnail.jpg)](https://raw.githubusercontent.com/TobiasWestholm/BlobSurvival/refs/heads/main/video.mp4)
 
 ---
 
-## 🛠️ Technicalities & Engineering Highlights
+## 🛠️ Technicalities & Engineering details
 
-> **For Recruiters (AI / ML & Systems Engineering):** This project demonstrates low-level software design, autonomous agent behavior modeling, mathematical physics, and real-time game state management in a pure, zero-dependency environment.
+> This project demonstrates low-level software design, autonomous agent behavior modeling, mathematical physics, and real-time game state management in a pure, zero-dependency environment.
 
 ### 🧠 Autonomous Agent AI & Decision Systems
 * **Finite State Machine (FSM) Architectures:** Entities manage distinct operational states (burrow, flee, windup, attack, orbit, formation follow) with clear transition criteria.
-* **Dynamic Steering & Vector Physics:** Implements custom steering forces (acceleration, drag, radial collapse, momentum persistence) to produce organic motion—such as the Felhound's unstable orbital drift where speed scales spiral collapse rate ($F_{collapse} \propto v \cdot \text{waveFrac}$).
-* **Targeting & Heuristic Selection:** Multi-attribute decision-making for support units (e.g., Medivac priority-sorting wounded allies by health deficit and distance, falling back to formation following when idle).
+* **Dynamic Steering & Vector Physics:** Implements custom steering forces (acceleration, drag, radial collapse, momentum persistence) to produce organic motion.
+* **Targeting & Heuristic Selection:** Multi-attribute decision-making for support units.
 
 ### 📐 Computational Geometry & Spatial Math
 * **Line-Segment & Collision Algorithms:** Custom point-to-segment distance calculations for directional beam attacks (Hellion flame stream, Laser trails) and circle-to-circle bounding volume intersection without external engines.
@@ -42,7 +35,4 @@ A fast-paced, high-density 2D arcade survival auto-battler built from the ground
 ---
 
 ## 🚀 How to Run
-
-1. Clone or download the repository.
-2. Open `index.html` in any modern web browser (Chrome, Firefox, Safari, Edge).
-3. Select player count and difficulty, or click **Testing Suite** to jump to specific minute benchmarks.
+Open `index.html` in any modern web browser (Chrome, Firefox, Safari, Edge).
