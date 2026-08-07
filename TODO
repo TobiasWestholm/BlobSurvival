@@ -1,14 +1,10 @@
 * New enemies
-- Helion
-- Burrowed banelings
 - Something that becomes terrain when dying or when doing something else (supply depo), could soak up projectiles
 - Viper pull
 - Pushing away the players when dying or pulling them in
 - Stealth
 
-* Scoreboard: Save Game Progress locally
-- localStorage & sessionStorage: Store high scores, unlocked levels, player inventories, and save states. When your friend closes the browser and reopens the HTML file tomorrow, their progress will still be there.
-- JSON Import/Export: Add a simple "Export Save" button that copies a text code to their clipboard so they can send their save data back to you.
+* Life steal to mines?
 
 * Embed All Visual & Audio Assets Locally
 - You don't need external .png or .mp3 files lying around in a folder next to your HTML.

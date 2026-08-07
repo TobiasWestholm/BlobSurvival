@@ -11,6 +11,7 @@
     .xp-bar { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s ease; }
     #stats { margin-top: 5px; text-shadow: 1px 1px 2px #000; }
     #timer { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); font-size: 24px; text-shadow: 1px 1px 3px #000; pointer-events: none; }
+    #tipText { display: none; position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%); font-size: 24px; text-align: center; color: #cfcfcf; text-shadow: 0 0 25px #000; pointer-events: none; }
     .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.92); padding: 30px; border: 2px solid #00ffcc; border-radius: 10px; pointer-events: auto; text-align: center; min-width: 400px; z-index: 100; }
     .modal.show { display: block; }
     .upgrade-btn { display: block; background: #222; color: #fff; border: 1px solid #555; padding: 12px 24px; margin: 10px auto; cursor: pointer; border-radius: 4px; width: 80%; font-size: 14px; }
@@ -78,7 +79,7 @@
         <p id="difficultyPrompt">Select difficulty</p>
         <button class="upgrade-btn" data-difficulty="easy"><span class="name">EASY</span>Deal 200% · take 50% · much sharper aim · 130% speed</button>
         <button class="upgrade-btn" data-difficulty="normal"><span class="name">NORMAL</span>Deal 150% · take 75% · sharper aim · 115% speed</button>
-        <button class="upgrade-btn" data-difficulty="hard"><span class="name">HARD</span>Deal 100% · take 100% · standard aim · 100% speed</button>
+        <button class="upgrade-btn" data-difficulty="hard"><span class="name">BRUTALLY HARD</span>Deal 100% · take 100% · standard aim · 100% speed</button>
         <button class="upgrade-btn" id="backToPlayers"><span class="name">← Back</span></button>
     </div>
 </div>
@@ -118,6 +119,7 @@
             <button class="time-preset-btn" data-min="23">Min 23 (Stalker)</button>
             <button class="time-preset-btn" data-min="24">Min 24 (Felhound Boss)</button>
             <button class="time-preset-btn" data-min="27">Min 27 (Medivac)</button>
+            <button class="time-preset-btn" data-min="28">Min 28 (Hellion)</button>
         </div>
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px; border-bottom: 1px solid #333; padding-bottom: 15px;">
             <span style="font-size: 13px; color: #aaa;">Or enter custom minute:</span>
@@ -150,6 +152,7 @@
 
 <canvas id="gameCanvas"></canvas>
 <div id="countdown"></div>
+<div id="tipText"></div>
 
 <script>
 'use strict';
@@ -171,6 +174,25 @@ window.addEventListener('resize', resizeCanvas);
 
 const STATES = { START_MENU: 'START_MENU', GAMEPLAY: 'GAMEPLAY', LEVEL_UP: 'LEVEL_UP', COUNTDOWN: 'COUNTDOWN', GAME_OVER: 'GAME_OVER', WEAPON_SELECT: 'WEAPON_SELECT' };
 
+const tips = [
+    "When an upgrade says it unlocks another upgrade with a star (*) in its name, it means that the starred upgrade requires another upgrade to be fully unlocked.",
+    "First time playing? Choosing Magic Missile as starting weapon is a good way to keep it simple.",
+    "It's usually a good idea to stick to one weapon type early in the game. Transition to multiple weapons later to unlock more powerful upgrades.",
+    "All turret upgrades are better the more turrets you can manage to have.",
+    "You will eventually need defensive upgrades. Select them while the number of enemies is manageable.",
+    "Melee Sweep requires a good amount of control to maneuver well, but allows you to become very tanky early on.",
+    "Want something different? Choose Melee Sweep and try maximizing the damage you take early on, and take the Second Wind upgrade as often as you can.",
+    "Want something different? Choose Proximity Mine and pick the Volatile Powder upgrade early to unlock Martyrdom, then wipe the board by dying all the time. Only works in multiplayer.",
+    "The Fire Ring upgrade is a solid upgrade that can get you back into the game in rough times.",
+    "Players can't damage each other, and enemies won't damage each other either.",
+    "The quickest way to die is to run into the horde of enemies behind you.",
+    "Cryo Freeze will save your ass from enemies that are faster than you.",
+    "Enemies always pursue the closest player unless something else says otherwise.",
+    "Getting some AoE damage will keep you in the game when the masses of enemies become too large to kill one by one.",
+    "Upgrades are chosen at random from all upgrades you have unlocked. Unlocking more upgrades decreases your chances of getting that one specific upgrade you want.",
+    "The Scourge Flail is the only weapon-like upgrade that is not affected by the Hyper-drive attack speed increase."
+]
+
 const PROGRESSION = {
     // Standard monsters and their introduction times (in ms)
     monsterIntroductions: [
@@ -187,7 +209,8 @@ const PROGRESSION = {
         { type: 'spine_crawler', time: 1320000 },
         { type: 'stalker', time: 1380000 },
         { type: 'sentry', time: 1560000 },
-        { type: 'medivac', time: 1620000 }
+        { type: 'medivac', time: 1620000 },
+        { type: 'hellion', time: 1680000 }
     ],
     // Bosses and their trigger times (in ms)
     bossEvents: [
@@ -241,6 +264,7 @@ const REVIVE_INVULN = 3000; // brief safety after revive (enemies also ignore yo
 const METEOR_FALL_MS = 1200; // telegraph time a meteor spends airborne before landing
 const BURN_MS = 3000;        // how long a meteor's burning surface lingers
 const BURN_TICK = 12;         // burning-surface damage per contact tick (gated by player invuln)
+const PROJECTILE_HEAL = 0.001;
 // Dasher: weaves sideways while approaching, then lunges straight at the player from just
 // outside the Fire Ring's reach (orbit 70 + proj 10 + enemy r ≈ 93px). Lunge locks its
 // direction, so it can be side-stepped.
@@ -436,6 +460,7 @@ class Player {
         this.mineThrowEnabled = false;
         this.mineRingEnabled = false;
         this.clusterShotEnabled = false;
+        this.projectileLifedrainEnabled = false;
         this.sniperShotEnabled = false;
         this.laserSniperEnabled = false;
         this.phaseDetonationEnabled = false;
@@ -452,6 +477,7 @@ class Player {
         this.turretNetworkEnabled = false;
         this.lastNetworkExpansion = 0;
         this.turretDispenserEnabled = false;
+        this.unitType = 'player';
     }
     heal(amount) {
         this.hp = Math.min(this.hpMax, this.hp + amount);
@@ -637,7 +663,6 @@ class Player {
         }
     }
     isOnIce() {
-        if (!this.iceTrailEnabled) return false;
         for (const hz of GAME_STATE.hazards) {
             if (hz instanceof IceTrailSegment) {
                 const dx = hz.x2 - hz.x1;
@@ -673,7 +698,7 @@ class Player {
             // Trigger landing mine explosion
             GAME_STATE.hazards.push(new MineExplosion(this.x, this.y, mineRadius, now, this));
             for (const e of GAME_STATE.enemies) {
-                if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                if (!isDamageable(e)) continue;
                 const dx = e.x - this.x;
                 const dy = e.y - this.y;
                 if (dx * dx + dy * dy <= (mineRadius + e.r) * (mineRadius + e.r)) {
@@ -803,13 +828,13 @@ class Player {
         let radius = 250;
         if (this.mineAoeCount > 0) radius *= Math.pow(1.10, this.mineAoeCount);
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0) continue;
+            if (!isDamageable(e)) continue;
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= radius * radius) {
                 e.hp -= dmg;
                 spawnHitParticles(e.x, e.y, '#ff3300');
-                if (e.hp > 0 && this.martyrsPresenceEnabled) {
+                if (e.hp > 0 && this.martyrsPresenceEnabled && !e.burrowed) {
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     const nx = dist > 0.001 ? dx / dist : (Math.random() < 0.5 ? -1 : 1);
                     const ny = dist > 0.001 ? dy / dist : 0;
@@ -1118,6 +1143,19 @@ class Enemy {
             this.healTickMs  = 100;
             this.nextHealTick = 0;
             this.healTargets = []; // up to 2 simultaneous targets
+        } else if (type === 'hellion') {
+            // SC2 Hellion: quick flame unit, keeps safe distance, fires 180px line of fire (70 dmg, 1500 HP)
+            this.hp = 1500; this.speed = 2.2; this.damage = 70; this.color = '#ff5722'; this.r = 16;
+            this.targetCoord = null;
+            this.nextDecisionTime = 0;
+            this.action = 'move'; // 'flee', 'fire', 'move'
+            this.aiming = false;
+            this.aimUntil = 0;
+            this.aimAngle = 0;
+            this.fireReady = 0;
+            this.fireCooldown = 2200; // ms between attacks
+            this.flameBeamUntil = 0;
+            this.flameLine = null;
         } else if (type === 'spiky') {
             this.hp = 1100; this.speed = 0.6; this.damage = 50; this.color = '#ff1100'; this.r = 54;
         } else if (type === 'mega_brute') {
@@ -1167,6 +1205,7 @@ class Enemy {
             // SC2 Baneling: fast Zerg rolling acid sac unit that detonates on contact or death
             this.hp = 1000; this.speed = 1.65; this.damage = 45; this.color = '#76ff03'; this.r = 13;
             this.banelingDetonated = false;
+            this.burrowed = false;
         } else if (type === 'marauder') {
             // SC2 Marauder: heavy armored Terran grenade launcher unit with Concussive Shells
             this.hp = 1500; this.speed = 1.25; this.damage = 40; this.color = '#37474f'; this.r = 16;
@@ -1208,6 +1247,7 @@ class Enemy {
             this.hp = 10; this.speed = 0.9; this.damage = 5; this.color = '#ff4444'; this.r = 10;
         }
         this.maxHp = this.hp;
+        this.unitType = 'monster';
     }
     detonateBaneling(now) {
         if (this.banelingDetonated) return;
@@ -1250,6 +1290,14 @@ class Enemy {
             const a = Math.random() * Math.PI * 2;
             const s = 0.5 + Math.random() * 2.0;
             GAME_STATE.particles.push(new Particle(this.x, this.y, Math.cos(a) * s, Math.sin(a) * s, '#ccff00', 300));
+        }
+    }
+    burrowBaneling(now, chance) {
+        if (this.burrowed || !isOnPlayableArea(this)) return;
+        const randNumber = Math.random();
+        if (randNumber < chance) {
+            this.burrowed = true;
+            this.speed = 0;
         }
     }
     freeze(dur, now) {
@@ -1437,12 +1485,14 @@ class Enemy {
         if (this.type === 'felhound') { this.updateFelhound(dtFactor, now); return; }
         if (this.type === 'sentry')   { this.updateSentry(dtFactor, now, target, d, dx, dy); return; }
         if (this.type === 'medivac')  { this.updateMedivac(dtFactor, now); return; }
+        if (this.type === 'hellion')  { this.updateHellion(dtFactor, now, target, d, dx, dy); return; }
+        if (this.type === 'baneling') {this.burrowBaneling(now,0.001);}
         if (d > 0.001) {
             const currentSpeed = this.getSpeed(now);
             this.x += (dx / d) * currentSpeed * dtFactor;
             this.y += (dy / d) * currentSpeed * dtFactor;
         }
-        if (!targetIsMine && d < target.r + this.r) {
+        if (!targetIsMine && (d < target.r + this.r || (this.burrowed && d < target.r + 2*this.r))) {
             if (this.type === 'baneling') {
                 this.detonateBaneling(now);
                 return;
@@ -1460,7 +1510,7 @@ class Enemy {
                 t.takeDamage(this.damage, now, this);
             }
         }
-        if (this.type === 'shooter' && now >= this.fireReady) {
+        if (this.type === 'shooter' && now >= this.fireReady && isOnPlayableArea(this)) {
             const attackMult = this.isPassingThroughLaserFence() ? 2.5 : 1.0;
             this.fireReady = now + this.fireCooldown * attackMult;
             const a = Math.atan2(target.y - this.y, target.x - this.x);
@@ -1544,7 +1594,7 @@ class Enemy {
         }
 
         // --- Chase phase: move toward target ---
-        if (d > this.firingRange) {
+        if (d > this.firingRange || !isOnPlayableArea(this)) {
             this.x += nx * this.getSpeed(now) * dtFactor;
             this.y += ny * this.getSpeed(now) * dtFactor;
         }
@@ -1554,7 +1604,7 @@ class Enemy {
         this.y = Math.max(-30, Math.min(H + 30, this.y));
 
         // --- Enter aim windup when in range and cooldown elapsed ---
-        if (d <= this.firingRange && now >= this.fireReady) {
+        if (d <= this.firingRange && now >= this.fireReady && isOnPlayableArea(this)) {
             this.aiming = true;
             this.aimAngle = Math.atan2(target.y - this.y, target.x - this.x);
             this.aimUntil = now + 650; // 650ms aim telegraph before firing
@@ -1640,44 +1690,35 @@ class Enemy {
                     t.hp = Math.min(t.maxHp, t.hp + this.healPerTick);
                 }
             }
-        } else if (nearestWounded) {
-            // Chase nearest wounded ally
-            const exdx = nearestWounded.x - this.x, exdy = nearestWounded.y - this.y;
-            const ed = nearestWoundedDist;
-            const nx = exdx / ed, ny = exdy / ed;
-            if (ed < this.healRange * 1.5) {
-                // Approach zone — decelerate
-                this.vx *= Math.pow(0.88, dtFactor);
-                this.vy *= Math.pow(0.88, dtFactor);
-            } else {
-                this.vx += nx * this.accel * dtFactor;
-                this.vy += ny * this.accel * dtFactor;
-                const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (spd > this.maxSpd) {
-                    this.vx = (this.vx / spd) * this.maxSpd;
-                    this.vy = (this.vy / spd) * this.maxSpd;
-                }
-            }
         } else {
-            // No wounded allies anywhere — chase nearest alive player
-            let playerTarget = null, playerDist = Infinity;
-            for (const p of GAME_STATE.players) {
-                if (!p.alive) continue;
-                const pdx = p.x - this.x, pdy = p.y - this.y;
-                const pd = pdx * pdx + pdy * pdy;
-                if (pd < playerDist) { playerDist = pd; playerTarget = p; }
+            // No damaged monsters in reach — follow right behind the closest monster (damaged or full health)
+            let closestMonster = null, closestDist = Infinity;
+            for (const e of GAME_STATE.enemies) {
+                if (e === this || e.type === 'medivac' || !isTargetable(e)) continue;
+                const exdx = e.x - this.x, exdy = e.y - this.y;
+                const ed = Math.sqrt(exdx * exdx + exdy * exdy);
+                if (ed < closestDist) { closestDist = ed; closestMonster = e; }
             }
-            if (playerTarget) {
-                const pdx = playerTarget.x - this.x, pdy = playerTarget.y - this.y;
-                const pd = Math.sqrt(pdx * pdx + pdy * pdy);
-                this.vx += (pdx / pd) * this.accel * dtFactor;
-                this.vy += (pdy / pd) * this.accel * dtFactor;
-                const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (spd > this.maxSpd) {
-                    this.vx = (this.vx / spd) * this.maxSpd;
-                    this.vy = (this.vy / spd) * this.maxSpd;
+            if (closestMonster) {
+                const exdx = closestMonster.x - this.x, exdy = closestMonster.y - this.y;
+                const ed = closestDist;
+                const nx = exdx / ed, ny = exdy / ed;
+                // Follow right behind: decelerate when close (within follow range) so it hovers right behind the monster
+                const followDist = closestMonster.r + this.r + 15;
+                if (ed < followDist) {
+                    this.vx *= Math.pow(0.88, dtFactor);
+                    this.vy *= Math.pow(0.88, dtFactor);
+                } else {
+                    this.vx += nx * this.accel * dtFactor;
+                    this.vy += ny * this.accel * dtFactor;
+                    const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    if (spd > this.maxSpd) {
+                        this.vx = (this.vx / spd) * this.maxSpd;
+                        this.vy = (this.vy / spd) * this.maxSpd;
+                    }
                 }
             } else {
+                // No monsters anywhere — idle friction
                 this.vx *= Math.pow(0.95, dtFactor);
                 this.vy *= Math.pow(0.95, dtFactor);
             }
@@ -1689,11 +1730,101 @@ class Enemy {
         this.y = Math.max(this.r, Math.min(H - this.r, this.y));
         // Medivac does 0 damage — no contact handling
     }
+    updateHellion(dtFactor, now, target, d, dx, dy) {
+        if (!target) return;
+
+        // --- 1. Committed Firing State: once decided to fire, cannot flee or change mind until complete ---
+        if (this.aiming) {
+            if (now >= this.aimUntil) {
+                // FIRE! Straight line of fire (180px range)
+                this.aiming = false;
+                this.fireReady = now + this.fireCooldown;
+                const fireLen = 180;
+                const endX = this.x + Math.cos(this.aimAngle) * fireLen;
+                const endY = this.y + Math.sin(this.aimAngle) * fireLen;
+                this.flameLine = { x1: this.x, y1: this.y, x2: endX, y2: endY };
+                this.flameBeamUntil = now + 300;
+
+                // Instant damage to all players in line of fire
+                for (const p of GAME_STATE.players) {
+                    if (!p.alive || p.isOnIce()) continue;
+                    if (pointToSegmentDistance(p.x, p.y, this.x, this.y, endX, endY) <= p.r + 16) {
+                        p.takeDamage(this.damage, now, this, true);
+                        spawnHitParticles(p.x, p.y, '#ff5722');
+                    }
+                }
+                // Instant damage to turrets in line of fire
+                for (const t of GAME_STATE.turrets) {
+                    if (t.dead) continue;
+                    if (pointToSegmentDistance(t.x, t.y, this.x, this.y, endX, endY) <= t.r + 16) {
+                        t.takeDamage(this.damage, now, this);
+                    }
+                }
+            }
+            // Stay put while aiming telegraph runs; cannot flee
+            return;
+        }
+
+        // --- 2. Decision interval: re-evaluate decision every 0.4s (400ms) ---
+        if (now >= this.nextDecisionTime) {
+            this.nextDecisionTime = now + 400; // 0.4s
+
+            if (d < 95) {
+                // Too close (inside/near fire ring): Flee!
+                this.action = 'flee';
+            } else if (d <= 180 && now >= this.fireReady) {
+                // Safe distance & in attack range (<= 180px): Decide to Fire!
+                this.action = 'fire';
+                this.aiming = true;
+                this.aimUntil = now + 400; // 0.4s windup
+                this.aimAngle = Math.atan2(target.y - this.y, target.x - this.x);
+                return; // start aiming immediately
+            } else {
+                // Safe distance but not firing: Reposition!
+                this.action = 'move';
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 110 + Math.random() * 70; // 110px to 180px from player (outside fire ring)
+                let tx = target.x + Math.cos(angle) * dist;
+                let ty = target.y + Math.sin(angle) * dist;
+                tx = Math.max(30, Math.min(W - 30, tx));
+                ty = Math.max(30, Math.min(H - 30, ty));
+                this.targetCoord = { x: tx, y: ty };
+            }
+        }
+
+        // --- 3. Execute movement based on decision ---
+        if (this.action === 'flee' || d < 95) {
+            if (d > 0.001) {
+                const awayX = -dx / d;
+                const awayY = -dy / d;
+                const spd = this.getSpeed(now);
+                this.x += awayX * spd * dtFactor;
+                this.y += awayY * spd * dtFactor;
+            }
+        } else if (this.action === 'move' && this.targetCoord) {
+            const tdx = this.targetCoord.x - this.x;
+            const tdy = this.targetCoord.y - this.y;
+            const td = Math.hypot(tdx, tdy);
+            if (td > 5) {
+                const spd = this.getSpeed(now);
+                this.x += (tdx / td) * spd * dtFactor;
+                this.y += (tdy / td) * spd * dtFactor;
+            }
+        }
+
+        this.x = Math.max(-30, Math.min(W + 30, this.x));
+        this.y = Math.max(-30, Math.min(H + 30, this.y));
+
+        // Melee contact damage fallback
+        if (d < target.r + this.r) {
+            target.takeDamage(this.damage, now, this, true);
+        }
+    }
     updateSentry(dtFactor, now, target, d, dx, dy) {
         // Slow chase toward target, deals contact damage.
         // Shield logic is handled centrally in the main loop (HP snapshot + restore).
         this.shieldAngle += 0.018 * dtFactor; // rotate shield ring visual
-        if (d > 0.001) {
+        if (d > this.shieldRadius-this.r) {
             const nx = dx / d, ny = dy / d;
             this.x += nx * this.getSpeed(now) * dtFactor;
             this.y += ny * this.getSpeed(now) * dtFactor;
@@ -2080,37 +2211,85 @@ class Enemy {
             return;
         }
         if (this.type === 'baneling') {
-            ctx.save();
-            const pulse = 1.0 + 0.08 * Math.sin(now / 90);
-            const radius = this.r * pulse;
+            if (!this.burrowed) {
+                ctx.save();
+                const pulse = 1.0 + 0.08 * Math.sin(now / 90);
+                const radius = this.r * pulse;
 
-            // Acidic aura glow
-            ctx.save();
-            ctx.fillStyle = '#76ff03';
-            ctx.globalAlpha = 0.35;
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, radius + 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
+                // Acidic aura glow
+                ctx.save();
+                ctx.fillStyle = '#76ff03';
+                ctx.globalAlpha = 0.35;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, radius + 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
 
-            // Acidic body core
-            ctx.fillStyle = '#64dd17';
-            ctx.strokeStyle = '#aeea00';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
+                // Acidic body core
+                ctx.fillStyle = '#64dd17';
+                ctx.strokeStyle = '#aeea00';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
 
-            // Glowing acid sac swell on top
-            ctx.fillStyle = '#ccff00';
-            ctx.beginPath();
-            ctx.arc(this.x - 2, this.y - 3, radius * 0.55, 0, Math.PI * 2);
-            ctx.fill();
+                // Glowing acid sac swell on top
+                ctx.fillStyle = '#ccff00';
+                ctx.beginPath();
+                ctx.arc(this.x - 2, this.y - 3, radius * 0.55, 0, Math.PI * 2);
+                ctx.fill();
 
-            ctx.restore();
-            this.drawCryoOverlay(now);
-            return;
+                ctx.restore();
+                this.drawCryoOverlay(now);
+                return;
+            } else {
+                ctx.save();
+                const radius = this.r;
+
+                // Acidic aura glow
+                ctx.save();
+                ctx.fillStyle = '#111111';
+                ctx.globalAlpha = 0.2;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, radius*2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+                ctx.save();
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Adjust 0.5 to make it more or less dark
+                ctx.fill();
+                ctx.restore();
+
+                // Acidic body core
+                ctx.fillStyle = '#64dd17';
+                ctx.strokeStyle = '#aeea00';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.save();
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Adjust 0.5 to make it more or less dark
+                ctx.fill();
+                ctx.restore();
+
+                // Glowing acid sac swell on top
+                ctx.fillStyle = '#ccff00';
+                ctx.beginPath();
+                ctx.arc(this.x - 2, this.y - 3, radius * 0.55, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.save();
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Adjust 0.5 to make it more or less dark
+                ctx.fill();
+
+                ctx.restore();
+                this.drawCryoOverlay(now);
+                return;
+            }
+            
         }
         if (this.type === 'marauder') {
             ctx.save();
@@ -2285,12 +2464,12 @@ class Enemy {
             ctx.save();
 
             // Guardian Shield aura — large translucent teal dome visible on the ground
-            ctx.globalAlpha = 0.10 + 0.04 * Math.abs(Math.sin(now / 800));
+            ctx.globalAlpha = 0.03 + 0.02 * Math.abs(Math.sin(now / 800));
             ctx.fillStyle = '#00e5ff';
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.shieldRadius, 0, Math.PI * 2);
             ctx.fill();
-            ctx.globalAlpha = 0.30 + 0.08 * Math.abs(Math.sin(now / 800));
+            ctx.globalAlpha = 0.09 + 0.06 * Math.abs(Math.sin(now / 800));
             ctx.strokeStyle = '#00e5ff';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -2335,6 +2514,107 @@ class Enemy {
                 ctx.arc(nx, ny, 3, 0, Math.PI * 2);
                 ctx.fill();
             }
+
+            ctx.restore();
+            this.drawCryoOverlay(now);
+            return;
+        }
+        if (this.type === 'hellion') {
+            ctx.save();
+
+            // Aiming / Telegraph line (0.4s windup)
+            if (this.aiming) {
+                const aimLen = 180;
+                const ax = this.x + Math.cos(this.aimAngle) * aimLen;
+                const ay = this.y + Math.sin(this.aimAngle) * aimLen;
+
+                // Soft translucent red/orange threat beam telegraph
+                const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 70));
+                ctx.strokeStyle = `rgba(255, 87, 34, ${pulse * 0.40})`;
+                ctx.lineWidth = 18;
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(ax, ay);
+                ctx.stroke();
+
+                ctx.globalAlpha = 0.5;
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([8, 6]);
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(ax, ay);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.globalAlpha = 1.0;
+            }
+
+            // Firing flame beam visual (more transparent)
+            if (this.flameBeamUntil && now < this.flameBeamUntil && this.flameLine) {
+                const frac = (this.flameBeamUntil - now) / 300;
+                const fl = this.flameLine;
+
+                // Outer flame aura
+                ctx.globalAlpha = frac * 0.40;
+                ctx.strokeStyle = '#ff3d00';
+                ctx.lineWidth = 32;
+                ctx.beginPath();
+                ctx.moveTo(fl.x1, fl.y1);
+                ctx.lineTo(fl.x2, fl.y2);
+                ctx.stroke();
+
+                // Core flame
+                ctx.globalAlpha = frac * 0.55;
+                ctx.strokeStyle = '#ffc107';
+                ctx.lineWidth = 16;
+                ctx.beginPath();
+                ctx.moveTo(fl.x1, fl.y1);
+                ctx.lineTo(fl.x2, fl.y2);
+                ctx.stroke();
+
+                // Center line
+                ctx.globalAlpha = frac * 0.65;
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(fl.x1, fl.y1);
+                ctx.lineTo(fl.x2, fl.y2);
+                ctx.stroke();
+
+                ctx.globalAlpha = 1.0;
+            }
+
+            // Ring-shaped monster body (like every other monster)
+            ctx.save();
+            ctx.translate(this.x, this.y);
+
+            // Outer ring border & filled body
+            ctx.fillStyle = '#ff5722';
+            ctx.strokeStyle = '#bf360c';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, this.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Inner glowing flame core
+            const corePulse = 0.7 + 0.3 * Math.abs(Math.sin(now / 180));
+            ctx.globalAlpha = corePulse;
+            ctx.fillStyle = '#ffeb3b';
+            ctx.beginPath();
+            ctx.arc(0, 0, this.r * 0.45, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+
+            // Directional nozzle indicator on ring
+            const facingAngle = this.aiming ? this.aimAngle : (this.targetCoord ? Math.atan2(this.targetCoord.y - this.y, this.targetCoord.x - this.x) : 0);
+            ctx.rotate(facingAngle);
+            ctx.fillStyle = '#d84315';
+            ctx.beginPath();
+            ctx.arc(this.r * 0.75, 0, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
 
             ctx.restore();
             this.drawCryoOverlay(now);
@@ -2795,8 +3075,24 @@ class BurningSurface {
     update(dt, now) {
         if (now > this.expires) { this.dead = true; return; }
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
-            if (p.isOnIce && p.isOnIce()) continue;
+            if (!p.alive || p.isOnIce()) continue;
+            const dx = p.x - this.x, dy = p.y - this.y;
+            if (dx * dx + dy * dy < (this.r + p.r) * (this.r + p.r)) {
+                if (!this.hitCooldown.has(p)) {
+                    this.hitCooldown.set(p, now + 133.3); // delay the first tick by one cooldown period
+                } else {
+                    const nextHit = this.hitCooldown.get(p);
+                    if (now >= nextHit) {
+                        p.takeDamage(BURN_TICK, now, this);
+                        this.hitCooldown.set(p, now + 133.3); // tick every 133.3ms thereafter
+                    }
+                }
+            } else {
+                this.hitCooldown.delete(p);
+            }
+        }
+        for (const t of GAME_STATE.turrets) {
+            if (t.dead) continue;
             const dx = p.x - this.x, dy = p.y - this.y;
             if (dx * dx + dy * dy < (this.r + p.r) * (this.r + p.r)) {
                 if (!this.hitCooldown.has(p)) {
@@ -2855,7 +3151,7 @@ class MagicMissile {
             
             // Allocation-free search for closest targets
             for (const e of GAME_STATE.enemies) {
-                if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                if (!isTargetable(e)) continue;
                 const dx = e.x - this.player.x;
                 const dy = e.y - this.player.y;
                 const d2 = dx * dx + dy * dy;
@@ -2877,7 +3173,7 @@ class MagicMissile {
                 if (this.player.rocketEnabled && Math.random() < 0.10) {
                     const rAngle = Math.random() * Math.PI * 2;
                     const rDmg = 60;
-                    GAME_STATE.projectiles.push(new RocketProjectile(this.player.x, this.player.y, rAngle, rDmg, this.player, now));
+                    GAME_STATE.projectiles.push(new RocketProjectile(this.player.x, this.player.y, rAngle, rDmg, this.player, now,this.player.unitType));
                 }
 
                 if (this.player.sniperShotEnabled && (this.volleyCount % 4 === 0)) {
@@ -2885,7 +3181,7 @@ class MagicMissile {
                     let highestMaxHp = -999999;
                     let minD2 = Infinity;
                     for (const e of GAME_STATE.enemies) {
-                        if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                        if (!isTargetable(e)) continue;
                         const dx = e.x - this.player.x;
                         const dy = e.y - this.player.y;
                         const d2 = dx * dx + dy * dy;
@@ -2904,7 +3200,7 @@ class MagicMissile {
                         const mmDmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
                         const mult = this.player.laserSniperEnabled ? 5.0 : 3.0;
                         const sniperDmg = mmDmg * mult;
-                        GAME_STATE.projectiles.push(new SniperProjectile(this.player.x, this.player.y, angle, sniperDmg, this.player, now));
+                        GAME_STATE.projectiles.push(new SniperProjectile(this.player.x, this.player.y, angle, sniperDmg, this.player, now, this.unitType));
                     }
                 }
             }
@@ -2930,7 +3226,7 @@ class MagicMissile {
             const vx = Math.cos(angle) * this.speed;
             const vy = Math.sin(angle) * this.speed;
             const kind = (this.player.accuracyModifier === 0) ? 'laser' : 'missile';
-            const proj = new Projectile(this.player.x, this.player.y, vx, vy, dmg, kind, this.player);
+            const proj = new Projectile(this.player.x, this.player.y, vx, vy, dmg, kind, this.player, this.player.unitType);
             if (isExplosive) {
                 proj.isExplosive = true;
                 proj.aoeRadius = aoeRadius;
@@ -3021,7 +3317,7 @@ class LaserTrailSegment {
         const dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
         
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+            if (!isDamageable(e)) continue;
             
             // Fast bounding box check (prunes ~98% of checks instantly)
             if (e.x < this.minX - e.r || e.x > this.maxX + e.r || e.y < this.minY - e.r || e.y > this.maxY + e.r) {
@@ -3122,7 +3418,7 @@ class IceTrailSegment {
 }
 
 class RocketProjectile {
-    constructor(x, y, angle, damage, player, now) {
+    constructor(x, y, angle, damage, player, now, sourceUnitType) {
         this.x = x; this.y = y;
         this.angle = angle;
         const speed = 7.5;
@@ -3136,6 +3432,7 @@ class RocketProjectile {
         this.duration = 4000;
         this.rocketStage = 0; // 0 = outward random, 1 = homing
         this.homingRadius = 250;
+        this.sourceUnitType = sourceUnitType;
     }
     update(dt, dtFactor = 1.0, now) {
         const elapsed = now - this.spawnTime;
@@ -3174,7 +3471,7 @@ class RocketProjectile {
             let targetD2 = Infinity;
             const r2 = this.homingRadius * this.homingRadius;
             for (const e of GAME_STATE.enemies) {
-                if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                if (!isTargetable(e)) continue;
                 const dx = e.x - this.x;
                 const dy = e.y - this.y;
                 const d2 = dx * dx + dy * dy;
@@ -3220,11 +3517,14 @@ class RocketProjectile {
         const dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
         GAME_STATE.hazards.push(new MineExplosion(this.x, this.y, blastRadius, now, this.player));
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0) continue;
+            if (isDamageable(e)) continue;
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= (blastRadius + e.r) * (blastRadius + e.r)) {
                 e.hp -= dmg;
+                if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
+                    this.player.heal(PROJECTILE_HEAL*dmg)
+                }
                 spawnHitParticles(e.x, e.y, this.player ? this.player.color : '#ff4400');
             }
         }
@@ -3273,7 +3573,7 @@ class RocketProjectile {
 }
 
 class SniperProjectile {
-    constructor(x, y, angle, damage, player, now) {
+    constructor(x, y, angle, damage, player, now, sourceUnitType) {
         this.x = x; this.y = y;
         this.angle = angle;
         const speed = 48.0; // Extremely high-speed laser beam projectile
@@ -3286,6 +3586,7 @@ class SniperProjectile {
         this.spawnTime = now;
         this.duration = 2000;
         this.hitEnemies = new Set();
+        this.sourceUnitType = sourceUnitType;
     }
     update(dt, dtFactor = 1.0, now) {
         if (now - this.spawnTime > this.duration) {
@@ -3306,7 +3607,7 @@ class SniperProjectile {
 
         // Damage everything along the line once
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+            if (!isTargetable(e)) continue;
             if (this.hitEnemies.has(e)) continue;
 
             const dx = e.x - this.x;
@@ -3314,6 +3615,9 @@ class SniperProjectile {
             if (dx * dx + dy * dy < (e.r + this.r) * (e.r + this.r)) {
                 this.hitEnemies.add(e);
                 e.hp -= this.damage;
+                if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
+                    this.player.heal(PROJECTILE_HEAL*this.damage)
+                }
                 if (this.player && this.player.freezeEnabled && e.type !== 'boss') {
                     const dur = (e.type === 'meteor') ? 125 : 250;
                     e.freeze(dur, now);
@@ -3576,7 +3880,7 @@ class MeleeSweep {
             // Sweep damage to close enemies
             const touchRange = this.range * this.player.meleeRangeModifier;
             for (const e of GAME_STATE.enemies) {
-                if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                if (!isDamageable(e)) continue;
                 const dx = e.x - this.player.x;
                 const dy = e.y - this.player.y;
                 if (dx * dx + dy * dy <= (touchRange + e.r) * (touchRange + e.r)) {
@@ -3604,7 +3908,7 @@ class MeleeSweep {
             const headWidth = radius * 0.75;
 
             for (const e of GAME_STATE.enemies) {
-                if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                if (!isDamageable(e)) continue;
                 const dx = e.x - this.player.x;
                 const dy = e.y - this.player.y;
                 
@@ -3773,7 +4077,7 @@ class PlayerMine {
             if (now - this.triggeredTime >= 2500) {
                 let inContact = false;
                 for (const e of GAME_STATE.enemies) {
-                    if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                    if (!isTargetable(e)) continue;
                     const dx = e.x - this.x;
                     const dy = e.y - this.y;
                     const touch = this.r + e.r;
@@ -3791,7 +4095,7 @@ class PlayerMine {
             return;
         }
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+            if (!isTargetable(e)) continue;
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             const dist2 = dx * dx + dy * dy;
@@ -3813,7 +4117,7 @@ class PlayerMine {
         }
         const dmg = this.damage * this.player.mineDamageModifier * GAME_STATE.dmgFactor;
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+            if (!isDamageable(e)) continue;
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= this.explosionRadius * this.explosionRadius) {
@@ -3937,6 +4241,7 @@ class TurretEntity {
         this.flameDamage = 16; // 4x normal turret damage (4 * 4 = 16)
         this.speed = 11.0; // Quicker than Magic Missile (7.3)
         this.connections = []; // Array of connected TurretEntity instances
+        this.unitType = 'turret';
 
         // Flamethrower sweep animation state
         this.flameActiveUntil = 0;
@@ -4078,15 +4383,11 @@ class TurretEntity {
             const dmgThisFrame = dmgPerSec * (dt / 1000);
 
             for (const e of GAME_STATE.enemies) {
-                if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                if (!isTargetable(e)) continue;
                 const dx = e.x - this.x;
                 const dy = e.y - this.y;
-                if (dx * dx + dy * dy <= (sawRadius + e.r) * (sawRadius + e.r)) {
+                if (dx * dx + dy * dy <= (sawRadius + e.r) * (sawRadius + e.r) ) {
                     e.hp -= dmgThisFrame;
-                    if (this.player.freezeEnabled && e.type !== 'boss') {
-                        const dur = (e.type === 'meteor') ? 62.5 : 125;
-                        e.freeze(dur, now);
-                    }
                     const nextParticleTime = this.sawHitCooldown.get(e) || 0;
                     if (now >= nextParticleTime) {
                         this.sawHitCooldown.set(e, now + 120);
@@ -4117,7 +4418,7 @@ class TurretEntity {
                     const maxY = Math.max(this.y, conn.y) + fenceRadius + 20;
 
                     for (const e of GAME_STATE.enemies) {
-                        if (e.airborne || e.hp <= 0 || e.x < minX || e.x > maxX || e.y < minY || e.y > maxY) continue;
+                        if (e.burrowed || e.airborne || e.hp <= 0 || e.x < minX || e.x > maxX || e.y < minY || e.y > maxY) continue;
                         let t = ((e.x - this.x) * dx + (e.y - this.y) * dy) / len2;
                         t = Math.max(0, Math.min(1, t));
                         const closestX = this.x + t * dx;
@@ -4157,7 +4458,7 @@ class TurretEntity {
             let closestMissile = null;
             let minMissileD2 = Infinity;
             for (const e of GAME_STATE.enemies) {
-                if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                if (!isTargetable(e)) continue;
                 const dx = e.x - this.x;
                 const dy = e.y - this.y;
                 const d2 = dx * dx + dy * dy;
@@ -4179,7 +4480,7 @@ class TurretEntity {
                 const vx = Math.cos(spreadAngle) * this.speed;
                 const vy = Math.sin(spreadAngle) * this.speed;
 
-                const proj = new Projectile(this.x, this.y, vx, vy, dmg, kind, this.player);
+                const proj = new Projectile(this.x, this.y, vx, vy, dmg, kind, this.player, this.unitType);
                 proj.sourceTurret = true;
                 GAME_STATE.projectiles.push(proj);
 
@@ -4187,7 +4488,7 @@ class TurretEntity {
                 if (this.player && this.player.rocketEnabled && Math.random() < 0.05) {
                     const rAngle = Math.random() * Math.PI * 2;
                     const rDmg = 30 * this.player.damageModifier * GAME_STATE.dmgFactor;
-                    GAME_STATE.projectiles.push(new RocketProjectile(this.x, this.y, rAngle, rDmg, this.player, now));
+                    GAME_STATE.projectiles.push(new RocketProjectile(this.x, this.y, rAngle, rDmg, this.player, now, this.unitType));
                 }
 
                 // Sniper shot for turrets (every 4th attack, 50% damage)
@@ -4196,7 +4497,7 @@ class TurretEntity {
                     let highestMaxHp = -999999;
                     let minD2 = Infinity;
                     for (const e of GAME_STATE.enemies) {
-                        if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                        if (!isTargetable(e)) continue;
                         const dx = e.x - this.x;
                         const dy = e.y - this.y;
                         const d2 = dx * dx + dy * dy;
@@ -4215,7 +4516,7 @@ class TurretEntity {
                         const turretDmg = this.baseDamage * this.player.damageModifier * GAME_STATE.dmgFactor;
                         const mult = this.player.laserSniperEnabled ? 5.0 : 3.0;
                         const sniperDmg = turretDmg * mult * 0.5;
-                        GAME_STATE.projectiles.push(new SniperProjectile(this.x, this.y, angle, sniperDmg, this.player, now));
+                        GAME_STATE.projectiles.push(new SniperProjectile(this.x, this.y, angle, sniperDmg, this.player, now, this.unitType));
                     }
                 }
             }
@@ -4227,7 +4528,7 @@ class TurretEntity {
                 const fRange = this.flameRange;
                 const fRange2 = fRange * fRange;
                 for (const e of GAME_STATE.enemies) {
-                    if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                    if (!isTargetable(e)) continue;
                     const dx = e.x - this.x;
                     const dy = e.y - this.y;
                     const d2 = dx * dx + dy * dy;
@@ -4250,7 +4551,7 @@ class TurretEntity {
                         const coneHalf = this.flameConeWidth / 2;
 
                         for (const e of GAME_STATE.enemies) {
-                            if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+                            if (!isDamageable(e)) continue;
                             const dx = e.x - this.x;
                             const dy = e.y - this.y;
                             const dist2 = dx * dx + dy * dy;
@@ -4498,7 +4799,7 @@ class FireRing {
 
 // ---------------- Projectiles ----------------
 class Projectile {
-    constructor(x, y, vx, vy, damage, kind, player = null, ignoreEnemy = null) {
+    constructor(x, y, vx, vy, damage, kind, player = null, ignoreEnemy = null, sourceUnitType) {
         this.x = x; this.y = y;
         this.vx = vx; this.vy = vy;
         this.damage = damage;
@@ -4517,6 +4818,7 @@ class Projectile {
         this.dead = false;
         this.life = (kind === 'shrapnel') ? 800 : 2000;
         this.hitEnemies = new Set();
+        this.sourceUnitType = sourceUnitType;
     }
     update(dt, dtFactor = 1.0, now) {
         this.x += this.vx * dtFactor;
@@ -4527,7 +4829,7 @@ class Projectile {
         
         // Collide with enemies (shrapnel passes through unless explosive, others are single-target)
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+            if (e.burrowed || e.airborne || !isOnPlayableArea(e)) continue;
             if (e === this.ignoreEnemy) continue;
             if (this.kind === 'shrapnel' && !this.isExplosive && this.hitEnemies.has(e)) continue;
             
@@ -4539,6 +4841,9 @@ class Projectile {
                 }
                 
                 e.hp -= this.damage;
+                if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
+                    this.player.heal(PROJECTILE_HEAL*this.damage)
+                }
                 
                 if (this.kind === 'shrapnel') {
                     this.hitEnemies.add(e);
@@ -4565,11 +4870,14 @@ class Projectile {
         const radius = this.aoeRadius || (20 * (this.player ? this.player.mineAoeModifier : 1));
         
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+            if (!isDamageable(e)) continue;
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= (radius + e.r) * (radius + e.r)) {
                 e.hp -= this.damage;
+                if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
+                    this.player.heal(PROJECTILE_HEAL*this.damage)
+                }
                 if (this.player && this.player.freezeEnabled && e.type !== 'boss') {
                     let dur = (e.type === 'meteor') ? 125 : 250;
                     if (this.sourceTurret) dur *= 0.5;
@@ -4609,7 +4917,7 @@ class Projectile {
             const sy = e.y + Math.sin(a) * (e.r + 2);
             const vx = Math.cos(a) * speed;
             const vy = Math.sin(a) * speed;
-            const proj = new Projectile(sx, sy, vx, vy, dmg, 'shrapnel', this.player, e);
+            const proj = new Projectile(sx, sy, vx, vy, dmg, 'shrapnel', this.player, e, this.sourceUnitType);
             if (isExplosive) {
                 proj.isExplosive = true;
                 proj.aoeRadius = aoeRadius;
@@ -4831,7 +5139,7 @@ class PlayerFlail {
         }
         
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+            if (!isDamageable(e)) continue;
             
             // A. Check ball collision
             const edx = e.x - this.x;
@@ -5085,7 +5393,7 @@ class OrbitProjectile {
         }
 
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+            if (!isTargetable(e)) continue;
             const dx = e.x - this.x, dy = e.y - this.y;
             if (dx * dx + dy * dy < (e.r + this.r) * (e.r + this.r)) {
                 if (this.player.mineRingEnabled) {
@@ -5113,7 +5421,7 @@ class OrbitProjectile {
         this.respawnTime = now + cooldown;
 
         for (const e of GAME_STATE.enemies) {
-            if (e.airborne || e.hp <= 0 || e.x < 0 || e.x > W || e.y < 0 || e.y > H) continue;
+            if (!isDamageable(e)) continue;
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= explosionRadius * explosionRadius) {
@@ -5496,13 +5804,34 @@ function addXp(amount) {
     }
 }
 
+function isOnPlayableArea(thing){
+    return (thing.x >= 0 && thing.x <= W && thing.y >= 0 && thing.y <= H)
+}
+
+function isDamageable(thing){
+    return (!thing.airborne && thing.hp > 0 && isOnPlayableArea(thing))
+}
+function isTargetable(thing){
+    return (!thing.burrowed && !thing.airborne && thing.hp > 0 && isOnPlayableArea(thing))
+}
+
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+    const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+    if (l2 === 0) return Math.hypot(px - x1, py - y1);
+    let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    const projX = x1 + t * (x2 - x1);
+    const projY = y1 + t * (y2 - y1);
+    return Math.hypot(px - projX, py - projY);
+}
+
 // ---------------- Upgrades ----------------
 const UPGRADE_POOL = [
     { id: 'speed', name: 'Agility Boost', desc: 'Increase movement speed by 30% (Unlocks Temporal Drift)', oneShot: true, effect: (p) => p.speed *= 1.30 },
     { id: 'speed_lvl2', name: 'Temporal Drift', desc: 'Increase movement speed by another 30% and leave a thin damaging laser trail behind you (Unlocks Glacial Slide*, Laser Sniper*, Laser Flail* & Laser Fences*)', oneShot: true, effect: (p) => { p.speed *= 1.30; p.speedLvl2 = true; } },
     { id: 'damage', name: 'Heavy Impact', desc: 'Increase all weapon damage by 40% (mines by 60%). Stacks.', effect: (p) => { p.damageModifier *= 1.40; p.mineDamageModifier *= 1.60; } },
     { id: 'cooldown', name: 'Hyper-drive', desc: 'Increase attack speed by 50% (mines by 25%). Stacks 7 times.', effect: (p) => { p.cooldownModifier /= 1.50; p.mineCooldownModifier /= 1.25; p.attackSpeedCount = (p.attackSpeedCount || 0) + 1; } },
-    { id: 'accuracy', name: 'Steady Aim', desc: 'Reduce projectile spread to zero (Unlocks Sniper Shot*)', oneShot: true, effect: (p) => p.accuracyModifier = 0 },
+    { id: 'accuracy', name: 'Steady Aim', desc: 'Reduce projectile spread to zero (Unlocks Sniper Shot* and Warlock darts*)', oneShot: true, effect: (p) => p.accuracyModifier = 0 },
     { id: 'sniper_shot_upgrade', name: 'Sniper Shot', desc: 'Every 3rd Magic Missile volley fires a high-speed piercing sniper shot at the strongest enemy, dealing 3x damage to all enemies in its path (Unlocks Laser Sniper*)', oneShot: true, effect: (p) => p.sniperShotEnabled = true },
     { id: 'laser_sniper_upgrade', name: 'Laser Sniper', desc: 'Increases Sniper Shot damage to 5x Magic Missile and leaves a decaying laser trail along its path', oneShot: true, effect: (p) => p.laserSniperEnabled = true },
     { id: 'multishot', name: 'Split Shot', desc: 'Magic Missile fires at one more enemy (next closest). Stacks. (Unlocks Buckshot Volley)', effect: (p) => p.multiShot += 1 },
@@ -5540,8 +5869,9 @@ const UPGRADE_POOL = [
     { id: 'melee_reflect_upgrade', name: 'Barbed Carapace', desc: 'Deals 25% of your Max HP back as damage to any monster that damages you (turrets reflect 2.5% max HP) (Unlocks Sympathetic Shell)', oneShot: true, effect: (p) => p.reflectDamageEnabled = true },
     { id: 'melee_range_upgrade', name: 'Extended Joints', desc: 'Increase the range of all melee attacks by 40%', oneShot: true, effect: (p) => p.meleeRangeModifier = 1.40 },
     { id: 'rocket_upgrade', name: 'Seeking Rocket', desc: '10% chance when firing magic missiles to launch a homing rocket that deals AoE damage', oneShot: true, effect: (p) => p.rocketEnabled = true },
-    { id: 'buckshot_upgrade', name: 'Buckshot Volley', desc: 'Magic missiles spawn 3 smaller forward-spreading shrapnel projectiles upon hit, dealing 1/6 damage (Unlocks Cluster Shot*)', oneShot: true, effect: (p) => p.buckshotEnabled = true },
+    { id: 'buckshot_upgrade', name: 'Buckshot Volley', desc: 'Magic missiles spawn 3 smaller forward-spreading shrapnel projectiles upon hit, dealing 1/6 damage (Unlocks Cluster Shot* and Warlock darts*)', oneShot: true, effect: (p) => p.buckshotEnabled = true },
     { id: 'cluster_shot_upgrade', name: 'Cluster Shot', desc: 'Magic Missile and Buckshot shrapnel are replaced by explosive projectiles scaling with mine damage and AoE', oneShot: true, effect: (p) => p.clusterShotEnabled = true },
+    { id: 'projectile_lifedrain_upgrade', name: 'Warlock darts', desc: 'Gain health equal to 0.1% of the damage you deal with projectiles fired by you', oneShot: true, effect: (p) => p.projectileLifedrainEnabled = true },
     { id: 'campervan', name: 'Campervan Rampage', desc: 'Transform into an invulnerable campervan for 20 seconds that crushes everything in its path', oneShot: true, effect: (p) => { p.campervanUntil = gameClock + 20000; } },
     { id: 'final_blast', name: 'Martyrdom', desc: 'Explode in a nuclear blast upon death, and permanently halve your respawn time (Unlocks Martyr\'s Aura)', oneShot: true, effect: (p) => { p.finalBlastEnabled = true; p.reviveTimeModifier = 0.5; } },
     { id: 'projectile_shield', name: 'Deflector Orbiters', desc: 'Unlock an orbiting barrier of 3 shields that rotates counter-clockwise and absorbs enemy projectiles', oneShot: true, effect: (p) => p.unlockWeapon('projectile_shield') },
@@ -5550,16 +5880,16 @@ const UPGRADE_POOL = [
     { id: 'martyrs_presence_upgrade', name: "Martyr's Presence", desc: "Enlarges Martyr's Aura by 50%, knocks back surviving enemies on nuclear death, and provokes enemies within mine radius to target you (Unlocks Sacrificial Aegis*)", oneShot: true, effect: (p) => { p.martyrsPresenceEnabled = true; } },
     { id: 'sacrificial_aegis_upgrade', name: 'Sacrificial Aegis', desc: 'Reduces damage taken by nearby allies within provoke radius by 25%, while increasing your damage taken by 50%. Further reduces respawn time by 25%.', oneShot: true, effect: (p) => { p.sacrificialAegisEnabled = true; p.reviveTimeModifier *= 0.75; } },
     { id: 'carapace_healer_upgrade', name: 'Sympathetic Shell', desc: 'Increases size by 50%, and heals all players 0.25% of your Max HP when taking damage', oneShot: true, effect: (p) => { p.carapaceHealerEnabled = true; p.r *= 1.5; } },
-    { id: 'ice_trail_upgrade', name: 'Glacial Slide', desc: 'Leave an ice trail that slows enemies by 50% and improves Laser Trail. While walking on ice, players are immune to fire damage', oneShot: true, effect: (p) => p.iceTrailEnabled = true }
+    { id: 'ice_trail_upgrade', name: 'Glacial Slide', desc: 'Increase movement speed with another 20%, leave an ice trail that slows enemies by 50% and improves Laser Trail. While walking on ice, players are immune to fire damage', oneShot: true, effect: (p) => {p.speed *= 1.20; p.iceTrailEnabled = true;} }
 ];
 
 const ONE_SHOT_WEIGHT = 0.75;
 function upgradeWeight(u, player) {
     if (u.id === 'heal') {
         const hpPct = player ? (player.hp / player.hpMax) * 100 : 50;
-        const missingPctBelow50 = Math.max(0, 50 - hpPct);
+        const missingPctBelow100 = Math.max(0, 100 - hpPct);
         const takenCount = player ? (player.secondWindCount || 0) : 0;
-        return 0.75 - 0.08 * takenCount + missingPctBelow50 * 0.01;
+        return Math.max(0, 0.20 - 0.08 * takenCount + missingPctBelow100 * 0.01);
     }
     if (u.id === 'damage' || u.id === 'cooldown') {
         return 1.0;
@@ -5623,6 +5953,7 @@ function pickThreeFor(player) {
         if (u.id === 'phase_detonation_upgrade' && (!taken.has('dash_lvl2') || !hasMine)) return false;
         if (u.id === 'buckshot_upgrade' && (!hasMissile || player.multiShot === 0)) return false;
         if (u.id === 'cluster_shot_upgrade' && (!taken.has('buckshot_upgrade') || !taken.has('mine_launcher_upgrade'))) return false;
+        if (u.id === 'projectile_lifedrain_upgrade' && (!taken.has('buckshot_upgrade') || !taken.has('accuracy'))) return false;
         if (u.id === 'heal_pack_upgrade' && (GAME_STATE.elapsed < 240000 || GAME_STATE.players.some(p => p.healPackEnabled) || (GAME_STATE.siphonCellsOwner !== null && GAME_STATE.siphonCellsOwner !== player))) return false;
         if (u.id === 'martyrdom_aura_upgrade' && !taken.has('final_blast')) return false;
         if (u.id === 'martyrs_presence_upgrade' && !taken.has('martyrdom_aura_upgrade')) return false;
@@ -5630,8 +5961,8 @@ function pickThreeFor(player) {
         if (u.id === 'carapace_healer_upgrade' && !taken.has('melee_reflect_upgrade')) return false;
         if (u.id === 'ice_trail_upgrade' && (!taken.has('speed_lvl2') || !taken.has('freeze_upgrade'))) return false;
         if (u.id === 'cooldown' && player.attackSpeedCount >= 7) return false;
-        if (u.id === 'campervan' && (player.hp > player.hpMax * 0.5 || GAME_STATE.elapsed < 420000)) return false;
-        if (u.id === 'final_blast' && (!hasMine || GAME_STATE.players.length < 2)) return false;
+        if (u.id === 'campervan' && (player.hp > player.hpMax * 0.5 || GAME_STATE.enemies.length < 200)) return false;
+        if (u.id === 'final_blast' && (!hasMine || GAME_STATE.players.length < 2 || player.mineAoeCount < 1)) return false;
         if (u.id === 'projectile_shield' && GAME_STATE.elapsed < 780000) return false;
         if (u.oneShot && taken.has(u.id)) return false;
         if (u.id === 'heal' && player.hp >= player.hpMax * 0.5) return false;
@@ -5660,6 +5991,8 @@ function pickThreeFor(player) {
     return out;
 }
 
+const tip = document.getElementById('tipText');
+
 // ---------------- Starting Weapon Selection ----------------
 function startWeaponSelectFlow() {
     GAME_STATE.current = STATES.WEAPON_SELECT;
@@ -5667,6 +6000,8 @@ function startWeaponSelectFlow() {
     layer.innerHTML = '';
     const count = GAME_STATE.players.length;
     GAME_STATE.pendingPicks = count;
+    tip.textContent = 'Tip: ' + fetchTip();
+    tip.style.display = 'block';
     for (const player of GAME_STATE.players) {
         layer.appendChild(buildStartingWeaponPanel(player, count));
     }
@@ -5749,6 +6084,7 @@ function onStartingWeaponChose(panel, player) {
     
     // Everyone has chosen, transition to gameplay via countdown
     document.getElementById('levelUpLayer').classList.remove('show');
+    tip.style.display = 'none';
     startCountdown();
 }
 
@@ -5867,6 +6203,10 @@ function startCountdown() {
     GAME_STATE.countdownTimer = setTimeout(tick, 600);
 }
 
+function fetchTip(){
+    return tips[Math.floor(Math.random() * (tips.length))];
+}
+
 // ---------------- Spawning ----------------
 function aliveCentroid() {
     let sx = 0, sy = 0, n = 0;
@@ -5885,8 +6225,18 @@ function spawnEnemy(now) {
     const e = GAME_STATE.elapsed;
     if (e >= 1200000) {
         // Minute 20+: Starcraft 2 phase (no old monsters spawn)
-        if (e >= 1620000) {
-            // Minute 27+: Medivacs and Sentries are rare support spawns
+        if (e >= 1680000) {
+            // Minute 28+: Hellions join the mix
+            const r = Math.random();
+            if (r < 0.12) type = 'hellion';
+            else if (r < 0.16) type = 'medivac';
+            else if (r < 0.20) type = 'sentry';
+            else if (r < 0.30) type = 'spine_crawler';
+            else if (r < 0.48) type = 'marauder';
+            else if (r < 0.64) type = 'stalker';
+            else type = 'baneling';
+        } else if (e >= 1620000) {
+            // Minute 27–28: Medivacs and Sentries are rare support spawns
             const r = Math.random();
             if (r < 0.04) type = 'medivac';
             else if (r < 0.07) type = 'sentry';
@@ -6114,7 +6464,9 @@ function gameOver() {
     GAME_STATE.current = STATES.GAME_OVER;
     
     // Save current match result first so bestScore reflects accuracy
-    saveGameScore();
+    if (!GAME_STATE.testingMode){
+        saveGameScore();
+    }
     
     const m = document.getElementById('gameOverModal');
     const s = document.getElementById('gameOverStats');
@@ -6132,7 +6484,9 @@ function showVictory() {
         GAME_STATE.countdownTimer = null; 
     }
     
-    saveGameScore();
+    if (!GAME_STATE.testingMode){
+        saveGameScore();
+    }
     
     const m = document.getElementById('victoryModal');
     const s = document.getElementById('victoryStats');
@@ -6269,6 +6623,7 @@ const UPGRADE_DEPENDENCIES = {
     'multishot': ['unlock_missile'],
     'buckshot_upgrade': ['multishot', 'unlock_missile'],
     'cluster_shot_upgrade': ['buckshot_upgrade', 'mine_launcher_upgrade'],
+    'projectile_lifedrain_upgrade':['buckshot_upgrade','accuracy'],
     'rocket_upgrade': ['unlock_missile', 'unlock_mine'],
     'final_blast': ['unlock_mine'],
     'martyrdom_aura_upgrade': ['final_blast'],
@@ -6295,7 +6650,7 @@ let chosenTestMinute = 0;
 // Organize upgrades into tree branches
 const TREE_BRANCHES = [
     {
-        title: "Magic Missile",
+        title: "Ranged",
         nodes: [
             { id: "unlock_missile", name: "Magic Missile", desc: "Unlock magic missiles" },
             { id: "accuracy", name: "Steady Aim", desc: "Reduce projectile spread to zero" },
@@ -6304,6 +6659,7 @@ const TREE_BRANCHES = [
             { id: "multishot", name: "Split Shot", desc: "Target +1 extra enemy (stacks)" },
             { id: "buckshot_upgrade", name: "Buckshot Volley", desc: "Spawns 3 forward shrapnel on hit" },
             { id: "cluster_shot_upgrade", name: "Cluster Shot", desc: "Magic Missile and Buckshot shrapnel explode on hit" },
+            { id: "projectile_lifedrain_upgrade", name: "Warlock darts", desc: "Gain 0.1% of projectile damage" },
             { id: "rocket_upgrade", name: "Seeking Rocket", desc: "10% chance to launch homing rocket" },
             { id: "dash", name: "Phase Dash", desc: "Double tap to dash & fire missiles" },
             { id: "dash_lvl2", name: "Phase Mastery", desc: "Reduce dash CD & gain fire trail" },
@@ -6311,7 +6667,7 @@ const TREE_BRANCHES = [
         ]
     },
     {
-        title: "Proximity Mine",
+        title: "Explosives",
         nodes: [
             { id: "unlock_mine", name: "Proximity Mine", desc: "Unlock proximity mines" },
             { id: "mine_aoe_upgrade", name: "Volatile Powder", desc: "Increase mine radius (stacks, max 3)" },
@@ -6331,7 +6687,7 @@ const TREE_BRANCHES = [
         ]
     },
     {
-        title: "Melee Sweep",
+        title: "Melee",
         nodes: [
             { id: "unlock_melee", name: "Melee Sweep", desc: "Unlock close-range sweep" },
             { id: "melee_sledge_upgrade", name: "Sledge Hammer", desc: "Heavy hammer slam in movement direction" },
@@ -6344,7 +6700,7 @@ const TREE_BRANCHES = [
         ]
     },
     {
-        title: "Auto-Turret",
+        title: "Turrets",
         nodes: [
             { id: "unlock_turret", name: "Auto-Turret", desc: "Unlock deployable turrets" },
             { id: "slow_walls_upgrade", name: "Slow Walls", desc: "Turrets form laser fences between them that slow monsters by 30%" },
@@ -6364,7 +6720,7 @@ const TREE_BRANCHES = [
         nodes: [
             { id: "speed", name: "Agility Boost", desc: "Increase movement speed by 30%" },
             { id: "speed_lvl2", name: "Temporal Drift", desc: "Leave damaging speed laser trail" },
-            { id: "ice_trail_upgrade", name: "Glacial Slide", desc: "Ice trail slows enemies, grants player fire immunity" },
+            { id: "ice_trail_upgrade", name: "Glacial Slide", desc: "Ice trail slows enemies, increases movement, grants player fire immunity" },
             { id: "unlock_ring", name: "Fire Ring", desc: "Orbiting fireballs barrier" },
             { id: "projectile_shield", name: "Deflector Orbiters", desc: "Orbiting shields absorb projectiles" },
             { id: "freeze_upgrade", name: "Cryo Freeze", desc: "Freeze enemies on hit" },
