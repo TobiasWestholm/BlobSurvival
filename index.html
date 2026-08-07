@@ -4,36 +4,340 @@
 <meta charset="UTF-8">
 <title>Blob Survival</title>
 <style>
-    body { margin: 0; background: #111; overflow: hidden; font-family: sans-serif; color: white; }
+    body { margin: 0; background: #111; overflow: hidden; font-family: sans-serif; color: white; -webkit-tap-highlight-color: transparent; }
     canvas { display: block; background: #1a1a1a; width: 100vw; height: 100vh; }
     .ui-layer { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 90%; pointer-events: none; }
     .xp-bar-container { width: 100%; height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
     .xp-bar { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s ease; }
     #stats { margin-top: 5px; text-shadow: 1px 1px 2px #000; }
     #timer { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); font-size: 24px; text-shadow: 1px 1px 3px #000; pointer-events: none; }
-    #tipText { display: none; position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%); font-size: 24px; text-align: center; color: #cfcfcf; text-shadow: 0 0 25px #000; pointer-events: none; }
-    .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.92); padding: 30px; border: 2px solid #00ffcc; border-radius: 10px; pointer-events: auto; text-align: center; min-width: 400px; z-index: 100; }
+    
+    /* Desktop / Relative Fluid Interaction Boxes */
+    .modal {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.92);
+        padding: clamp(20px, 2vw, 40px);
+        border: 2px solid #00ffcc;
+        border-radius: clamp(8px, 0.7vw, 14px);
+        pointer-events: auto;
+        text-align: center;
+        width: clamp(340px, 28vw, 640px);
+        min-width: 0;
+        box-sizing: border-box;
+        z-index: 100;
+    }
     .modal.show { display: block; }
-    .upgrade-btn { display: block; background: #222; color: #fff; border: 1px solid #555; padding: 12px 24px; margin: 10px auto; cursor: pointer; border-radius: 4px; width: 80%; font-size: 14px; }
+    .upgrade-btn {
+        display: block;
+        background: #222;
+        color: #fff;
+        border: 1px solid #555;
+        padding: clamp(8px, 0.8vw, 16px) clamp(14px, 1.6vw, 28px);
+        margin: clamp(8px, 0.7vw, 14px) auto;
+        cursor: pointer;
+        border-radius: clamp(4px, 0.3vw, 8px);
+        width: 84%;
+        font-size: clamp(12px, 0.93vw, 19px);
+        line-height: 1.4;
+        box-sizing: border-box;
+    }
     .upgrade-btn:hover { background: #00ffcc; color: #000; }
-    .upgrade-btn .name { font-weight: bold; font-size: 16px; display: block; margin-bottom: 4px; }
+    .upgrade-btn .name {
+        font-weight: bold;
+        font-size: clamp(14px, 1.06vw, 22px);
+        display: block;
+        margin-bottom: 4px;
+    }
     h2 { color: #00ffcc; margin-top: 0; }
-    #startMenu h1 { font-size: 48px; color: #00ffcc; margin: 0 0 20px; }
+    #startMenu {
+        width: clamp(440px, 34vw, 620px);
+        padding: clamp(24px, 2.2vw, 42px);
+        border-radius: 12px;
+        background: rgba(12, 12, 18, 0.95);
+        border: 2px solid #00ffcc;
+        box-shadow: 0 0 35px rgba(0, 255, 204, 0.2);
+    }
+    #startMenu h1 {
+        font-size: clamp(34px, 3.17vw, 64px);
+        color: #00ffcc;
+        text-shadow: 0 0 15px rgba(0, 255, 204, 0.5);
+        margin: 0 0 clamp(12px, 1vw, 20px);
+        letter-spacing: 2px;
+    }
+    .player-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin: 16px 0;
+    }
+    .player-grid .upgrade-btn {
+        width: 100%;
+        margin: 0;
+        padding: 14px 10px;
+        text-align: center;
+        border-radius: 8px;
+        background: #1e1e24;
+        border: 1px solid #444;
+        transition: all 0.15s ease;
+    }
+    .player-grid .upgrade-btn:hover {
+        background: rgba(0, 255, 204, 0.15);
+        border-color: #00ffcc;
+        color: #00ffcc;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 255, 204, 0.25);
+    }
+    .difficulty-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 16px 0;
+    }
+    .difficulty-card {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 12px 18px !important;
+        text-align: left !important;
+        background: #1e1e24 !important;
+        border: 1px solid #444 !important;
+        border-radius: 8px !important;
+        transition: all 0.15s ease !important;
+    }
+    .difficulty-card:hover {
+        background: rgba(0, 255, 204, 0.12) !important;
+        border-color: #00ffcc !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 15px rgba(0, 255, 204, 0.2) !important;
+    }
+    .difficulty-card .name {
+        font-size: 16px !important;
+        color: #00ffcc !important;
+        margin-bottom: 2px !important;
+    }
+    .difficulty-card .desc {
+        font-size: 12px !important;
+        color: #bbb !important;
+        display: block;
+    }
+    .back-btn {
+        width: auto !important;
+        margin: 14px auto 0 !important;
+        padding: 8px 24px !important;
+        background: transparent !important;
+        border: 1px solid #666 !important;
+        color: #aaa !important;
+    }
+    .back-btn:hover {
+        background: #333 !important;
+        color: #fff !important;
+        border-color: #aaa !important;
+    }
     #gameOverModal h2 { color: #ff4444; }
-    #countdown { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 120px; font-weight: bold; color: #00ffcc; text-shadow: 0 0 25px #000, 0 0 12px #00ffcc; pointer-events: none; }
+    #countdown { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: clamp(80px, 7.9vw, 160px); font-weight: bold; color: #00ffcc; text-shadow: 0 0 25px #000, 0 0 12px #00ffcc; pointer-events: none; }
     #levelUpLayer { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; }
     #levelUpLayer.show { display: block; }
-    .player-panel { position: absolute; pointer-events: auto; background: rgba(0,0,0,0.92); border: 2px solid #00ffcc; border-radius: 10px; padding: 12px 14px; width: 300px; box-sizing: border-box; text-align: center; box-shadow: 0 0 16px rgba(0,0,0,0.7); }
+    .player-panel {
+        position: absolute;
+        pointer-events: auto;
+        background: rgba(12, 12, 18, 0.95);
+        border: 2px solid #00ffcc;
+        border-radius: clamp(8px, 0.7vw, 14px);
+        padding: clamp(8px, 0.8vw, 18px);
+        width: clamp(280px, 24.5vw, 540px);
+        box-sizing: border-box;
+        text-align: center;
+        box-shadow: 0 0 25px rgba(0, 255, 204, 0.18);
+    }
     .player-panel.chosen { opacity: 0.55; }
-    .panel-title { margin: 0 0 2px; font-size: 19px; }
-    .panel-sub { font-size: 11px; color: #aaa; margin-bottom: 6px; }
-    .panel-done { margin-top: 4px; font-weight: bold; font-size: 13px; }
-    .player-panel .upgrade-btn { margin: 7px auto; padding: 8px 12px; font-size: 12px; width: 92%; }
-    .player-panel .upgrade-btn .name { font-size: 14px; margin-bottom: 2px; }
+    .panel-title { margin: 0 0 2px; font-size: clamp(15px, 1.25vw, 26px); }
+    .panel-sub { font-size: clamp(10px, 0.73vw, 16px); color: #bbb; margin-bottom: 6px; }
+    .panel-done { margin-top: 4px; font-weight: bold; font-size: clamp(11px, 0.86vw, 18px); }
+    .player-panel .upgrade-btn {
+        margin: clamp(4px, 0.35vw, 8px) auto;
+        padding: clamp(6px, 0.5vw, 12px) clamp(10px, 0.8vw, 16px);
+        font-size: clamp(10px, 0.8vw, 16px);
+        width: 94%;
+        line-height: 1.35;
+        background: #1e1e24;
+        border: 1px solid #444;
+        border-radius: 8px;
+        color: #bbb;
+        transition: all 0.15s ease;
+    }
+    .player-panel .upgrade-btn:hover {
+        background: rgba(0, 255, 204, 0.15);
+        border-color: #00ffcc;
+        color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 255, 204, 0.2);
+    }
+    .player-panel .upgrade-btn .name {
+        font-size: clamp(12px, 0.93vw, 19px);
+        color: #00ffcc;
+        font-weight: bold;
+        margin-bottom: 2px;
+        display: block;
+    }
+    
     .upgrade-btn:disabled { cursor: default; opacity: 0.5; }
-    .upgrade-btn:disabled:hover { background: #222; color: #fff; }
-    .controls-help { font-size: 12px; color: #aaa; line-height: 1.6; margin: 16px 0 4px; }
-    .controls-help b { color: #ddd; }
+    .upgrade-btn:disabled:hover { background: #1e1e24; border-color: #444; color: #bbb; transform: none; box-shadow: none; }
+    
+    .controls-help {
+        font-size: clamp(10px, 0.78vw, 15px);
+        color: #ccc;
+        line-height: 1.6;
+        margin-top: clamp(12px, 1.1vw, 22px);
+        padding: clamp(10px, 0.8vw, 16px);
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        text-align: left;
+    }
+    .controls-title {
+        font-weight: bold;
+        color: #00ffcc;
+        font-size: clamp(11px, 0.82vw, 16px);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .controls-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px 12px;
+    }
+    .controls-grid b { color: #fff; }
+    
+    /* Tip Banner (Visible during weapon selection) */
+    #tipText {
+        display: none;
+        position: fixed;
+        top: 12%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: clamp(16px, 1.32vw, 28px);
+        font-weight: 500;
+        text-align: center;
+        color: #e6e6e6;
+        text-shadow: 0 0 25px #000, 0 0 8px #00ffcc;
+        pointer-events: none;
+        z-index: 150;
+        width: 70%;
+        max-width: clamp(340px, 31.7vw, 650px);
+        line-height: 1.35;
+    }
+    
+    /* Phone / Mobile device styling: dynamic fluid interaction boxes with clamp() scaling */
+    body.mobile-device .modal {
+        width: 92vw !important;
+        max-width: 900px !important;
+        min-width: 0 !important;
+        padding: clamp(24px, 4vw, 42px) clamp(20px, 3.5vw, 36px) !important;
+        border-radius: clamp(12px, 2vw, 20px) !important;
+        border-width: clamp(2px, 0.4vw, 4px) !important;
+        max-height: 92vh !important;
+        overflow-y: auto !important;
+        box-sizing: border-box !important;
+    }
+    body.mobile-device #startMenu h1 {
+        font-size: clamp(40px, 7.5vw, 76px) !important;
+        margin-bottom: clamp(16px, 2.5vw, 28px) !important;
+    }
+    body.mobile-device #startMenu p,
+    body.mobile-device #difficultyPrompt {
+        font-size: clamp(20px, 3.8vw, 34px) !important;
+        line-height: 1.5 !important;
+    }
+    body.mobile-device .upgrade-btn {
+        width: 96% !important;
+        max-width: 100% !important;
+        padding: clamp(18px, 3vw, 28px) clamp(20px, 3.5vw, 32px) !important;
+        margin: clamp(10px, 2vw, 18px) auto !important;
+        font-size: clamp(21px, 3.8vw, 32px) !important;
+        line-height: 1.45 !important;
+        border-radius: clamp(8px, 1.5vw, 14px) !important;
+        border-width: 2px !important;
+        box-sizing: border-box !important;
+    }
+    body.mobile-device .upgrade-btn .name {
+        font-size: clamp(26px, 4.8vw, 40px) !important;
+        margin-bottom: clamp(4px, 1vw, 8px) !important;
+        font-weight: bold !important;
+    }
+    body.mobile-device .player-panel {
+        width: 92vw !important;
+        max-width: 880px !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        padding: clamp(24px, 4vw, 38px) clamp(20px, 3.5vw, 32px) !important;
+        border-radius: clamp(12px, 2vw, 20px) !important;
+        border-width: clamp(2px, 0.4vw, 4px) !important;
+        box-sizing: border-box !important;
+    }
+    body.mobile-device .panel-title {
+        font-size: clamp(28px, 5.2vw, 48px) !important;
+        margin-bottom: clamp(4px, 1vw, 8px) !important;
+    }
+    body.mobile-device .panel-sub {
+        font-size: clamp(18px, 3.4vw, 28px) !important;
+        color: #ccc !important;
+        margin-bottom: clamp(12px, 2vw, 20px) !important;
+    }
+    body.mobile-device .player-panel .upgrade-btn {
+        width: 98% !important;
+        padding: clamp(16px, 2.8vw, 26px) clamp(18px, 3.2vw, 30px) !important;
+        font-size: clamp(21px, 3.8vw, 32px) !important;
+        line-height: 1.45 !important;
+        margin: clamp(10px, 1.8vw, 16px) auto !important;
+    }
+    body.mobile-device .player-panel .upgrade-btn .name {
+        font-size: clamp(26px, 4.6vw, 38px) !important;
+        margin-bottom: clamp(4px, 0.8vw, 8px) !important;
+    }
+    body.mobile-device #gameOverModal h2,
+    body.mobile-device #victoryModal h2 {
+        font-size: clamp(38px, 7vw, 68px) !important;
+    }
+    body.mobile-device #gameOverStats,
+    body.mobile-device #victoryStats {
+        font-size: clamp(20px, 3.6vw, 32px) !important;
+        line-height: 1.6 !important;
+    }
+    body.mobile-device #stats {
+        font-size: clamp(18px, 3.2vw, 28px) !important;
+    }
+    body.mobile-device #timer {
+        font-size: clamp(26px, 4.8vw, 42px) !important;
+        top: 25px !important;
+    }
+    body.mobile-device #tipText {
+        font-size: clamp(24px, 4.5vw, 36px) !important;
+        width: 88vw !important;
+        max-width: 650px !important;
+        top: 12% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        line-height: 1.4 !important;
+    }
+    body.mobile-device .difficulty-card .name {
+        font-size: clamp(26px, 4.8vw, 40px) !important;
+        margin-bottom: clamp(4px, 1vw, 8px) !important;
+    }
+    body.mobile-device .difficulty-card .desc {
+        font-size: clamp(21px, 3.8vw, 32px) !important;
+        line-height: 1.45 !important;
+        color: #ccc !important;
+    }
+    body.mobile-device #countdown {
+        font-size: clamp(140px, 28vw, 240px) !important;
+        text-shadow: 0 0 40px #000, 0 0 20px #00ffcc, 0 0 40px #00ffcc !important;
+        z-index: 200 !important;
+    }
     
     /* Testing Lab Styles */
     .tree-branch { background: rgba(255,255,255,0.03); border: 1px solid #333; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
@@ -51,9 +355,108 @@
     .time-preset-btn { background: #222; color: #fff; border: 1px solid #555; padding: 8px; cursor: pointer; font-size: 12px; border-radius: 4px; text-align: center; transition: all 0.1s ease; }
     .time-preset-btn:hover, .time-preset-btn.active { background: #00ffcc; color: #000; border-color: #00ffcc; font-weight: bold; }
     #fpsCounter { position: fixed; top: 15px; right: 20px; z-index: 50; font-family: monospace, sans-serif; font-size: 15px; font-weight: bold; color: #00ffcc; text-shadow: 0 0 8px rgba(0, 255, 204, 0.7); pointer-events: none; display: none; text-align: right; line-height: 1.3; }
+    
+    /* Phone screen: dynamic interaction boxes with double max width & large, legible text */
+    @media (max-width: 768px) {
+        .modal {
+            width: 95vw !important;
+            max-width: 720px !important;
+            min-width: 0 !important;
+            padding: 24px 18px !important;
+            border-radius: 12px !important;
+            max-height: 90vh !important;
+            overflow-y: auto !important;
+            box-sizing: border-box !important;
+        }
+        #startMenu h1 {
+            font-size: clamp(30px, 8.5vw, 44px) !important;
+            margin-bottom: 16px !important;
+        }
+        #startMenu p, #difficultyPrompt {
+            font-size: 18px !important;
+            line-height: 1.5 !important;
+        }
+        .upgrade-btn {
+            width: 96% !important;
+            max-width: 100% !important;
+            padding: 16px 20px !important;
+            margin: 12px auto !important;
+            font-size: 16px !important;
+            line-height: 1.45 !important;
+            border-radius: 8px !important;
+            box-sizing: border-box !important;
+        }
+        .upgrade-btn .name {
+            font-size: 20px !important;
+            margin-bottom: 5px !important;
+        }
+        .player-panel {
+            width: 95vw !important;
+            max-width: 680px !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            padding: 22px 18px !important;
+            border-radius: 12px !important;
+            box-sizing: border-box !important;
+        }
+        .panel-title {
+            font-size: 26px !important;
+            margin-bottom: 4px !important;
+        }
+        .panel-sub {
+            font-size: 16px !important;
+            color: #ccc !important;
+            margin-bottom: 14px !important;
+        }
+        .player-panel .upgrade-btn {
+            width: 98% !important;
+            padding: 15px 18px !important;
+            font-size: 16px !important;
+            line-height: 1.45 !important;
+            margin: 10px auto !important;
+        }
+        .player-panel .upgrade-btn .name {
+            font-size: 19px !important;
+            margin-bottom: 5px !important;
+        }
+        #gameOverModal h2, #victoryModal h2 {
+            font-size: 36px !important;
+        }
+        #gameOverStats, #victoryStats {
+            font-size: 18px !important;
+            line-height: 1.6 !important;
+        }
+        #stats {
+            font-size: 15px !important;
+        }
+        #timer {
+            font-size: 22px !important;
+            top: 25px !important;
+        }
+        #tipText {
+            font-size: 18px !important;
+            width: 92vw !important;
+            max-width: 95vw !important;
+            top: 12px !important;
+        }
+        #testingTreeGrid {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+    }
+    
+    /* Virtual Joystick Styles */
+    #joystickZone { display: none; position: fixed; bottom: 35px; left: 50%; transform: translateX(-50%); width: 140px; height: 140px; z-index: 50; touch-action: none; user-select: none; -webkit-user-select: none; }
+    #joystickBase { position: absolute; top: 0; left: 0; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle, rgba(0,255,204,0.08) 0%, rgba(0,0,0,0.5) 70%); border: 2px solid rgba(0,255,204,0.4); box-shadow: 0 0 15px rgba(0,255,204,0.15); box-sizing: border-box; }
+    #joystickThumb { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; margin-top: -25px; margin-left: -25px; border-radius: 50%; background: radial-gradient(circle, #00ffcc 20%, #009977 100%); border: 2px solid #ffffff; box-shadow: 0 0 12px rgba(0,255,204,0.7); pointer-events: none; transform: translate(0px, 0px); }
 </style>
 </head>
 <body>
+
+<div id="joystickZone">
+    <div id="joystickBase"></div>
+    <div id="joystickThumb"></div>
+</div>
 
 <div class="ui-layer">
     <div class="xp-bar-container"><div id="xpBar" class="xp-bar"></div></div>
@@ -66,21 +469,39 @@
     <h1>BLOB SURVIVAL</h1>
     <div id="playerStep">
         <p>Pick how many players will survive together.<br>Weapons fire automatically. Survive!</p>
-        <button class="upgrade-btn" data-players="1"><span class="name">1 PLAYER</span></button>
-        <button class="upgrade-btn" data-players="2"><span class="name">2 PLAYERS</span></button>
-        <button class="upgrade-btn" data-players="3"><span class="name">3 PLAYERS</span></button>
-        <button class="upgrade-btn" data-players="4"><span class="name">4 PLAYERS</span></button>
+        <div class="player-grid">
+            <button class="upgrade-btn" data-players="1"><span class="name">1 PLAYER</span></button>
+            <button class="upgrade-btn" data-players="2"><span class="name">2 PLAYERS</span></button>
+            <button class="upgrade-btn" data-players="3"><span class="name">3 PLAYERS</span></button>
+            <button class="upgrade-btn" data-players="4"><span class="name">4 PLAYERS</span></button>
+        </div>
         <div class="controls-help">
-            <b>P1</b> WASD &nbsp;·&nbsp; <b>P2</b> Arrow keys<br>
-            <b>P3</b> G C V B (up/left/down/right) &nbsp;·&nbsp; <b>P4</b> U H J K (up/left/down/right)
+            <div class="controls-title">MOVEMENT CONTROLS</div>
+            <div class="controls-grid">
+                <div><b>Player 1:</b> WASD</div>
+                <div><b>Player 2:</b> Arrow Keys (↑ ← ↓ →)</div>
+                <div><b>Player 3:</b> G C V B (up/left/down/right)</div>
+                <div><b>Player 4:</b> U H J K (up/left/down/right)</div>
+            </div>
         </div>
     </div>
     <div id="difficultyStep" style="display:none">
         <p id="difficultyPrompt">Select difficulty</p>
-        <button class="upgrade-btn" data-difficulty="easy"><span class="name">EASY</span>Deal 200% · take 50% · much sharper aim · 130% speed</button>
-        <button class="upgrade-btn" data-difficulty="normal"><span class="name">NORMAL</span>Deal 150% · take 75% · sharper aim · 115% speed</button>
-        <button class="upgrade-btn" data-difficulty="hard"><span class="name">BRUTALLY HARD</span>Deal 100% · take 100% · standard aim · 100% speed</button>
-        <button class="upgrade-btn" id="backToPlayers"><span class="name">← Back</span></button>
+        <div class="difficulty-list">
+            <button class="upgrade-btn difficulty-card" data-difficulty="easy">
+                <span class="name">EASY</span>
+                <span class="desc">Deal 200% · take 50% · much sharper aim · 130% speed</span>
+            </button>
+            <button class="upgrade-btn difficulty-card" data-difficulty="normal">
+                <span class="name">NORMAL</span>
+                <span class="desc">Deal 150% · take 75% · sharper aim · 115% speed</span>
+            </button>
+            <button class="upgrade-btn difficulty-card" data-difficulty="hard">
+                <span class="name">BRUTALLY HARD</span>
+                <span class="desc">Deal 100% · take 100% · standard aim · 100% speed</span>
+            </button>
+        </div>
+        <button class="upgrade-btn back-btn" id="backToPlayers"><span class="name">← Back</span></button>
     </div>
 </div>
 <button id="testingBtn" style="position: fixed; bottom: 20px; left: 20px; z-index: 10; background: #222; color: #00ffcc; border: 1px solid #00ffcc; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 0 10px rgba(0,255,200,0.3); pointer-events: auto;">TESTING</button>
@@ -157,19 +578,36 @@
 <script>
 'use strict';
 
+const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent);
+if (isMobile) {
+    document.body.classList.add('mobile-device');
+}
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 let W = window.innerWidth;
 let H = window.innerHeight;
-canvas.width = W;
-canvas.height = H;
 
 function resizeCanvas() {
-    W = window.innerWidth;
-    H = window.innerHeight;
+    const rawW = window.innerWidth;
+    const rawH = window.innerHeight;
+
+    if (isMobile) {
+        const screenSpan = Math.min(rawW, rawH);
+        const targetArenaWidth = 600;
+        const scale = Math.min(1.0, targetArenaWidth / screenSpan);
+        W = Math.round(rawW * scale);
+        H = Math.round(rawH * scale);
+    } else {
+        const targetArenaWidth = 1512;
+        const scale = targetArenaWidth / Math.max(rawW, rawH);
+        W = Math.round(rawW * scale);
+        H = Math.round(rawH * scale);
+    }
     canvas.width = W;
     canvas.height = H;
 }
+resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
 const STATES = { START_MENU: 'START_MENU', GAMEPLAY: 'GAMEPLAY', LEVEL_UP: 'LEVEL_UP', COUNTDOWN: 'COUNTDOWN', GAME_OVER: 'GAME_OVER', WEAPON_SELECT: 'WEAPON_SELECT' };
@@ -375,35 +813,132 @@ function handleDoubleTap(k) {
 
 function tryStartDash(p) {
     if (p.dashing || gameClock < p.dashCooldownUntil) return;
-    // Direction = whatever the player is currently holding (the tapped key is held now too),
-    // so holding a perpendicular key during the double-tap dashes diagonally.
     let dx = 0, dy = 0;
-    if (anyKey(p.keymap.up)) dy -= 1;
-    if (anyKey(p.keymap.down)) dy += 1;
-    if (anyKey(p.keymap.left)) dx -= 1;
-    if (anyKey(p.keymap.right)) dx += 1;
+    if (p.index === 0 && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector.active) {
+        dx = joystickInstance.vector.x;
+        dy = joystickInstance.vector.y;
+    } else {
+        if (anyKey(p.keymap.up)) dy -= 1;
+        if (anyKey(p.keymap.down)) dy += 1;
+        if (anyKey(p.keymap.left)) dx -= 1;
+        if (anyKey(p.keymap.right)) dx += 1;
+    }
     const d = Math.hypot(dx, dy);
-    if (d < 0.001) return;
+    if (d < 0.001) {
+        dx = Math.cos(p.facingAngle);
+        dy = Math.sin(p.facingAngle);
+    }
+    const len = Math.hypot(dx, dy);
+    if (len < 0.001) return;
     p.dashing = true;
     p.dashBurstFired = false;
     p.dashUntil = gameClock + PLAYER_DASH_MS;
-    p.dashVx = (dx / d) * PLAYER_DASH_SPEED;
-    p.dashVy = (dy / d) * PLAYER_DASH_SPEED;
+    p.dashVx = (dx / len) * PLAYER_DASH_SPEED;
+    p.dashVy = (dy / len) * PLAYER_DASH_SPEED;
 }
 
+class Unit {
+    constructor(x = 0, y = 0, r = 15, hp = 100, unitType = 'unit') {
+        this.x = x;
+        this.y = y;
+        this.r = r;
+        this.maxHp = hp;
+        this.hp = hp;
+        this.speed = 1.0;
+        this.unitType = unitType;
+        this.alive = true;
+        this.frozenUntil = 0;
+        this.frozenStart = 0;
+    }
+
+    isAlive() {
+        return this.alive && this.hp > 0;
+    }
+
+    distanceToSq(other) {
+        if (!other) return Infinity;
+        const dx = this.x - (other.x || 0);
+        const dy = this.y - (other.y || 0);
+        return dx * dx + dy * dy;
+    }
+
+    collidesWith(other, extraPadding = 0) {
+        if (!other) return false;
+        const isAlive = typeof other.isAlive === 'function' ? other.isAlive() : other.alive;
+        if (isAlive === false) return false;
+        const maxDist = this.r + (other.r || 0) + extraPadding;
+        return this.distanceToSq(other) <= maxDist * maxDist;
+    }
+
+    static findClosest(source, units, maxRange = Infinity, filterFn = null) {
+        if (!source || !units || units.length === 0) return null;
+        let closest = null;
+        let minD2 = maxRange * maxRange;
+        for (const u of units) {
+            if (!u) continue;
+            if (typeof u.isAlive === 'function' && !u.isAlive()) continue;
+            if (filterFn && !filterFn(u)) continue;
+            const d2 = source.distanceToSq(u);
+            if (d2 < minD2) {
+                minD2 = d2;
+                closest = u;
+            }
+        }
+        return closest;
+    }
+
+    heal(amount) {
+        if (!this.isAlive()) return;
+        this.hp = Math.min(this.maxHp, this.hp + amount);
+    }
+
+    isOnIce() {
+        for (const hz of GAME_STATE.hazards) {
+            if (hz instanceof IceTrailSegment) {
+                const dx = hz.x2 - hz.x1;
+                const dy = hz.y2 - hz.y1;
+                const len2 = dx * dx + dy * dy;
+                let t = 0;
+                if (len2 > 0) {
+                    t = ((this.x - hz.x1) * dx + (this.y - hz.y1) * dy) / len2;
+                    t = Math.max(0, Math.min(1, t));
+                }
+                const closestX = hz.x1 + t * dx;
+                const closestY = hz.y1 + t * dy;
+                const edx = this.x - closestX;
+                const edy = this.y - closestY;
+                if (edx * edx + edy * edy < (this.r + 22) * (this.r + 22)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    takeDamage(amount, source) {
+        if (!this.isAlive()) return false;
+        this.hp = Math.max(0, this.hp - amount);
+        this.onTakeDamage(amount, source);
+        if (this.hp <= 0) {
+            this.alive = false;
+            this.onDeath(source);
+        }
+        return true;
+    }
+
+    onTakeDamage(amount, source) {}
+    onDeath(source) {}
+}
 // ---------------- Player ----------------
-class Player {
+class Player extends Unit {
     constructor(index, def) {
+        const startX = W / 2 + (index - 0.5) * 60;
+        const startY = H / 2 + (index % 2 === 0 ? -40 : 40);
+        super(startX, startY, 15, 100, 'player');
         this.index = index;
         this.color = def.color;
         this.ring = def.ring;
         this.keymap = def.keys;
-        this.x = W / 2 + (index - 0.5) * 60;
-        this.y = H / 2 + (index % 2 === 0 ? -40 : 40);
-        this.speed = 1.0;
-        this.hpMax = 100;
-        this.hp = 100;
-        this.r = 15;
         this.damageModifier = 1.0;
         this.mineDamageModifier = 1.0;
         this.cooldownModifier = 1.0;
@@ -417,7 +952,6 @@ class Player {
         this.attackSpeedCount = 0;
         this.invuln = 0;
         this.spawnInvuln = 0; // separate from hit-invuln; while >0 enemies ignore this player
-        this.alive = true;
         this.deadAt = 0;
         this.reviveTimeModifier = 1.0;
         this.takenOneShots = new Set(); // one-time upgrades this player has claimed
@@ -479,9 +1013,7 @@ class Player {
         this.turretDispenserEnabled = false;
         this.unitType = 'player';
     }
-    heal(amount) {
-        this.hp = Math.min(this.hpMax, this.hp + amount);
-    }
+
     unlockWeapon(id) {
         if (id === 'fire_ring' && !this.weapons.some(w => w.id === 'fire_ring')) {
             this.weapons.push(new FireRing(this));
@@ -565,33 +1097,46 @@ class Player {
             return;
         }
 
-        let dx = 0, dy = 0;
-        if (anyKey(this.keymap.up)) dy -= 1;
-        if (anyKey(this.keymap.down)) dy += 1;
-        if (anyKey(this.keymap.left)) dx -= 1;
-        if (anyKey(this.keymap.right)) dx += 1;
+        let moveX = 0, moveY = 0;
+        let hasJoystick = false;
 
-        this.inputHistory.push({ dx, dy, time: now });
-        if (this.inputHistory.length > 10) this.inputHistory.shift();
+        // Player 1 can use virtual joystick if active
+        if (this.index === 0 && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector.active) {
+            moveX = joystickInstance.vector.x; // Unit vector Math.cos(angle) -> continuous 360-degree max speed
+            moveY = joystickInstance.vector.y; // Unit vector Math.sin(angle)
+            this.facingAngle = joystickInstance.vector.angle;
+            hasJoystick = true;
+        }
 
-        if (dx !== 0 || dy !== 0) {
-            let ndx = dx, ndy = dy;
-            if (ndx !== 0 && ndy !== 0) { ndx *= 0.7071; ndy *= 0.7071; }
-            this.facingAngle = Math.atan2(ndy, ndx);
-        } else {
-            // Restore diagonal direction if we stopped very recently
-            for (let i = this.inputHistory.length - 1; i >= 0; i--) {
-                const hist = this.inputHistory[i];
-                if (now - hist.time > 150) break;
-                if (hist.dx !== 0 && hist.dy !== 0) {
-                    this.facingAngle = Math.atan2(hist.dy, hist.dx);
-                    break;
+        if (!hasJoystick) {
+            let dx = 0, dy = 0;
+            if (anyKey(this.keymap.up)) dy -= 1;
+            if (anyKey(this.keymap.down)) dy += 1;
+            if (anyKey(this.keymap.left)) dx -= 1;
+            if (anyKey(this.keymap.right)) dx += 1;
+
+            this.inputHistory.push({ dx, dy, time: now });
+            if (this.inputHistory.length > 10) this.inputHistory.shift();
+
+            if (dx !== 0 || dy !== 0) {
+                let ndx = dx, ndy = dy;
+                if (ndx !== 0 && ndy !== 0) { ndx *= 0.7071; ndy *= 0.7071; }
+                this.facingAngle = Math.atan2(ndy, ndx);
+                moveX = ndx;
+                moveY = ndy;
+            } else {
+                // Restore diagonal direction if we stopped very recently
+                for (let i = this.inputHistory.length - 1; i >= 0; i--) {
+                    const hist = this.inputHistory[i];
+                    if (now - hist.time > 150) break;
+                    if (hist.dx !== 0 && hist.dy !== 0) {
+                        this.facingAngle = Math.atan2(hist.dy, hist.dx);
+                        break;
+                    }
                 }
             }
         }
         
-        let moveX = dx, moveY = dy;
-        if (moveX !== 0 && moveY !== 0) { moveX *= 0.7071; moveY *= 0.7071; }
         const hasMelee = this.weapons.some(w => w.id === 'melee_sweep');
         const activeNitro = (this.nitroUntil && now < this.nitroUntil) ? 1.50 : 1.0;
         const activeSlow = (this.slowUntil && now < this.slowUntil) ? 0.60 : 1.0;
@@ -628,7 +1173,7 @@ class Player {
             this.lastNetworkExpansion = now;
 
             const eligibleTurrets = GAME_STATE.turrets.filter(tur =>
-                !tur.dead &&
+                tur.alive &&
                 tur.player === this &&
                 (now - tur.spawnTime) > 200 &&
                 tur.connections &&
@@ -636,7 +1181,7 @@ class Player {
             );
 
             for (const orig of eligibleTurrets) {
-                if (orig.dead || orig.connections.length >= 2) continue;
+                if (!orig.alive || orig.connections.length >= 2) continue;
 
                 const dist = 50 + Math.random() * 250; // 50 to 300px
                 let angle = 0;
@@ -767,7 +1312,7 @@ class Player {
         this.hp -= amount * GAME_STATE.difficulty.takenMult * this.damageReduction * martyrDamageMult; // difficulty and upgrade scale incoming damage
         this.hitFlashUntil = now + 150;
         if (this.carapaceHealerEnabled) {
-            const healAmt = this.hpMax * 0.0025;
+            const healAmt = this.maxHp * 0.0025;
             for (const p of GAME_STATE.players) {
                 if (p.alive) p.heal(healAmt);
             }
@@ -779,7 +1324,7 @@ class Player {
             reflectTarget = source.sourceEnemy;
         }
         if (this.reflectDamageEnabled && reflectTarget && typeof reflectTarget.hp === 'number' && reflectTarget.hp > 0) {
-            const reflectDmg = this.hpMax * 0.25;
+            const reflectDmg = this.maxHp * 0.25;
             reflectTarget.hp -= reflectDmg;
             spawnHitParticles(reflectTarget.x, reflectTarget.y, '#ff3333');
         }
@@ -824,7 +1369,7 @@ class Player {
         }
     }
     triggerFinalBlast(now) {
-        const dmg = this.hpMax * this.damageModifier * GAME_STATE.dmgFactor;
+        const dmg = this.maxHp * this.damageModifier * GAME_STATE.dmgFactor;
         let radius = 250;
         if (this.mineAoeCount > 0) radius *= Math.pow(1.10, this.mineAoeCount);
         for (const e of GAME_STATE.enemies) {
@@ -872,7 +1417,7 @@ class Player {
     }
     revive() {
         this.alive = true;
-        this.hp = this.hpMax / 2;
+        this.hp = this.maxHp / 2;
         this.invuln = REVIVE_INVULN;
         this.spawnInvuln = REVIVE_INVULN;
         // reappears exactly where it fell
@@ -1032,7 +1577,7 @@ class Player {
         ctx.fillStyle = '#444';
         ctx.fillRect(bx, by, bw, bh);
         ctx.fillStyle = this.color;
-        ctx.fillRect(bx, by, bw * Math.max(0, this.hp / this.hpMax), bh);
+        ctx.fillRect(bx, by, bw * Math.max(0, this.hp / this.maxHp), bh);
 
         let yOffset = by + bh + 2;
         
@@ -1105,7 +1650,7 @@ class Player {
         ctx.save();
         ctx.fillStyle = this.color;
         ctx.font = 'bold 13px sans-serif';
-        ctx.textAlign = 'left';
+ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.shadowColor = '#000';
         ctx.shadowBlur = 3;
@@ -1115,14 +1660,14 @@ class Player {
 }
 
 // ---------------- Enemies ----------------
-class Enemy {
+class Enemy extends Unit {
     constructor(x, y, type, now) {
-        this.x = x; this.y = y;
+        super(x, y, 15, 100, 'monster');
         this.type = type;
         this.airborne = false; // meteors are intangible until they land
         this.frozenUntil = 0;
         this.frozenStart = 0;
-        this._hp = 0;
+        this.hp = 0;
         if (type === 'brute_lord') {
             this.hp = 600; this.speed = 0.5; this.damage = 60; this.color = '#000000'; this.r = 38;
         } else if (type === 'sentry') {
@@ -1152,10 +1697,10 @@ class Enemy {
             this.aiming = false;
             this.aimUntil = 0;
             this.aimAngle = 0;
-            this.fireReady = 0;
-            this.fireCooldown = 2200; // ms between attacks
-            this.flameBeamUntil = 0;
-            this.flameLine = null;
+            this.fireReady = now + 800;
+            this.fireCooldown = 1800;
+            this.shotDamage = 70;
+            this.shotSpeed = 9.0;
         } else if (type === 'spiky') {
             this.hp = 1100; this.speed = 0.6; this.damage = 50; this.color = '#ff1100'; this.r = 54;
         } else if (type === 'mega_brute') {
@@ -1247,7 +1792,6 @@ class Enemy {
             this.hp = 10; this.speed = 0.9; this.damage = 5; this.color = '#ff4444'; this.r = 10;
         }
         this.maxHp = this.hp;
-        this.unitType = 'monster';
     }
     detonateBaneling(now) {
         if (this.banelingDetonated) return;
@@ -1271,7 +1815,7 @@ class Enemy {
 
         // Damage turrets in radius
         for (const t of GAME_STATE.turrets) {
-            if (t.dead) continue;
+            if (!t.alive) continue;
             const dx = t.x - this.x;
             const dy = t.y - this.y;
             if (dx * dx + dy * dy <= (blastRadius + t.r) * (blastRadius + t.r)) {
@@ -1334,21 +1878,12 @@ class Enemy {
         ctx.stroke();
         ctx.restore();
     }
-    get hp() {
-        return this._hp;
-    }
-    set hp(val) {
-        const isOutside = this.x < 0 || this.x > W || this.y < 0 || this.y > H;
-        if (isOutside) {
-            if (val < this._hp) return;
-        }
-        this._hp = val;
-    }
+
     isPassingThroughLaserFence() {
         for (const tur of GAME_STATE.turrets) {
-            if (!tur.dead && tur.connections && tur.connections.length > 0) {
+            if (tur.alive && tur.connections && tur.connections.length > 0) {
                 for (const conn of tur.connections) {
-                    if (conn.dead) continue;
+                    if (!conn.alive) continue;
                     const dx = conn.x - tur.x;
                     const dy = conn.y - tur.y;
                     const len2 = dx * dx + dy * dy;
@@ -1384,31 +1919,20 @@ class Enemy {
             }
         }
         if (!isAuraSlowed) {
-            for (const hz of GAME_STATE.hazards) {
-                if (hz instanceof IceTrailSegment) {
-                    const dx = hz.x2 - hz.x1;
-                    const dy = hz.y2 - hz.y1;
-                    const len2 = dx * dx + dy * dy;
-                    let t = 0;
-                    if (len2 > 0) {
-                        t = ((this.x - hz.x1) * dx + (this.y - hz.y1) * dy) / len2;
-                        t = Math.max(0, Math.min(1, t));
-                    }
-                    const closestX = hz.x1 + t * dx;
-                    const closestY = hz.y1 + t * dy;
-                    const edx = this.x - closestX;
-                    const edy = this.y - closestY;
-                    if (edx * edx + edy * edy < (this.r + 22) * (this.r + 22)) {
-                        s *= 0.5;
-                        break;
-                    }
-                }
+            if (this.isOnIce()) {
+                s *= 0.5;
             }
             if (this.isPassingThroughLaserFence()) {
                 s *= 0.70; // 30% speed reduction while passing through laser fence
             }
         }
         return s;
+    }
+    isTargetable() {
+        return this.isAlive() && !this.burrowed && !this.airborne && isOnPlayableArea(this);
+    }
+    isDamageable() {
+        return this.isAlive() && !this.airborne && isOnPlayableArea(this);
     }
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil) return;
@@ -1500,7 +2024,7 @@ class Enemy {
             target.takeDamage(this.damage, now, this, true);
         }
         for (const t of GAME_STATE.turrets) {
-            if (t.dead) continue;
+            if (!t.alive) continue;
             const tdx = t.x - this.x, tdy = t.y - this.y;
             if (tdx * tdx + tdy * tdy < (t.r + this.r) * (t.r + this.r)) {
                 if (this.type === 'baneling') {
@@ -1560,7 +2084,7 @@ class Enemy {
             target.takeDamage(this.damage, now, this, true);
         }
         for (const t of GAME_STATE.turrets) {
-            if (t.dead) continue;
+            if (!t.alive) continue;
             const tdx = t.x - this.x, tdy = t.y - this.y;
             if (tdx * tdx + tdy * tdy < (t.r + this.r) * (t.r + this.r)) {
                 t.takeDamage(this.damage, now, this);
@@ -1616,7 +2140,7 @@ class Enemy {
             target.takeDamage(this.damage, now, this, true);
         }
         for (const t of GAME_STATE.turrets) {
-            if (t.dead) continue;
+            if (!t.alive) continue;
             const tdx = t.x - this.x, tdy = t.y - this.y;
             if (tdx * tdx + tdy * tdy < (t.r + this.r) * (t.r + this.r)) {
                 t.takeDamage(this.damage, now, this);
@@ -1657,7 +2181,7 @@ class Enemy {
             target.takeDamage(this.damage, now, this, true);
         }
         for (const t of GAME_STATE.turrets) {
-            if (t.dead) continue;
+            if (!t.alive) continue;
             const tdx = t.x - this.x, tdy = t.y - this.y;
             if (tdx * tdx + tdy * tdy < (t.r + this.r) * (t.r + this.r)) {
                 t.takeDamage(this.damage, now, this);
@@ -1755,7 +2279,7 @@ class Enemy {
                 }
                 // Instant damage to turrets in line of fire
                 for (const t of GAME_STATE.turrets) {
-                    if (t.dead) continue;
+                    if (!t.alive) continue;
                     if (pointToSegmentDistance(t.x, t.y, this.x, this.y, endX, endY) <= t.r + 16) {
                         t.takeDamage(this.damage, now, this);
                     }
@@ -1836,7 +2360,7 @@ class Enemy {
             target.takeDamage(this.damage, now, this, true);
         }
         for (const t of GAME_STATE.turrets) {
-            if (t.dead) continue;
+            if (!t.alive) continue;
             const tdx = t.x - this.x, tdy = t.y - this.y;
             if (tdx * tdx + tdy * tdy < (t.r + this.r) * (t.r + this.r)) {
                 t.takeDamage(this.damage, now, this);
@@ -1913,7 +2437,7 @@ class Enemy {
         }
         // Contact damage to turrets
         for (const t of GAME_STATE.turrets) {
-            if (t.dead) continue;
+            if (!t.alive) continue;
             const tdx = t.x - this.x, tdy = t.y - this.y;
             if (tdx * tdx + tdy * tdy < (t.r + this.r) * (t.r + this.r)) {
                 t.takeDamage(this.damage, now, this);
@@ -3092,7 +3616,7 @@ class BurningSurface {
             }
         }
         for (const t of GAME_STATE.turrets) {
-            if (t.dead) continue;
+            if (!t.alive) continue;
             const dx = p.x - this.x, dy = p.y - this.y;
             if (dx * dx + dy * dy < (this.r + p.r) * (this.r + p.r)) {
                 if (!this.hitCooldown.has(p)) {
@@ -4218,16 +4742,13 @@ class ProximityMine {
     }
 }
 
-class TurretEntity {
+class TurretEntity extends Unit {
     constructor(x, y, player, now) {
-        this.x = x; this.y = y;
+        const turretMaxHp = 800 * (player ? player.buildingHealthModifier : 1.0);
+        super(x, y, 12, turretMaxHp, 'turret');
         this.player = player;
         this.spawnTime = now;
         this.duration = 35000 * (player ? player.buildingDurationModifier : 1.0); // 35s base lifetime
-        this.dead = false;
-        this.r = 12;
-        this.hpMax = 800*(player ? player.buildingHealthModifier : 1.0);
-        this.hp = this.hpMax;
         this.hitCooldown = new Map();
         this.isFlamethrower = player ? !!player.turretFlamethrowerEnabled : false;
         this.baseAttackCooldown = 1170; // Normal attack cooldown for all turrets
@@ -4239,9 +4760,8 @@ class TurretEntity {
         this.baseSpread = 0.18;
         this.baseDamage = 4; // Normal turret base damage
         this.flameDamage = 16; // 4x normal turret damage (4 * 4 = 16)
-        this.speed = 11.0; // Quicker than Magic Missile (7.3)
+        this.projectileSpeed = 11.0; // Quicker than Magic Missile (7.3)
         this.connections = []; // Array of connected TurretEntity instances
-        this.unitType = 'turret';
 
         // Flamethrower sweep animation state
         this.flameActiveUntil = 0;
@@ -4264,7 +4784,7 @@ class TurretEntity {
         const MAX_DIST = 300;
         const candidates = [];
         for (const tur of GAME_STATE.turrets) {
-            if (!tur.dead && tur !== this && tur.connections && tur.connections.length < 2) {
+            if (tur.alive && tur !== this && tur.connections && tur.connections.length < 2) {
                 const dx = tur.x - this.x;
                 const dy = tur.y - this.y;
                 const d2 = dx * dx + dy * dy;
@@ -4327,7 +4847,7 @@ class TurretEntity {
         }
     }
     takeDamage(amount, now, source) {
-        if (this.dead) return;
+        if (!this.alive) return;
         if (source) {
             const nextHit = this.hitCooldown.get(source) || 0;
             if (now < nextHit) return;
@@ -4345,7 +4865,7 @@ class TurretEntity {
             reflectTarget = source.sourceEnemy;
         }
         if (this.player && this.player.reflectDamageEnabled && reflectTarget && typeof reflectTarget.hp === 'number' && reflectTarget.hp > 0) {
-            const reflectDmg = this.hpMax * 0.025; // 2.5% of turret max HP reflected
+            const reflectDmg = this.maxHp * 0.025; // 2.5% of turret max HP reflected
             reflectTarget.hp -= reflectDmg;
             spawnHitParticles(reflectTarget.x, reflectTarget.y, '#ff3333');
         }
@@ -4356,8 +4876,8 @@ class TurretEntity {
         }
     }
     destroy(now) {
-        if (this.dead) return;
-        this.dead = true;
+        if (!this.alive) return;
+        this.alive = false;
         for (const conn of this.connections) {
             const idx = conn.connections.indexOf(this);
             if (idx !== -1) conn.connections.splice(idx, 1);
@@ -4404,7 +4924,7 @@ class TurretEntity {
             const dmgThisFrame = dmgPerSec * (dt / 1000);
 
             for (const conn of this.connections) {
-                if (conn.dead) continue;
+                if (!conn.alive) continue;
                 if (this.x < conn.x || (this.x === conn.x && this.y < conn.y)) {
                     const dx = conn.x - this.x;
                     const dy = conn.y - this.y;
@@ -4455,18 +4975,7 @@ class TurretEntity {
         const attackCd = (this.baseAttackCooldown * this.player.cooldownModifier) * (isOverclocked ? 0.5 : 1.0);
         if (now - this.lastFire >= attackCd && GAME_STATE.enemies.length > 0) {
             // --- Head 1: Main Missile/Laser Head (targets closest overall enemy) ---
-            let closestMissile = null;
-            let minMissileD2 = Infinity;
-            for (const e of GAME_STATE.enemies) {
-                if (!isTargetable(e)) continue;
-                const dx = e.x - this.x;
-                const dy = e.y - this.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < minMissileD2) {
-                    minMissileD2 = d2;
-                    closestMissile = e;
-                }
-            }
+            const closestMissile = Unit.findClosest(this, GAME_STATE.enemies, Infinity, isTargetable);
 
             if (closestMissile) {
                 this.lastFire = now;
@@ -4477,8 +4986,8 @@ class TurretEntity {
                 const spreadAngle = targetAngle + (Math.random() - 0.5) * this.baseSpread * this.player.accuracyModifier;
                 const dmg = this.baseDamage * this.player.damageModifier * GAME_STATE.dmgFactor;
                 const kind = (this.player.accuracyModifier === 0) ? 'laser' : 'missile';
-                const vx = Math.cos(spreadAngle) * this.speed;
-                const vy = Math.sin(spreadAngle) * this.speed;
+                const vx = Math.cos(spreadAngle) * this.projectileSpeed;
+                const vy = Math.sin(spreadAngle) * this.projectileSpeed;
 
                 const proj = new Projectile(this.x, this.y, vx, vy, dmg, kind, this.player, this.unitType);
                 proj.sourceTurret = true;
@@ -4523,20 +5032,7 @@ class TurretEntity {
 
             // --- Head 2: Independent Flamethrower Head (targets closest enemy within range) ---
             if (this.isFlamethrower) {
-                let closestFlame = null;
-                let minFlameD2 = Infinity;
-                const fRange = this.flameRange;
-                const fRange2 = fRange * fRange;
-                for (const e of GAME_STATE.enemies) {
-                    if (!isTargetable(e)) continue;
-                    const dx = e.x - this.x;
-                    const dy = e.y - this.y;
-                    const d2 = dx * dx + dy * dy;
-                    if (d2 <= fRange2 && d2 < minFlameD2) {
-                        minFlameD2 = d2;
-                        closestFlame = e;
-                    }
-                }
+                const closestFlame = Unit.findClosest(this, GAME_STATE.enemies, this.flameRange, isTargetable);
 
                 if (closestFlame) {
                     const flameTargetAngle = Math.atan2(closestFlame.y - this.y, closestFlame.x - this.x);
@@ -4728,12 +5224,12 @@ class TurretEntity {
         ctx.restore();
 
         // Draw health bar if damaged
-        if (this.hp < this.hpMax) {
+        if (this.hp < this.maxHp) {
             const barW = 24;
             const barH = 3.5;
             const bx = this.x - barW / 2;
             const by = this.y - this.r - 10;
-            const hpPct = Math.max(0, this.hp / this.hpMax);
+            const hpPct = Math.max(0, this.hp / this.maxHp);
 
             ctx.save();
             ctx.fillStyle = '#222222';
@@ -5579,7 +6075,7 @@ class HealthPack {
         }
         let target = null, best = Infinity;
         for (const p of GAME_STATE.players) {
-            if (!p.alive || p.hp >= p.hpMax) continue;
+            if (!p.alive || p.hp >= p.maxHp) continue;
             const dx = p.x - this.x, dy = p.y - this.y;
             const d2 = dx * dx + dy * dy;
             if (d2 < best) { best = d2; target = p; }
@@ -5809,10 +6305,14 @@ function isOnPlayableArea(thing){
 }
 
 function isDamageable(thing){
-    return (!thing.airborne && thing.hp > 0 && isOnPlayableArea(thing))
+    if (!thing) return false;
+    if (typeof thing.isDamageable === 'function') return thing.isDamageable();
+    return (!thing.airborne && (thing.hp > 0 || thing.alive) && isOnPlayableArea(thing));
 }
 function isTargetable(thing){
-    return (!thing.burrowed && !thing.airborne && thing.hp > 0 && isOnPlayableArea(thing))
+    if (!thing) return false;
+    if (typeof thing.isTargetable === 'function') return thing.isTargetable();
+    return (!thing.burrowed && !thing.airborne && (thing.hp > 0 || thing.alive) && isOnPlayableArea(thing));
 }
 
 function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
@@ -5875,7 +6375,7 @@ const UPGRADE_POOL = [
     { id: 'campervan', name: 'Campervan Rampage', desc: 'Transform into an invulnerable campervan for 20 seconds that crushes everything in its path', oneShot: true, effect: (p) => { p.campervanUntil = gameClock + 20000; } },
     { id: 'final_blast', name: 'Martyrdom', desc: 'Explode in a nuclear blast upon death, and permanently halve your respawn time (Unlocks Martyr\'s Aura)', oneShot: true, effect: (p) => { p.finalBlastEnabled = true; p.reviveTimeModifier = 0.5; } },
     { id: 'projectile_shield', name: 'Deflector Orbiters', desc: 'Unlock an orbiting barrier of 3 shields that rotates counter-clockwise and absorbs enemy projectiles', oneShot: true, effect: (p) => p.unlockWeapon('projectile_shield') },
-    { id: 'heal', name: 'Second Wind', desc: 'Fully restore HP and double your Max HP. Stacks.', effect: (p) => { p.secondWindCount = (p.secondWindCount || 0) + 1; p.hpMax = Math.round(p.hpMax * 2.0); p.heal(p.hpMax); } },
+    { id: 'heal', name: 'Second Wind', desc: 'Fully restore HP and double your Max HP. Stacks.', effect: (p) => { p.secondWindCount = (p.secondWindCount || 0) + 1; p.maxHp = Math.round(p.maxHp * 2.0); p.heal(p.maxHp); } },
     { id: 'martyrdom_aura_upgrade', name: "Martyr's Aura", desc: 'Leaves a healing aura when you are dead, damaging and slowing enemies (Unlocks Martyr\'s Presence*)', oneShot: true, effect: (p) => { p.martyrdomAuraEnabled = true; } },
     { id: 'martyrs_presence_upgrade', name: "Martyr's Presence", desc: "Enlarges Martyr's Aura by 50%, knocks back surviving enemies on nuclear death, and provokes enemies within mine radius to target you (Unlocks Sacrificial Aegis*)", oneShot: true, effect: (p) => { p.martyrsPresenceEnabled = true; } },
     { id: 'sacrificial_aegis_upgrade', name: 'Sacrificial Aegis', desc: 'Reduces damage taken by nearby allies within provoke radius by 25%, while increasing your damage taken by 50%. Further reduces respawn time by 25%.', oneShot: true, effect: (p) => { p.sacrificialAegisEnabled = true; p.reviveTimeModifier *= 0.75; } },
@@ -5886,7 +6386,7 @@ const UPGRADE_POOL = [
 const ONE_SHOT_WEIGHT = 0.75;
 function upgradeWeight(u, player) {
     if (u.id === 'heal') {
-        const hpPct = player ? (player.hp / player.hpMax) * 100 : 50;
+        const hpPct = player ? (player.hp / player.maxHp) * 100 : 50;
         const missingPctBelow100 = Math.max(0, 100 - hpPct);
         const takenCount = player ? (player.secondWindCount || 0) : 0;
         return Math.max(0, 0.20 - 0.08 * takenCount + missingPctBelow100 * 0.01);
@@ -5915,6 +6415,7 @@ function pickThreeFor(player) {
     const hasTurret = player.weapons.some(w => w.id === 'turret');
     const hasRing = player.weapons.some(w => w.id === 'fire_ring');
     const pool = UPGRADE_POOL.filter(u => {
+        if (isMobile && (u.id === 'dash' || u.id === 'dash_lvl2' || u.id === 'phase_detonation_upgrade')) return false;
         if (u.id === 'unlock_ring' && player.weapons.some(w => w.id === 'fire_ring')) return false;
         if (u.id === 'unlock_missile' && hasMissile) return false;
         if (u.id === 'unlock_melee' && player.weapons.some(w => w.id === 'melee_sweep')) return false;
@@ -5961,11 +6462,11 @@ function pickThreeFor(player) {
         if (u.id === 'carapace_healer_upgrade' && !taken.has('melee_reflect_upgrade')) return false;
         if (u.id === 'ice_trail_upgrade' && (!taken.has('speed_lvl2') || !taken.has('freeze_upgrade'))) return false;
         if (u.id === 'cooldown' && player.attackSpeedCount >= 7) return false;
-        if (u.id === 'campervan' && (player.hp > player.hpMax * 0.5 || GAME_STATE.enemies.length < 200)) return false;
+        if (u.id === 'campervan' && (player.hp > player.maxHp * 0.5 || GAME_STATE.enemies.length < 200)) return false;
         if (u.id === 'final_blast' && (!hasMine || GAME_STATE.players.length < 2 || player.mineAoeCount < 1)) return false;
         if (u.id === 'projectile_shield' && GAME_STATE.elapsed < 780000) return false;
         if (u.oneShot && taken.has(u.id)) return false;
-        if (u.id === 'heal' && player.hp >= player.hpMax * 0.5) return false;
+        if (u.id === 'heal' && player.hp >= player.maxHp * 0.5) return false;
         return true;
     });
     const out = [];
@@ -5980,6 +6481,7 @@ function pickThreeFor(player) {
     // If pool exhausted, allow duplicates for repeatable stat upgrades
     while (out.length < 3) {
         const base = UPGRADE_POOL.filter(u => {
+            if (isMobile && (u.id === 'dash' || u.id === 'dash_lvl2' || u.id === 'phase_detonation_upgrade')) return false;
             if (u.oneShot || u.id === 'unlock_ring') return false;
             if (u.id === 'multishot' && !hasMissile) return false;
             if (u.id === 'mine_aoe_upgrade' && (!hasMine || player.mineAoeCount >= 3)) return false;
@@ -5996,6 +6498,9 @@ const tip = document.getElementById('tipText');
 // ---------------- Starting Weapon Selection ----------------
 function startWeaponSelectFlow() {
     GAME_STATE.current = STATES.WEAPON_SELECT;
+    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    const uiLayer = document.querySelector('.ui-layer');
+    if (uiLayer) uiLayer.style.display = 'none';
     const layer = document.getElementById('levelUpLayer');
     layer.innerHTML = '';
     const count = GAME_STATE.players.length;
@@ -6094,10 +6599,13 @@ function onStartingWeaponChose(panel, player) {
 function startLevelUpFlow() {
     if (GAME_STATE.current === STATES.LEVEL_UP || GAME_STATE.current === STATES.COUNTDOWN) return;
     GAME_STATE.current = STATES.LEVEL_UP;
+    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
     beginSelectionRound();
 }
 
 function beginSelectionRound() {
+    const uiLayer = document.querySelector('.ui-layer');
+    if (uiLayer) uiLayer.style.display = 'none';
     const layer = document.getElementById('levelUpLayer');
     layer.innerHTML = '';
     const count = GAME_STATE.players.length;
@@ -6110,7 +6618,7 @@ function beginSelectionRound() {
 
 // Anchors each player's panel to a different region so all are visible at once.
 function getPanelPosition(index, count) {
-    const M = 20, TOP = 74;
+    const M = 15, TOP = 15;
     if (count === 1) return 'top:50%; left:50%; transform:translate(-50%,-50%);';
     if (count === 2) {
         return index === 0
@@ -6183,6 +6691,8 @@ function onPlayerChose(panel, player) {
 
 function startCountdown() {
     document.getElementById('levelUpLayer').classList.remove('show');
+    const uiLayer = document.querySelector('.ui-layer');
+    if (uiLayer) uiLayer.style.display = 'block';
     GAME_STATE.current = STATES.COUNTDOWN;
     const el = document.getElementById('countdown');
     let n = 3;
@@ -6197,6 +6707,9 @@ function startCountdown() {
             el.style.display = 'none';
             GAME_STATE.countdownTimer = null;
             GAME_STATE.current = STATES.GAMEPLAY;
+            if (isMobile && typeof joystickZone !== 'undefined' && joystickZone) {
+                joystickZone.style.display = 'block';
+            }
             lastFrameTime = performance.now();
         }
     };
@@ -6462,6 +6975,7 @@ function startGame(playerCount, difficultyKey) {
 
 function gameOver() {
     GAME_STATE.current = STATES.GAME_OVER;
+    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
     
     // Save current match result first so bestScore reflects accuracy
     if (!GAME_STATE.testingMode){
@@ -6478,6 +6992,7 @@ function gameOver() {
 
 function showVictory() {
     GAME_STATE.current = STATES.GAME_OVER;
+    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
     
     if (GAME_STATE.countdownTimer) { 
         clearTimeout(GAME_STATE.countdownTimer); 
@@ -6566,6 +7081,79 @@ function getBestScore(numberOfPlayers = null, difficulty = null) {
     }
 }
 
+
+
+class JoystickController {
+    constructor(zoneElement, thumbElement, maxRange = 45) {
+        this.zone = zoneElement;
+        this.thumb = thumbElement;
+        this.maxRange = maxRange;
+        this.active = false;
+        this.pointerId = null;
+        this.vector = { x: 0, y: 0, angle: 0, distance: 0, active: false };
+
+        if (!this.zone || !this.thumb) return;
+
+        this.zone.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+        window.addEventListener('pointermove', (e) => this.onPointerMove(e));
+        window.addEventListener('pointerup', (e) => this.onPointerUp(e));
+        window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+    }
+
+    onPointerDown(e) {
+        this.active = true;
+        this.pointerId = e.pointerId;
+        try { this.zone.setPointerCapture(e.pointerId); } catch (err) {}
+        this.updatePosition(e);
+    }
+
+    onPointerMove(e) {
+        if (!this.active || e.pointerId !== this.pointerId) return;
+        this.updatePosition(e);
+    }
+
+    onPointerUp(e) {
+        if (!this.active) return;
+        if (e && this.pointerId !== null && e.pointerId !== this.pointerId) return;
+        this.active = false;
+        this.pointerId = null;
+        this.thumb.style.transform = 'translate(0px, 0px)';
+        this.vector = { x: 0, y: 0, angle: 0, distance: 0, active: false };
+    }
+
+    updatePosition(e) {
+        const rect = this.zone.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const dx = e.clientX - centerX;
+        const dy = e.clientY - centerY;
+        const dist = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+
+        const visualDist = Math.min(dist, this.maxRange);
+        const vx = Math.cos(angle) * visualDist;
+        const vy = Math.sin(angle) * visualDist;
+        this.thumb.style.transform = `translate(${vx}px, ${vy}px)`;
+
+        // User requirement: Player always moves with MAX movement speed along angle when joystick is active
+        if (dist > 6) {
+            this.vector = {
+                x: Math.cos(angle), // unit vector x (constant max speed)
+                y: Math.sin(angle), // unit vector y (constant max speed)
+                angle: angle,
+                distance: 1.0,
+                active: true
+            };
+        } else {
+            this.vector = { x: 0, y: 0, angle: 0, distance: 0, active: false };
+        }
+    }
+}
+
+const joystickZone = document.getElementById('joystickZone');
+const joystickThumb = document.getElementById('joystickThumb');
+const joystickInstance = new JoystickController(joystickZone, joystickThumb, 45);
+
 function showStartStep(step) {
     document.getElementById('playerStep').style.display = step === 'players' ? 'block' : 'none';
     document.getElementById('difficultyStep').style.display = step === 'difficulty' ? 'block' : 'none';
@@ -6577,7 +7165,20 @@ function showStartMenu() {
     document.getElementById('testingBtn').style.display = 'block';
     document.getElementById('gameOverModal').classList.remove('show');
     document.getElementById('victoryModal').classList.remove('show');
-    showStartStep('players');
+    if (joystickZone) joystickZone.style.display = 'none';
+    if (tip) tip.style.display = 'none';
+
+    if (isMobile) {
+        pendingPlayerCount = 1;
+        document.getElementById('difficultyPrompt').textContent = 'Select difficulty';
+        const backBtn = document.getElementById('backToPlayers');
+        if (backBtn) backBtn.style.display = 'none';
+        showStartStep('difficulty');
+    } else {
+        const backBtn = document.getElementById('backToPlayers');
+        if (backBtn) backBtn.style.display = 'block';
+        showStartStep('players');
+    }
     document.getElementById('startMenu').classList.add('show');
 }
 
@@ -6597,6 +7198,9 @@ for (const btn of document.querySelectorAll('#startMenu [data-difficulty]')) {
 document.getElementById('backToPlayers').onclick = () => showStartStep('players');
 document.getElementById('restartBtn').onclick = showStartMenu;
 document.getElementById('victoryRestartBtn').onclick = showStartMenu;
+
+// Auto-run start menu on load to immediately apply mobile setup if detected
+showStartMenu();
 
 // ---------------- Testing Lab State & Logic ----------------
 const UPGRADE_DEPENDENCIES = {
@@ -6973,12 +7577,12 @@ function update(dt, dtFactor, now) {
                     const dx = op.x - p.x;
                     const dy = op.y - p.y;
                     if (dx * dx + dy * dy < auraRadius * auraRadius) {
-                        op.heal(p.hpMax * 0.10 * (dt / 1000));
+                        op.heal(p.maxHp * 0.10 * (dt / 1000));
                     }
                 }
             }
             // 2. Damage enemies standing in it (10% of player max HP per second)
-            const dmg = p.hpMax * 0.10 * (dt / 1000);
+            const dmg = p.maxHp * 0.10 * (dt / 1000);
             for (const e of GAME_STATE.enemies) {
                 if (e.hp > 0 && !e.airborne && e.x >= 0 && e.x <= W && e.y >= 0 && e.y <= H) {
                     const dx = e.x - p.x;
@@ -7182,7 +7786,7 @@ function update(dt, dtFactor, now) {
     GAME_STATE.enemyProjectiles = GAME_STATE.enemyProjectiles.filter(p => !p.dead);
     GAME_STATE.hazards = GAME_STATE.hazards.filter(h => !h.dead);
     GAME_STATE.magneticMines = GAME_STATE.magneticMines.filter(m => !m.dead);
-    GAME_STATE.turrets = GAME_STATE.turrets.filter(t => !t.dead);
+    GAME_STATE.turrets = GAME_STATE.turrets.filter(t => t.alive);
     GAME_STATE.gems = GAME_STATE.gems.filter(g => !g.dead);
     
     GAME_STATE.particles = GAME_STATE.particles.filter(p => !p.dead);
@@ -7285,14 +7889,14 @@ function draw(now) {
 
 function updateUI() {
     document.getElementById('xpBar').style.width = ((GAME_STATE.xp / GAME_STATE.nextXp) * 100) + '%';
-    const parts = GAME_STATE.players.map((p, i) => {
+    const playerRows = GAME_STATE.players.map((p, i) => {
         if (p.alive) {
-            return `<span style="color:${p.color}">P${i + 1} ${Math.ceil(p.hp)}/${p.hpMax}</span>`;
+            return `<div style="margin-top:2px;"><span style="color:${p.color}">P${i + 1} ${Math.ceil(p.hp)}/${p.maxHp}</span></div>`;
         }
         const rem = Math.max(0, Math.ceil(((REVIVE_MS * p.reviveTimeModifier) - (gameClock - p.deadAt)) / 1000));
-        return `<span style="color:${p.color};opacity:0.55">P${i + 1} &#9760;${rem}s</span>`;
-    }).join(' &nbsp; ');
-    document.getElementById('stats').innerHTML = `Level: ${GAME_STATE.level} | Kills: ${GAME_STATE.kills} | ${parts}`;
+        return `<div style="margin-top:2px;"><span style="color:${p.color};opacity:0.55">P${i + 1} &#9760;${rem}s</span></div>`;
+    }).join('');
+    document.getElementById('stats').innerHTML = `Level: ${GAME_STATE.level} | Kills: ${GAME_STATE.kills}${playerRows}`;
     const mins = Math.floor(GAME_STATE.elapsed / 60000);
     const secs = Math.floor((GAME_STATE.elapsed % 60000) / 1000);
     document.getElementById('timer').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
