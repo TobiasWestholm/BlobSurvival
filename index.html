@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Blob Survival</title>
 <style>
-    body { margin: 0; background: #111; overflow: hidden; font-family: sans-serif; color: white; -webkit-tap-highlight-color: transparent; }
-    canvas { display: block; background: #1a1a1a; width: 100vw; height: 100vh; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #111; overflow: hidden; font-family: sans-serif; color: white; -webkit-tap-highlight-color: transparent; }
+    canvas { display: block; background: #1a1a1a; position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
     .ui-layer { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 90%; pointer-events: none; }
     .xp-bar-container { width: 100%; height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
     .xp-bar { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s ease; }
@@ -593,21 +594,14 @@ let W = window.innerWidth;
 let H = window.innerHeight;
 
 function resizeCanvas() {
-    const rawW = window.innerWidth;
-    const rawH = window.innerHeight;
+    const rect = canvas.getBoundingClientRect();
+    const rawW = (rect && rect.width > 0) ? rect.width : window.innerWidth;
+    const rawH = (rect && rect.height > 0) ? rect.height : window.innerHeight;
 
-    if (isMobile) {
-        const screenSpan = Math.min(rawW, rawH);
-        const targetArenaWidth = 600;
-        const scale = Math.min(1.0, targetArenaWidth / screenSpan);
-        W = Math.round(rawW * scale);
-        H = Math.round(rawH * scale);
-    } else {
-        const targetArenaWidth = 1512;
-        const scale = targetArenaWidth / rawW;
-        W = Math.round(rawW * scale);
-        H = Math.round(rawH * scale);
-    }
+    const targetArenaWidth = isMobile ? 600 : 1512;
+    const scale = targetArenaWidth / rawW;
+    W = Math.round(rawW * scale);
+    H = Math.round(rawH * scale);
     canvas.width = W;
     canvas.height = H;
 }
