@@ -232,113 +232,194 @@
         line-height: 1.35;
     }
     
-    /* Phone / Mobile device styling: dynamic fluid interaction boxes with clamp() scaling */
+    /* Phone / Mobile device styling: proportional, clean, and touch-friendly */
     body.mobile-device .modal {
-        width: 92vw !important;
-        max-width: 900px !important;
+        width: 90vw !important;
+        max-width: 380px !important;
         min-width: 0 !important;
-        padding: clamp(24px, 4vw, 42px) clamp(20px, 3.5vw, 36px) !important;
-        border-radius: clamp(12px, 2vw, 20px) !important;
-        border-width: clamp(2px, 0.4vw, 4px) !important;
-        max-height: 92vh !important;
+        padding: 16px 14px !important;
+        border-radius: 10px !important;
+        border-width: 2px !important;
+        max-height: 85vh !important;
         overflow-y: auto !important;
         box-sizing: border-box !important;
     }
     body.mobile-device #startMenu h1 {
-        font-size: clamp(40px, 7.5vw, 76px) !important;
-        margin-bottom: clamp(16px, 2.5vw, 28px) !important;
+        font-size: 24px !important;
+        margin-bottom: 8px !important;
+        letter-spacing: 1px !important;
     }
     body.mobile-device #startMenu p,
     body.mobile-device #difficultyPrompt {
-        font-size: clamp(20px, 3.8vw, 34px) !important;
-        line-height: 1.5 !important;
+        font-size: 13px !important;
+        margin-bottom: 12px !important;
+        line-height: 1.4 !important;
+    }
+    body.mobile-device .player-grid {
+        gap: 8px !important;
+        margin: 10px 0 !important;
+    }
+    body.mobile-device .player-grid .upgrade-btn {
+        padding: 10px 6px !important;
+        font-size: 12px !important;
+        margin: 0 !important;
     }
     body.mobile-device .upgrade-btn {
         width: 96% !important;
         max-width: 100% !important;
-        padding: clamp(18px, 3vw, 28px) clamp(20px, 3.5vw, 32px) !important;
-        margin: clamp(10px, 2vw, 18px) auto !important;
-        font-size: clamp(21px, 3.8vw, 32px) !important;
-        line-height: 1.45 !important;
-        border-radius: clamp(8px, 1.5vw, 14px) !important;
-        border-width: 2px !important;
+        padding: 10px 12px !important;
+        margin: 6px auto !important;
+        font-size: 12px !important;
+        line-height: 1.35 !important;
+        border-radius: 6px !important;
         box-sizing: border-box !important;
     }
     body.mobile-device .upgrade-btn .name {
-        font-size: clamp(26px, 4.8vw, 40px) !important;
-        margin-bottom: clamp(4px, 1vw, 8px) !important;
+        font-size: 14px !important;
+        margin-bottom: 2px !important;
         font-weight: bold !important;
     }
+    body.mobile-device .difficulty-list {
+        gap: 8px !important;
+        margin: 10px 0 !important;
+    }
+    body.mobile-device .difficulty-card {
+        padding: 10px 12px !important;
+        margin: 0 !important;
+    }
+    body.mobile-device .difficulty-card .name {
+        font-size: 14px !important;
+        margin-bottom: 2px !important;
+    }
+    body.mobile-device .difficulty-card .desc {
+        font-size: 11px !important;
+        line-height: 1.35 !important;
+        color: #ccc !important;
+    }
     body.mobile-device .player-panel {
-        width: 92vw !important;
-        max-width: 880px !important;
+        width: 90vw !important;
+        max-width: 380px !important;
         top: 50% !important;
         left: 50% !important;
         transform: translate(-50%, -50%) !important;
-        padding: clamp(24px, 4vw, 38px) clamp(20px, 3.5vw, 32px) !important;
-        border-radius: clamp(12px, 2vw, 20px) !important;
-        border-width: clamp(2px, 0.4vw, 4px) !important;
+        padding: 14px 12px !important;
+        border-radius: 10px !important;
+        border-width: 2px !important;
         box-sizing: border-box !important;
     }
     body.mobile-device .panel-title {
-        font-size: clamp(28px, 5.2vw, 48px) !important;
-        margin-bottom: clamp(4px, 1vw, 8px) !important;
+        font-size: 18px !important;
+        margin-bottom: 2px !important;
     }
     body.mobile-device .panel-sub {
-        font-size: clamp(18px, 3.4vw, 28px) !important;
+        font-size: 12px !important;
         color: #ccc !important;
-        margin-bottom: clamp(12px, 2vw, 20px) !important;
+        margin-bottom: 8px !important;
     }
     body.mobile-device .player-panel .upgrade-btn {
-        width: 98% !important;
-        padding: clamp(16px, 2.8vw, 26px) clamp(18px, 3.2vw, 30px) !important;
-        font-size: clamp(21px, 3.8vw, 32px) !important;
-        line-height: 1.45 !important;
-        margin: clamp(10px, 1.8vw, 16px) auto !important;
+        width: 96% !important;
+        padding: 8px 10px !important;
+        font-size: 11px !important;
+        line-height: 1.35 !important;
+        margin: 5px auto !important;
+        background: #1e1e24 !important;
+        border: 1px solid #444 !important;
+        border-radius: 6px !important;
+        color: #bbb !important;
     }
     body.mobile-device .player-panel .upgrade-btn .name {
-        font-size: clamp(26px, 4.6vw, 38px) !important;
-        margin-bottom: clamp(4px, 0.8vw, 8px) !important;
+        font-size: 13px !important;
+        margin-bottom: 2px !important;
+        color: #00ffcc !important;
     }
     body.mobile-device #gameOverModal h2,
     body.mobile-device #victoryModal h2 {
-        font-size: clamp(38px, 7vw, 68px) !important;
+        font-size: 24px !important;
     }
     body.mobile-device #gameOverStats,
     body.mobile-device #victoryStats {
-        font-size: clamp(20px, 3.6vw, 32px) !important;
-        line-height: 1.6 !important;
+        font-size: 13px !important;
+        line-height: 1.5 !important;
+    }
+    body.mobile-device .controls-help {
+        font-size: 11px !important;
+        margin-top: 10px !important;
+        padding: 8px !important;
+    }
+    body.mobile-device .controls-title {
+        font-size: 11px !important;
+        margin-bottom: 4px !important;
+    }
+    
+    /* Mobile HUD (Cleanly separated XP bar, Left stats, Right timer, Center tips) */
+    body.mobile-device .ui-layer {
+        position: fixed !important;
+        top: max(22px, env(safe-area-inset-top, 22px)) !important;
+        left: max(14px, env(safe-area-inset-left, 14px)) !important;
+        right: max(14px, env(safe-area-inset-right, 14px)) !important;
+        width: auto !important;
+        transform: none !important;
+        pointer-events: none !important;
+        z-index: 60 !important;
+    }
+    body.mobile-device .xp-bar-container {
+        width: 100% !important;
+        height: 7px !important;
+        border-radius: 4px !important;
     }
     body.mobile-device #stats {
-        font-size: clamp(18px, 3.2vw, 28px) !important;
+        font-size: 12px !important;
+        line-height: 1.35 !important;
+        margin-top: 4px !important;
+        text-align: left !important;
+        text-shadow: 1px 1px 3px #000, 0 0 4px #000 !important;
+        max-width: 60vw !important;
     }
     body.mobile-device #timer {
-        font-size: clamp(26px, 4.8vw, 42px) !important;
-        top: 25px !important;
+        position: fixed !important;
+        top: calc(max(22px, env(safe-area-inset-top, 22px)) + 14px) !important;
+        right: max(14px, env(safe-area-inset-right, 14px)) !important;
+        left: auto !important;
+        transform: none !important;
+        font-size: 15px !important;
+        font-weight: bold !important;
+        text-shadow: 1px 1px 3px #000, 0 0 4px #000 !important;
+        z-index: 60 !important;
     }
     body.mobile-device #tipText {
-        font-size: clamp(26px, 4.8vw, 40px) !important;
-        width: 90vw !important;
-        max-width: 880px !important;
-        top: clamp(75px, 9vh, 100px) !important;
+        position: fixed !important;
+        font-size: 13px !important;
+        width: 88vw !important;
+        max-width: 380px !important;
+        top: calc(max(22px, env(safe-area-inset-top, 22px)) + 42px) !important;
         left: 50% !important;
         transform: translateX(-50%) !important;
-        line-height: 1.4 !important;
+        line-height: 1.35 !important;
         z-index: 150 !important;
     }
-    body.mobile-device .difficulty-card .name {
-        font-size: clamp(26px, 4.8vw, 40px) !important;
-        margin-bottom: clamp(4px, 1vw, 8px) !important;
-    }
-    body.mobile-device .difficulty-card .desc {
-        font-size: clamp(21px, 3.8vw, 32px) !important;
-        line-height: 1.45 !important;
-        color: #ccc !important;
-    }
     body.mobile-device #countdown {
-        font-size: clamp(140px, 28vw, 240px) !important;
-        text-shadow: 0 0 40px #000, 0 0 20px #00ffcc, 0 0 40px #00ffcc !important;
+        font-size: clamp(65px, 18vw, 90px) !important;
+        text-shadow: 0 0 30px #000, 0 0 15px #00ffcc !important;
         z-index: 200 !important;
+    }
+    
+    /* Mobile Virtual Joystick: Compact 82px, ergonomic, and non-intrusive */
+    body.mobile-device #joystickZone {
+        width: 82px !important;
+        height: 82px !important;
+        bottom: 16px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+    }
+    body.mobile-device #joystickBase {
+        width: 82px !important;
+        height: 82px !important;
+    }
+    body.mobile-device #joystickThumb {
+        width: 30px !important;
+        height: 30px !important;
+        margin-top: -15px !important;
+        margin-left: -15px !important;
     }
     
     /* Testing Lab Styles */
@@ -7128,7 +7209,8 @@ class JoystickController {
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
 
-        const visualDist = Math.min(dist, this.maxRange);
+        const maxR = (this.zone && this.zone.clientWidth) ? (this.zone.clientWidth * 0.32) : this.maxRange;
+        const visualDist = Math.min(dist, maxR);
         const vx = Math.cos(angle) * visualDist;
         const vy = Math.sin(angle) * visualDist;
         this.thumb.style.transform = `translate(${vx}px, ${vy}px)`;
