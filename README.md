@@ -6,13 +6,13 @@ A fast-paced, high-density 2D arcade survival auto-battler built from the ground
 
 ---
 
+[![Demo video](https://raw.githubusercontent.com/TobiasWestholm/BlobSurvival/refs/heads/main/thumbnail.png)](https://raw.githubusercontent.com/TobiasWestholm/BlobSurvival/refs/heads/main/demo_video.mp4)
+
 ## 🌟 Key Features
 
 * **Local Co-Op (1–4 Players):** Simultaneous local multiplayer with shared XP and individual upgrades, and dynamic difficulty scaling based on active player count.
 * **Three different difficulty settings:** Choose Easy, Medium or Hard.
 * **Synergistic Talent Trees:** Auto-firing weapons and passive upgrades, starting out with ranged, melee, explosives, or turrets.
-
-[![Teaser](https://raw.githubusercontent.com/TobiasWestholm/BlobSurvival/refs/heads/main/thumbnail.jpg)](https://raw.githubusercontent.com/TobiasWestholm/BlobSurvival/refs/heads/main/video.mp4)
 
 ---
 
