@@ -7,11 +7,30 @@
 <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #111; overflow: hidden; font-family: sans-serif; color: white; -webkit-tap-highlight-color: transparent; }
     canvas { display: block; background: #1a1a1a; position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
-    .ui-layer { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 90%; pointer-events: none; }
+    .ui-layer {
+        position: fixed;
+        top: max(16px, env(safe-area-inset-top, 16px));
+        left: 50%;
+        transform: translateX(-50%);
+        width: 92%;
+        max-width: 1400px;
+        pointer-events: none;
+        z-index: 60;
+    }
     .xp-bar-container { width: 100%; height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
     .xp-bar { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s ease; }
-    #stats { margin-top: 5px; text-shadow: 1px 1px 2px #000; }
-    #timer { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); font-size: 24px; text-shadow: 1px 1px 3px #000; pointer-events: none; }
+    #stats { margin-top: 6px; font-size: clamp(13px, 1.0vw, 18px); text-shadow: 1px 1px 2px #000, 0 0 4px #000; }
+    #timer {
+        position: fixed;
+        top: calc(max(16px, env(safe-area-inset-top, 16px)) + 18px);
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: clamp(20px, 1.6vw, 30px);
+        font-weight: bold;
+        text-shadow: 1px 1px 3px #000, 0 0 6px #000;
+        pointer-events: none;
+        z-index: 60;
+    }
     
     /* Desktop / Relative Fluid Interaction Boxes */
     .modal {
@@ -2887,6 +2906,7 @@ class Enemy extends Unit {
                 ctx.globalCompositeOperation = 'multiply';
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Adjust 0.5 to make it more or less dark
                 ctx.fill();
+                ctx.restore();
 
                 ctx.restore();
                 this.drawCryoOverlay(now);
@@ -5124,6 +5144,8 @@ class TurretEntity extends Unit {
                         this.flameCenterAngle = flameTargetAngle;
                         const fDmg = this.flameDamage * this.player.damageModifier * GAME_STATE.dmgFactor;
                         const coneHalf = this.flameConeWidth / 2;
+                        const fRange = this.flameRange;
+                        const fRange2 = fRange * fRange;
 
                         for (const e of GAME_STATE.enemies) {
                             if (!isDamageable(e)) continue;
@@ -5318,6 +5340,8 @@ class TurretEntity extends Unit {
             ctx.fillRect(bx, by, barW * hpPct, barH);
             ctx.restore();
         }
+
+        ctx.restore();
     }
 }
 
@@ -6440,7 +6464,7 @@ const UPGRADE_POOL = [
     { id: 'mine_scatter_upgrade', name: 'Scatter Charges', desc: '10% chance when dropping a mine to scatter 3-4 extra mines in random directions around you (Unlocks Mine Launcher)', oneShot: true, effect: (p) => p.scatterMinesEnabled = true },
     { id: 'mine_launcher_upgrade', name: 'Mine Launcher', desc: 'Throw one mine forward in addition to the normal mine (Unlocks Explosive Ring* & Cluster Shot*)', oneShot: true, effect: (p) => p.mineThrowEnabled = true },
     { id: 'mine_ring', name: 'Explosive Ring', desc: 'Replace the fire ring with explosive charges', oneShot: true, effect: (p) => p.mineRingEnabled = true },
-    { id: 'heal_pack_upgrade', name: 'Siphon Cells', desc: 'Slaying monsters has a chance to drop a health pack, scaling with monster health. Heals a flat 30 HP.', oneShot: true, effect: (p) => p.healPackEnabled = true },
+    { id: 'heal_pack_upgrade', name: 'Siphon Cells', desc: 'Slaying monsters has a chance to drop a health pack, scaling with monster health. Heals a flat 30 HP.', oneShot: true, effect: (p) => { p.healPackEnabled = true; GAME_STATE.siphonCellsOwner = p; } },
     { id: 'melee_sledge_upgrade', name: 'Sledge Hammer', desc: 'Melee attacks trigger a heavy forward cone slam in your last movement direction, dealing 400% damage (Unlocks Scourge Flail)', oneShot: true, effect: (p) => p.sledgeEnabled = true },
     { id: 'melee_chain_upgrade', name: 'Scourge Flail', desc: 'Unlock a heavy melee spiked flail dragged behind you. Swings dynamically based on turn angle and player speed, dealing speed-scaled damage (Unlocks Cryo Freeze & Laser Flail*)', oneShot: true, effect: (p) => p.unlockWeapon('player_flail') },
     { id: 'flail_laser_upgrade', name: 'Laser Flail', desc: 'The Scourge Flail leaves a thin damaging laser trail along its motion path', oneShot: true, effect: (p) => p.flailLaserEnabled = true },
@@ -6454,7 +6478,7 @@ const UPGRADE_POOL = [
     { id: 'campervan', name: 'Campervan Rampage', desc: 'Transform into an invulnerable campervan for 20 seconds that crushes everything in its path', oneShot: true, effect: (p) => { p.campervanUntil = gameClock + 20000; } },
     { id: 'final_blast', name: 'Martyrdom', desc: 'Explode in a nuclear blast upon death, and permanently halve your respawn time (Unlocks Martyr\'s Aura)', oneShot: true, effect: (p) => { p.finalBlastEnabled = true; p.reviveTimeModifier = 0.5; } },
     { id: 'projectile_shield', name: 'Deflector Orbiters', desc: 'Unlock an orbiting barrier of 3 shields that rotates counter-clockwise and absorbs enemy projectiles', oneShot: true, effect: (p) => p.unlockWeapon('projectile_shield') },
-    { id: 'heal', name: 'Second Wind', desc: 'Fully restore HP and double your Max HP. Stacks.', effect: (p) => { p.secondWindCount = (p.secondWindCount || 0) + 1; p.maxHp = Math.round(p.maxHp * 2.0); p.heal(p.maxHp); } },
+    { id: 'heal', name: 'Second Wind', desc: 'Fully restore HP and double your Max HP. Stacks.', effect: (p) => { p.secondWindCount = (p.secondWindCount || 0) + 1; p.maxHp = Math.round(p.maxHp * 2.0); p.hp = p.maxHp; } },
     { id: 'martyrdom_aura_upgrade', name: "Martyr's Aura", desc: 'Leaves a healing aura when you are dead, damaging and slowing enemies (Unlocks Martyr\'s Presence*)', oneShot: true, effect: (p) => { p.martyrdomAuraEnabled = true; } },
     { id: 'martyrs_presence_upgrade', name: "Martyr's Presence", desc: "Enlarges Martyr's Aura by 50%, knocks back surviving enemies on nuclear death, and provokes enemies within mine radius to target you (Unlocks Sacrificial Aegis*)", oneShot: true, effect: (p) => { p.martyrsPresenceEnabled = true; } },
     { id: 'sacrificial_aegis_upgrade', name: 'Sacrificial Aegis', desc: 'Reduces damage taken by nearby allies within provoke radius by 25%, while increasing your damage taken by 50%. Further reduces respawn time by 25%.', oneShot: true, effect: (p) => { p.sacrificialAegisEnabled = true; p.reviveTimeModifier *= 0.75; } },
@@ -6552,9 +6576,6 @@ function pickThreeFor(player) {
     while (out.length < 3 && pool.length > 0) {
         const i = weightedPickIndex(pool, player);
         const item = pool.splice(i, 1)[0];
-        if (item.id === 'heal_pack_upgrade') {
-            GAME_STATE.siphonCellsOwner = player;
-        }
         out.push(item);
     }
     // If pool exhausted, allow duplicates for repeatable stat upgrades
@@ -6579,7 +6600,7 @@ function startWeaponSelectFlow() {
     GAME_STATE.current = STATES.WEAPON_SELECT;
     if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
     const uiLayer = document.querySelector('.ui-layer');
-    if (uiLayer) uiLayer.style.display = 'none';
+    if (uiLayer) uiLayer.style.display = 'block';
     const layer = document.getElementById('levelUpLayer');
     layer.innerHTML = '';
     const count = GAME_STATE.players.length;
@@ -6684,7 +6705,7 @@ function startLevelUpFlow() {
 
 function beginSelectionRound() {
     const uiLayer = document.querySelector('.ui-layer');
-    if (uiLayer) uiLayer.style.display = 'none';
+    if (uiLayer) uiLayer.style.display = 'block';
     const layer = document.getElementById('levelUpLayer');
     layer.innerHTML = '';
     const count = GAME_STATE.players.length;
