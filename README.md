@@ -6,8 +6,7 @@ A fast-paced, high-density 2D arcade survival auto-battler built from the ground
 
 ---
 
-<video src="https://raw.githubusercontent.com/TobiasWestholm/BlobSurvival/refs/heads/main/demo_video.mp4" poster="https://raw.githubusercontent.com/TobiasWestholm/BlobSurvival/refs/heads/main/thumbnail.jpg" controls width="100%">
-</video>
+https://github.com/user-attachments/assets/eeee864f-14b3-4d8d-a733-a5b2cbea5e85
 
 ## 🌟 Key Features
 
