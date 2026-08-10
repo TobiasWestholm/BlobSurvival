@@ -6,7 +6,7 @@ A fast-paced, high-density 2D arcade survival auto-battler built from the ground
 
 ---
 
-https://github.com/user-attachments/assets/eeee864f-14b3-4d8d-a733-a5b2cbea5e85
+![Game demo in late levels](https://github.com/user-attachments/assets/eeee864f-14b3-4d8d-a733-a5b2cbea5e85)
 
 ## 🌟 Key Features
 
