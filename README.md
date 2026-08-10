@@ -37,4 +37,4 @@ https://github.com/user-attachments/assets/eeee864f-14b3-4d8d-a733-a5b2cbea5e85
 ---
 
 ## 🚀 How to Run
-Open `index.html` in any modern web browser (Chrome, Firefox, Safari, Edge).
+Click [here](https://tobiaswestholm.github.io/BlobSurvival/) or open `index.html` in any modern web browser (Chrome, Firefox, Safari, Edge).
