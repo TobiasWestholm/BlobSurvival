@@ -1766,18 +1766,19 @@ class Enemy extends Unit {
         this.frozenUntil = 0;
         this.frozenStart = 0;
         this.hp = 0;
+        this.xpValue = 0;
         if (type === 'brute_lord') {
-            this.hp = 600; this.speed = 0.5; this.damage = 60; this.color = '#000000'; this.r = 38;
+            this.hp = 600; this.speed = 0.5; this.damage = 60; this.color = '#000000'; this.r = 38, this.xpValue = 20;
         } else if (type === 'sentry') {
             // SC2 Protoss Sentry: slow support unit projecting a Guardian Shield
             // that halves damage taken by all allies within its large aura.
-            this.hp = 1000; this.speed = 0.5; this.damage = 30; this.color = '#00acc1'; this.r = 15;
+            this.hp = 1000; this.speed = 0.5; this.damage = 30; this.color = '#00acc1'; this.r = 15, this.xpValue = 30;
             this.shieldRadius = 160; // large protective aura
             this.shieldAngle = 0;   // for rotating ring visual
         } else if (type === 'medivac') {
             // SC2 Medivac: healing dropship that restores HP of damaged allies.
             // Does not attack players; ignores them entirely.
-            this.hp = 2000; this.speed = 0; this.damage = 0; this.color = '#eceff1'; this.r = 18;
+            this.hp = 2000; this.speed = 0; this.damage = 0; this.color = '#eceff1'; this.r = 18, this.xpValue = 40;
             this.vx = 0; this.vy = 0;
             this.maxSpd    = 3.8;
             this.accel     = 0.20;
@@ -1788,7 +1789,7 @@ class Enemy extends Unit {
             this.healTargets = []; // up to 2 simultaneous targets
         } else if (type === 'hellion') {
             // SC2 Hellion: quick flame unit, keeps safe distance, fires 180px line of fire (70 dmg, 1500 HP)
-            this.hp = 1500; this.speed = 2.2; this.damage = 70; this.color = '#ff5722'; this.r = 16;
+            this.hp = 1500; this.speed = 2.2; this.damage = 70; this.color = '#ff5722'; this.r = 16, this.xpValue = 40;
             this.targetCoord = null;
             this.nextDecisionTime = 0;
             this.action = 'move'; // 'flee', 'fire', 'move'
@@ -1800,17 +1801,17 @@ class Enemy extends Unit {
             this.shotDamage = 70;
             this.shotSpeed = 9.0;
         } else if (type === 'spiky') {
-            this.hp = 1100; this.speed = 0.6; this.damage = 50; this.color = '#ff1100'; this.r = 54;
+            this.hp = 1100; this.speed = 0.6; this.damage = 50; this.color = '#ff1100'; this.r = 54, this.xpValue = 30;
         } else if (type === 'mega_brute') {
-            this.hp = 150; this.speed = 0.6; this.damage = 30; this.color = '#660066'; this.r = 28;
+            this.hp = 150; this.speed = 0.6; this.damage = 30; this.color = '#660066'; this.r = 28, this.xpValue = 10;
         } else if (type === 'speeder') {
             // reduced 25% from mega_brute parity (was 150)
-            this.hp = 112; this.speed = 1.6; this.damage = 15; this.color = '#ffaa00'; this.r = 11;
+            this.hp = 112; this.speed = 1.6; this.damage = 15; this.color = '#ffaa00'; this.r = 11, this.xpValue = 10;
         } else if (type === 'brute') {
-            this.hp = 40; this.speed = 0.8; this.damage = 15; this.color = '#aa0000'; this.r = 18;
+            this.hp = 40; this.speed = 0.8; this.damage = 15; this.color = '#aa0000'; this.r = 18, this.xpValue = 10;
         } else if (type === 'meteor') {
             // crashes in dealing blast damage + a burning surface, then chases normally
-            this.hp = 500; this.speed = 1.2; this.damage = 40; this.color = '#ff4500'; this.r = 24;
+            this.hp = 500; this.speed = 1.2; this.damage = 40; this.color = '#ff4500'; this.r = 24, this.xpValue = 20;
             this.airborne = true;
             if (GAME_STATE.bossLvl2Active) {
                 const ang = Math.random() * Math.PI * 2;
@@ -1834,24 +1835,24 @@ class Enemy extends Unit {
             this.nextTentacleTime = now + 4000;
         } else if (type === 'shooter') {
             // ranged: advances slowly and lobs dodgeable projectiles
-            this.hp = 85; this.speed = 0.55; this.damage = 15; this.color = '#66dd33'; this.r = 14;
+            this.hp = 85; this.speed = 0.55; this.damage = 15; this.color = '#66dd33'; this.r = 14, this.xpValue = 10;
             this.fireReady = now + 1200; this.fireCooldown = 2200;
             this.shotDamage = 12; this.shotSpeed = 2.3;
         } else if (type === 'dasher') {
             // weaves sideways on approach, then lunges at the player
-            this.hp = 150; this.speed = 0.9; this.damage = 15; this.color = '#ff3366'; this.r = 13;
+            this.hp = 150; this.speed = 0.9; this.damage = 15; this.color = '#ff3366'; this.r = 13, this.xpValue = 10;
             this.lunging = false; this.lungeUntil = 0; this.lungeReady = now + 800;
             this.lungeVx = 0; this.lungeVy = 0;
             this.sideDashing = false; this.sideUntil = now + 200 + Math.random() * 200;
             this.sideDir = Math.random() < 0.5 ? 1 : -1;
         } else if (type === 'baneling') {
             // SC2 Baneling: fast Zerg rolling acid sac unit that detonates on contact or death
-            this.hp = 1000; this.speed = 1.65; this.damage = 45; this.color = '#76ff03'; this.r = 13;
+            this.hp = 1000; this.speed = 1.65; this.damage = 45; this.color = '#76ff03'; this.r = 13, this.xpValue = 30;
             this.banelingDetonated = false;
             this.burrowed = false;
         } else if (type === 'marauder') {
             // SC2 Marauder: heavy armored Terran grenade launcher unit with Concussive Shells
-            this.hp = 1500; this.speed = 1.25; this.damage = 40; this.color = '#37474f'; this.r = 16;
+            this.hp = 1500; this.speed = 1.25; this.damage = 40; this.color = '#37474f'; this.r = 16, this.xpValue = 30;
             this.firingRange = 260;
             this.aiming = false;
             this.aimUntil = 0;
@@ -1862,15 +1863,15 @@ class Enemy extends Unit {
             this.shotSpeed = 8.5; // Fast undodgeable concussive missile
         } else if (type === 'zergling') {
             // SC2 Zergling: tiny, fragile, extremely fast melee unit spawned by dying Spine Crawlers
-            this.hp = 300; this.speed = 2.8; this.damage = 20; this.color = '#8bc34a'; this.r = 7;
+            this.hp = 300; this.speed = 2.8; this.damage = 20; this.color = '#8bc34a'; this.r = 7, this.xpValue = 0;
         } else if (type === 'spine_crawler') {
             // SC2 Spine Crawler: a lumbering uprooted Zerg structure. Slow, huge, tanky.
             // On death it bursts open and releases 4 Zerglings.
-            this.hp = 2500; this.speed = 0.5; this.damage = 55; this.color = '#4a148c'; this.r = 24;
+            this.hp = 2500; this.speed = 0.5; this.damage = 55; this.color = '#4a148c'; this.r = 24, this.xpValue = 40;
             this.spawnedZerglings = false;
         } else if (type === 'stalker') {
             // SC2 Blink Stalker: walks in, blinks past fire ring to melee range, then attacks on contact.
-            this.hp = 1000; this.speed = 1.4; this.damage = 25; this.color = '#5c6bc0'; this.r = 14;
+            this.hp = 1000; this.speed = 1.4; this.damage = 25; this.color = '#5c6bc0'; this.r = 14, this.xpValue = 30;
             this.blinkRange = 260;          // trigger blink when within marauder firing range
             this.blinkLandDist = 45;        // land inside fire ring (70px orbit) but outside contact (28px)
             this.blinked = false;
@@ -1887,7 +1888,7 @@ class Enemy extends Unit {
             this.targetPlayer = null;
             this.retargetCooldown = 0;
         } else {
-            this.hp = 10; this.speed = 0.9; this.damage = 5; this.color = '#ff4444'; this.r = 10;
+            this.hp = 10; this.speed = 0.9; this.damage = 5; this.color = '#ff4444'; this.r = 10; this.xpValue = 10;
         }
         this.maxHp = this.hp;
     }
@@ -2665,6 +2666,11 @@ class Enemy extends Unit {
                 if (!p.alive) continue;
                 const d = Math.hypot(p.x - this.x, p.y - this.y);
                 if (d < this.blastRadius + p.r) p.takeDamage(this.blastDamage, now, this);
+            }
+            for (const t of GAME_STATE.turrets) {
+                if (!t.alive) continue;
+                const d = Math.hypot(t.x - this.x, t.y - this.y);
+                if (d < this.blastRadius + t.r) t.takeDamage(this.blastDamage, now, this);
             }
             GAME_STATE.hazards.push(new BurningSurface(this.x, this.landY, this.blastRadius, now));
             for (let i = 0; i < 18; i++) {
@@ -3716,19 +3722,19 @@ class BurningSurface {
         }
         for (const t of GAME_STATE.turrets) {
             if (!t.alive) continue;
-            const dx = p.x - this.x, dy = p.y - this.y;
-            if (dx * dx + dy * dy < (this.r + p.r) * (this.r + p.r)) {
-                if (!this.hitCooldown.has(p)) {
-                    this.hitCooldown.set(p, now + 133.3); // delay the first tick by one cooldown period
+            const dx = t.x - this.x, dy = t.y - this.y;
+            if (dx * dx + dy * dy < (this.r + t.r) * (this.r + t.r)) {
+                if (!this.hitCooldown.has(t)) {
+                    this.hitCooldown.set(t, now + 133.3); // delay the first tick by one cooldown period
                 } else {
-                    const nextHit = this.hitCooldown.get(p);
+                    const nextHit = this.hitCooldown.get(t);
                     if (now >= nextHit) {
-                        p.takeDamage(BURN_TICK, now, this);
-                        this.hitCooldown.set(p, now + 133.3); // tick every 133.3ms thereafter
+                        t.takeDamage(BURN_TICK, now, this);
+                        this.hitCooldown.set(t, now + 133.3); // tick every 133.3ms thereafter
                     }
                 }
             } else {
-                this.hitCooldown.delete(p);
+                this.hitCooldown.delete(t);
             }
         }
         if (Math.random() < 0.4) {
@@ -3781,11 +3787,16 @@ class MagicMissile {
                 
                 if (ranked.length < shots) {
                     ranked.push({ e, d2 });
-                    ranked.sort((a, b) => a.d2 - b.d2);
+                    if (ranked.length === shots) {
+                        ranked.sort((a, b) => a.d2 - b.d2);
+                    }
                 } else if (d2 < ranked[ranked.length - 1].d2) {
                     ranked[ranked.length - 1] = { e, d2 };
                     ranked.sort((a, b) => a.d2 - b.d2);
                 }
+            }
+            if (ranked.length > 1 && ranked.length < shots) {
+                ranked.sort((a, b) => a.d2 - b.d2);
             }
             if (ranked.length > 0) {
                 this.volley = ranked;
@@ -4922,21 +4933,13 @@ class TurretEntity extends Unit {
         const drops = ['health', 'xp_cluster', 'aegis', 'nitro', 'magnet', 'nuke', 'freeze', 'overclock'];
         const type = drops[Math.floor(Math.random() * drops.length)];
 
-        // Pop out very close to the turret (1.5 to 3.5 pop speed, landing 10-23px away)
-        const ang = Math.random() * Math.PI * 2;
-        const popSpeed = 1.5 + Math.random() * 2.0;
-        const vx = Math.cos(ang) * popSpeed;
-        const vy = Math.sin(ang) * popSpeed;
-
         if (type === 'health') {
             const hp = new HealthPack(this.x, this.y, now);
             hp.vx = vx; hp.vy = vy;
             GAME_STATE.gems.push(hp);
             spawnHitParticles(this.x, this.y, '#ff3366');
         } else if (type === 'xp_cluster') {
-            const gem = new XPGem(this.x, this.y, 80);
-            gem.vx = vx; gem.vy = vy;
-            GAME_STATE.gems.push(gem);
+            XPGem.createXPGems(this.x, this.y, 80)
             spawnHitParticles(this.x, this.y, '#00ffcc');
         } else {
             const drop = new SupplyDrop(this.x, this.y, type, now);
@@ -6079,15 +6082,36 @@ class OrbitProjectile {
 
 // ---------------- Gems & Particles ----------------
 class XPGem {
-    constructor(x, y, value = 10) {
+    constructor(x, y, value = 10, vx = 0, vy = 0) {
         this.x = Math.max(15, Math.min(W - 15, x));
         this.y = Math.max(15, Math.min(H - 15, y));
-        this.r = value > 20 ? 6.5 : 3.5;
+        this.r = value >= 30 ? 6.5 : 3.5;
         this.value = value;
-        this.vx = 0;
-        this.vy = 0;
+        this.vx = vx;
+        this.vy = vy;
         this.attracted = false;
         this.dead = false;
+    }
+    static createXPGems(x, y, value = 10, spreadFactor = 1){
+        const largeGems = Math.floor(value / 30);
+        const smallGems = (value % 30) / 10;
+        for (let i = 0; i < largeGems; i++) {
+                // Pop out very close to the coordinate (1.5 to 3.5 pop speed, landing 10-23px away)
+            const ang = Math.random() * Math.PI * 2;
+            const popSpeed = 1.5 + Math.random() * 2.0 * spreadFactor;
+            const xDisplacement = Math.cos(ang) * popSpeed;
+            const yDisplacement = Math.sin(ang) * popSpeed;
+            GAME_STATE.gems.push(new XPGem(x, y, 30, xDisplacement, yDisplacement));
+        }
+        for (let i = 0; i < smallGems; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const popSpeed = 1.5 + Math.random() * 2.0 * spreadFactor;
+            const xDisplacement = Math.cos(ang) * popSpeed;
+            const yDisplacement = Math.sin(ang) * popSpeed;
+            GAME_STATE.gems.push(new XPGem(x, y, 10, xDisplacement, yDisplacement));
+        }
+        
+
     }
     update(dtFactor = 1.0) {
         if (this.vx || this.vy) {
@@ -6125,7 +6149,7 @@ class XPGem {
     }
     draw() {
         ctx.save();
-        ctx.fillStyle = this.value > 20 ? '#aa00ff' : '#eddcb5';
+        ctx.fillStyle = this.value >= 30 ? '#aa00ff' : '#eddcb5';
         ctx.beginPath();
         ctx.moveTo(this.x, this.y - this.r);     // Top
         ctx.lineTo(this.x + this.r, this.y);     // Right
@@ -6529,7 +6553,7 @@ function pickThreeFor(player) {
         if (u.id === 'turret_cooldown_upgrade' && !hasTurret) return false;
         if (u.id === 'turret_flamethrower_upgrade' && !hasTurret) return false;
         if (u.id === 'turret_flamethrower_lvl2_upgrade' && !taken.has('turret_flamethrower_upgrade')) return false;
-        if (u.id === 'turret_inferno_ring_upgrade' && (!taken.has('turret_flamethrower_upgrade') || !hasRing)) return false;
+        if (u.id === 'turret_inferno_ring_upgrade' && (!taken.has('turret_flamethrower_lvl2_upgrade') || !hasRing)) return false;
         if (u.id === 'turret_dispenser_upgrade' && !taken.has('building_duration_upgrade')) return false;
         if (u.id === 'turret_network_upgrade' && (!taken.has('slow_walls_upgrade') || !taken.has('building_duration_upgrade'))) return false;
         if (u.id === 'turret_saw_upgrade' && (!player.weapons.some(w => w.id === 'melee_sweep') || !hasTurret)) return false;
@@ -7836,7 +7860,7 @@ function update(dt, dtFactor, now) {
     for (let i = GAME_STATE.enemies.length - 1; i >= 0; i--) {
         const e = GAME_STATE.enemies[i];
         if (e.hp <= 0) {
-            GAME_STATE.gems.push(new XPGem(e.x, e.y));
+            XPGem.createXPGems(e.x, e.y, e.xpValue)
             const hasHealPackUpgrade = GAME_STATE.players.some(p => p.alive && p.healPackEnabled);
             if (hasHealPackUpgrade) {
                 const playerCount = GAME_STATE.players.length;
