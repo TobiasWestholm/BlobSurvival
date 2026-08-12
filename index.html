@@ -635,17 +635,16 @@
         <label style="display: block; font-weight: bold; margin-bottom: 8px; color: #00ffcc; font-size: 14px;">1. Choose Start Time (Minute):</label>
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
             <button class="time-preset-btn active" data-min="0">Min 0 (Base)</button>
-            <button class="time-preset-btn" data-min="3">Min 3 (Mega brutes)</button>
-            <button class="time-preset-btn" data-min="5">Min 5 (Brute lords)</button>
-            <button class="time-preset-btn" data-min="9">Min 9 (Meteorites)</button>
-            <button class="time-preset-btn" data-min="13">Min 13 (Deflector)</button>
-            <button class="time-preset-btn" data-min="15">Min 15 (Tentacle Boss)</button>
-            <button class="time-preset-btn" data-min="17">Min 17 (Horde Boss)</button>
-            <button class="time-preset-btn" data-min="21">Min 21 (Marauder)</button>
-            <button class="time-preset-btn" data-min="23">Min 23 (Stalker)</button>
-            <button class="time-preset-btn" data-min="24">Min 24 (Felhound Boss)</button>
-            <button class="time-preset-btn" data-min="27">Min 27 (Medivac)</button>
-            <button class="time-preset-btn" data-min="28">Min 28 (Hellion)</button>
+            <button class="time-preset-btn" data-min="2">Min 2 (Mega brutes)</button>
+            <button class="time-preset-btn" data-min="3">Min 3 (Brute lords)</button>
+            <button class="time-preset-btn" data-min="5">Min 5 (Meteorites)</button>
+            <button class="time-preset-btn" data-min="8">Min 8 (Octopus Boss)</button>
+            <button class="time-preset-btn" data-min="10">Min 10 (Horde Boss)</button>
+            <button class="time-preset-btn" data-min="12">Min 12 (Marauder)</button>
+            <button class="time-preset-btn" data-min="14">Min 14 (Stalker)</button>
+            <button class="time-preset-btn" data-min="15">Min 15 (Felhound Boss)</button>
+            <button class="time-preset-btn" data-min="18">Min 18 (Medivac)</button>
+            <button class="time-preset-btn" data-min="19">Min 19 (Hellion)</button>
         </div>
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px; border-bottom: 1px solid #333; padding-bottom: 15px;">
             <span style="font-size: 13px; color: #aaa;">Or enter custom minute:</span>
@@ -732,26 +731,27 @@ const tips = [
 const PROGRESSION = {
     // Standard monsters and their introduction times (in ms)
     monsterIntroductions: [
-        { type: 'brute', time: 60000 },
-        { type: 'mega_brute', time: 180000 },
-        { type: 'brute_lord', time: 300000 },
-        { type: 'speeder', time: 420000 },
-        { type: 'meteor', time: 540000 },
-        { type: 'dasher', time: 660000 },
-        { type: 'shooter', time: 780000 },
-        { type: 'spiky', time: 1020000 },
-        { type: 'baneling', time: 1200000 },
-        { type: 'marauder', time: 1260000 },
-        { type: 'spine_crawler', time: 1320000 },
-        { type: 'stalker', time: 1380000 },
-        { type: 'sentry', time: 1560000 },
-        { type: 'medivac', time: 1620000 },
-        { type: 'hellion', time: 1680000 }
+        { type: 'brute', time: 40000 },
+        { type: 'mega_brute', time: 120000 },
+        { type: 'brute_lord', time: 180000 },
+        { type: 'speeder', time: 240000 },
+        { type: 'meteor', time: 300000 },
+        { type: 'dasher', time: 360000 },
+        { type: 'shooter', time: 420000 },
+        { type: 'spiky', time: 540000 },
+        { type: 'baneling', time: 660000 },
+        { type: 'marauder', time: 720000 },
+        { type: 'spine_crawler', time: 780000 },
+        { type: 'stalker', time: 840000 },
+        { type: 'sentry', time: 1020000 },
+        { type: 'medivac', time: 1080000 },
+        { type: 'hellion', time: 1140000 }
     ],
     // Bosses and their trigger times (in ms)
     bossEvents: [
-        { type: 'boss1', start: 900000, trigger: 905000, durationLimit: 60000 },
-        { type: 'boss2', start: 1140000, durationLimit: 60000 }
+        { type: 'octopus', start: 480000, durationLimit: 60000 },
+        { type: 'horde', start: 600000, durationLimit: 50000 },
+        { type: 'felhound', start: 900000, durationLimit: 120000 }
     ]
 };
 
@@ -785,13 +785,7 @@ function getGameWinCondition() {
 
 function isLastBossCleared(winCond) {
     if (!winCond || winCond.type !== 'boss') return false;
-    if (winCond.event.type === 'boss2') {
-        return GAME_STATE.bossLvl2Started && !GAME_STATE.bossLvl2Active;
-    }
-    if (winCond.event.type === 'boss1') {
-        return GAME_STATE.bossSpawned && !GAME_STATE.enemies.some(e => e.type === 'boss');
-    }
-    return false;
+    return GAME_STATE.completedBosses.has(winCond.event.type);
 }
 
 // GAMEPLAY CONSTANTS
@@ -845,7 +839,14 @@ const GAME_STATE = {
     elapsed: 0,
     lastSpawn: 0,
     kills: 0,
-    bossSpawned: false,
+    // Unified Boss State
+    activeBoss: null,             // null | 'octopus' | 'horde' | 'felhound'
+    activeBossStartTime: 0,
+    completedBosses: new Set(),
+    resumeNormalSpawnAt: 0,
+    hordeRingSpawned: false,
+    hordeLastWave: 0,
+    hordeStartTime: 0,
     // shared progression
     level: 1,
     xp: 0,
@@ -855,13 +856,7 @@ const GAME_STATE = {
     pendingLevels: 0,      // level-ups still waiting to be resolved
     pendingPicks: 0,       // players who haven't picked yet this round
     countdownTimer: null,
-    siphonCellsOwner: null,
-    // Boss Lvl3: Felhound wave (minute 24-26)
-    bossLvl3Started: false,
-    bossLvl3Active: false,
-    bossLvl3Start: 0,
-    bossLvl3ResumeSpawnAt: 0,
-    felhoundSpawned: false
+    siphonCellsOwner: null
 };
 
 // Per-player presentation + control bindings.
@@ -991,6 +986,7 @@ class Unit {
     }
 
     isOnIce() {
+        if (GAME_STATE.hazards.length === 0) return false;
         for (const hz of GAME_STATE.hazards) {
             if (hz instanceof IceTrailSegment) {
                 const dx = hz.x2 - hz.x1;
@@ -1022,6 +1018,10 @@ class Unit {
             this.onDeath(source);
         }
         return true;
+    }
+
+    isBoss() {
+        return this.type === 'octopus' || this.type === 'felhound';
     }
 
     onTakeDamage(amount, source) {}
@@ -1346,7 +1346,7 @@ class Player extends Unit {
                 const dy = e.y - this.y;
                 if (dx * dx + dy * dy <= (mineRadius + e.r) * (mineRadius + e.r)) {
                     e.hp -= mineDmg;
-                    if (this.freezeEnabled && e.type !== 'boss') {
+                    if (this.freezeEnabled && !e.isBoss()) {
                         const dur = (e.type === 'meteor') ? 125 : 250;
                         e.freeze(dur, now);
                     }
@@ -1360,7 +1360,7 @@ class Player extends Unit {
             for (let i = 0; i < PLAYER_DASH_BURST; i++) {
                 const a = (i / PLAYER_DASH_BURST) * Math.PI * 2;
                 const proj = new Projectile(
-                    this.x, this.y, Math.cos(a) * speed, Math.sin(a) * speed, burstDmg, kind, this);
+                    this.x, this.y, Math.cos(a) * speed, Math.sin(a) * speed, burstDmg, kind, this, null, this.unitType);
                 proj.isExplosive = true;
                 proj.aoeRadius = burstAoe;
                 GAME_STATE.projectiles.push(proj);
@@ -1370,7 +1370,7 @@ class Player extends Unit {
             for (let i = 0; i < PLAYER_DASH_BURST; i++) {
                 const a = (i / PLAYER_DASH_BURST) * Math.PI * 2;
                 GAME_STATE.projectiles.push(new Projectile(
-                    this.x, this.y, Math.cos(a) * speed, Math.sin(a) * speed, dmg, kind, this));
+                    this.x, this.y, Math.cos(a) * speed, Math.sin(a) * speed, dmg, kind, this, null, this.unitType));
             }
         }
         spawnHitParticles(this.x, this.y, this.color);
@@ -1767,53 +1767,19 @@ class Enemy extends Unit {
         this.frozenStart = 0;
         this.hp = 0;
         this.xpValue = 0;
-        if (type === 'brute_lord') {
-            this.hp = 600; this.speed = 0.5; this.damage = 60; this.color = '#000000'; this.r = 38, this.xpValue = 20;
-        } else if (type === 'sentry') {
-            // SC2 Protoss Sentry: slow support unit projecting a Guardian Shield
-            // that halves damage taken by all allies within its large aura.
-            this.hp = 1000; this.speed = 0.5; this.damage = 30; this.color = '#00acc1'; this.r = 15, this.xpValue = 30;
-            this.shieldRadius = 160; // large protective aura
-            this.shieldAngle = 0;   // for rotating ring visual
-        } else if (type === 'medivac') {
-            // SC2 Medivac: healing dropship that restores HP of damaged allies.
-            // Does not attack players; ignores them entirely.
-            this.hp = 2000; this.speed = 0; this.damage = 0; this.color = '#eceff1'; this.r = 18, this.xpValue = 40;
-            this.vx = 0; this.vy = 0;
-            this.maxSpd    = 3.8;
-            this.accel     = 0.20;
-            this.healRange   = 200;
-            this.healPerTick = 35;   // HP per tick per target (350 HP/s)
-            this.healTickMs  = 100;
-            this.nextHealTick = 0;
-            this.healTargets = []; // up to 2 simultaneous targets
-        } else if (type === 'hellion') {
-            // SC2 Hellion: quick flame unit, keeps safe distance, fires 180px line of fire (70 dmg, 1500 HP)
-            this.hp = 1500; this.speed = 2.2; this.damage = 70; this.color = '#ff5722'; this.r = 16, this.xpValue = 40;
-            this.targetCoord = null;
-            this.nextDecisionTime = 0;
-            this.action = 'move'; // 'flee', 'fire', 'move'
-            this.aiming = false;
-            this.aimUntil = 0;
-            this.aimAngle = 0;
-            this.fireReady = now + 800;
-            this.fireCooldown = 1800;
-            this.shotDamage = 70;
-            this.shotSpeed = 9.0;
-        } else if (type === 'spiky') {
-            this.hp = 1100; this.speed = 0.6; this.damage = 50; this.color = '#ff1100'; this.r = 54, this.xpValue = 30;
+        if (type === 'brute') {
+            this.hp = 40; this.speed = 0.8; this.damage = 15; this.color = '#aa0000'; this.r = 18, this.xpValue = 20;
         } else if (type === 'mega_brute') {
-            this.hp = 150; this.speed = 0.6; this.damage = 30; this.color = '#660066'; this.r = 28, this.xpValue = 10;
+            this.hp = 150; this.speed = 0.6; this.damage = 30; this.color = '#660066'; this.r = 28, this.xpValue = 30;
+        } else if (type === 'brute_lord') {
+            this.hp = 600; this.speed = 0.5; this.damage = 60; this.color = '#000000'; this.r = 38, this.xpValue = 40;
         } else if (type === 'speeder') {
-            // reduced 25% from mega_brute parity (was 150)
-            this.hp = 112; this.speed = 1.6; this.damage = 15; this.color = '#ffaa00'; this.r = 11, this.xpValue = 10;
-        } else if (type === 'brute') {
-            this.hp = 40; this.speed = 0.8; this.damage = 15; this.color = '#aa0000'; this.r = 18, this.xpValue = 10;
+            this.hp = 112; this.speed = 1.6; this.damage = 15; this.color = '#ffaa00'; this.r = 11, this.xpValue = 40;
         } else if (type === 'meteor') {
             // crashes in dealing blast damage + a burning surface, then chases normally
-            this.hp = 500; this.speed = 1.2; this.damage = 40; this.color = '#ff4500'; this.r = 24, this.xpValue = 20;
+            this.hp = 500; this.speed = 1.2; this.damage = 40; this.color = '#ff4500'; this.r = 24, this.xpValue = 50;
             this.airborne = true;
-            if (GAME_STATE.bossLvl2Active) {
+            if (GAME_STATE.activeBoss === 'horde') {
                 const ang = Math.random() * Math.PI * 2;
                 const dist = Math.random() * 160;
                 this.x = W / 2 + Math.cos(ang) * dist;
@@ -1824,8 +1790,21 @@ class Enemy extends Unit {
             this.landAt = now + METEOR_FALL_MS;
             this.fallHeight = 340;
             this.blastDamage = 40; this.blastRadius = 80;
-        } else if (type === 'boss') {
-            this.hp = 40000; this.speed = 0.35; this.damage = 40; this.color = '#2e0854'; this.r = 60;
+        } else if (type === 'shooter') {
+            // ranged: advances slowly and lobs dodgeable projectiles
+            this.hp = 85; this.speed = 0.35; this.damage = 15; this.color = '#66dd33'; this.r = 14, this.xpValue = 50;
+            this.fireReady = now + 1200; this.fireCooldown = 2200;
+            this.shotDamage = 12; this.shotSpeed = 2.3;
+        } else if (type === 'dasher') {
+            // weaves sideways on approach, then lunges at the player
+            this.hp = 150; this.speed = 0.9; this.damage = 15; this.color = '#ff3366'; this.r = 13, this.xpValue = 60;
+            this.lunging = false; this.lungeUntil = 0; this.lungeReady = now + 800;
+            this.lungeVx = 0; this.lungeVy = 0;
+            this.sideDashing = false; this.sideUntil = now + 200 + Math.random() * 200;
+            this.sideDir = Math.random() < 0.5 ? 1 : -1;
+        } else if (type === 'octopus' || type === 'boss') {
+            this.type = 'octopus';
+            this.hp = 40000; this.speed = 0.35; this.damage = 40; this.color = '#2e0854'; this.r = 60; this.xpValue = 400;
             this.airborne = true;
             this.landX = W / 2;
             this.landY = H / 2;
@@ -1833,26 +1812,16 @@ class Enemy extends Unit {
             this.fallHeight = 450;
             this.tentacles = [];
             this.nextTentacleTime = now + 4000;
-        } else if (type === 'shooter') {
-            // ranged: advances slowly and lobs dodgeable projectiles
-            this.hp = 85; this.speed = 0.55; this.damage = 15; this.color = '#66dd33'; this.r = 14, this.xpValue = 10;
-            this.fireReady = now + 1200; this.fireCooldown = 2200;
-            this.shotDamage = 12; this.shotSpeed = 2.3;
-        } else if (type === 'dasher') {
-            // weaves sideways on approach, then lunges at the player
-            this.hp = 150; this.speed = 0.9; this.damage = 15; this.color = '#ff3366'; this.r = 13, this.xpValue = 10;
-            this.lunging = false; this.lungeUntil = 0; this.lungeReady = now + 800;
-            this.lungeVx = 0; this.lungeVy = 0;
-            this.sideDashing = false; this.sideUntil = now + 200 + Math.random() * 200;
-            this.sideDir = Math.random() < 0.5 ? 1 : -1;
+        } else if (type === 'spiky') {
+            this.hp = 1100; this.speed = 0.6; this.damage = 50; this.color = '#ff1100'; this.r = 54, this.xpValue = 70;
         } else if (type === 'baneling') {
             // SC2 Baneling: fast Zerg rolling acid sac unit that detonates on contact or death
-            this.hp = 1000; this.speed = 1.65; this.damage = 45; this.color = '#76ff03'; this.r = 13, this.xpValue = 30;
+            this.hp = 1000; this.speed = 1.65; this.damage = 45; this.color = '#76ff03'; this.r = 13, this.xpValue = 80;
             this.banelingDetonated = false;
             this.burrowed = false;
         } else if (type === 'marauder') {
             // SC2 Marauder: heavy armored Terran grenade launcher unit with Concussive Shells
-            this.hp = 1500; this.speed = 1.25; this.damage = 40; this.color = '#37474f'; this.r = 16, this.xpValue = 30;
+            this.hp = 1500; this.speed = 1.25; this.damage = 40; this.color = '#37474f'; this.r = 16, this.xpValue = 90;
             this.firingRange = 260;
             this.aiming = false;
             this.aimUntil = 0;
@@ -1867,11 +1836,11 @@ class Enemy extends Unit {
         } else if (type === 'spine_crawler') {
             // SC2 Spine Crawler: a lumbering uprooted Zerg structure. Slow, huge, tanky.
             // On death it bursts open and releases 4 Zerglings.
-            this.hp = 2500; this.speed = 0.5; this.damage = 55; this.color = '#4a148c'; this.r = 24, this.xpValue = 40;
+            this.hp = 2500; this.speed = 0.5; this.damage = 55; this.color = '#4a148c'; this.r = 24, this.xpValue = 110;
             this.spawnedZerglings = false;
         } else if (type === 'stalker') {
             // SC2 Blink Stalker: walks in, blinks past fire ring to melee range, then attacks on contact.
-            this.hp = 1000; this.speed = 1.4; this.damage = 25; this.color = '#5c6bc0'; this.r = 14, this.xpValue = 30;
+            this.hp = 1000; this.speed = 1.4; this.damage = 25; this.color = '#5c6bc0'; this.r = 14, this.xpValue = 100;
             this.blinkRange = 260;          // trigger blink when within marauder firing range
             this.blinkLandDist = 45;        // land inside fire ring (70px orbit) but outside contact (28px)
             this.blinked = false;
@@ -1880,13 +1849,44 @@ class Enemy extends Unit {
             this.blinkFlashUntil = 0;       // visual flash after blinking
         } else if (type === 'felhound') {
             // WC3-style Felhound: physics-based pursuit — momentum causes natural drift & orbit.
-            this.hp = 150000; this.speed = 0; this.damage = 600; this.color = '#6a0dad'; this.r = 35;
+            this.hp = 150000; this.speed = 0; this.damage = 600; this.color = '#6a0dad'; this.r = 35; this.xpValue = 1000;
             // Initial velocity: random direction, gentle push so it doesn't sit still
             const startAngle = Math.random() * Math.PI * 2;
             this.vx = Math.cos(startAngle) * 1.5;
             this.vy = Math.sin(startAngle) * 1.5;
             this.targetPlayer = null;
             this.retargetCooldown = 0;
+        } else if (type === 'sentry') {
+            // SC2 Protoss Sentry: slow support unit projecting a Guardian Shield
+            // that halves damage taken by all allies within its large aura.
+            this.hp = 1000; this.speed = 0.5; this.damage = 30; this.color = '#00acc1'; this.r = 15, this.xpValue = 110;
+            this.shieldRadius = 160; // large protective aura
+            this.shieldAngle = 0;   // for rotating ring visual
+        } else if (type === 'medivac') {
+            // SC2 Medivac: healing dropship that restores HP of damaged allies.
+            // Does not attack players; ignores them entirely.
+            this.hp = 2000; this.speed = 0; this.damage = 0; this.color = '#eceff1'; this.r = 18, this.xpValue = 120;
+            this.vx = 0; this.vy = 0;
+            this.maxSpd    = 3.8;
+            this.accel     = 0.20;
+            this.healRange   = 200;
+            this.healPerTick = 35;   // HP per tick per target (350 HP/s)
+            this.healTickMs  = 100;
+            this.nextHealTick = 0;
+            this.healTargets = []; // up to 2 simultaneous targets
+        } else if (type === 'hellion') {
+            // SC2 Hellion: quick flame unit, keeps safe distance, fires 180px line of fire (70 dmg, 1500 HP)
+            this.hp = 1500; this.speed = 2.2; this.damage = 70; this.color = '#ff5722'; this.r = 16, this.xpValue = 120;
+            this.targetCoord = null;
+            this.nextDecisionTime = 0;
+            this.action = 'move'; // 'flee', 'fire', 'move'
+            this.aiming = false;
+            this.aimUntil = 0;
+            this.aimAngle = 0;
+            this.fireReady = now + 800;
+            this.fireCooldown = 1800;
+            this.shotDamage = 70;
+            this.shotSpeed = 9.0;
         } else {
             this.hp = 10; this.speed = 0.9; this.damage = 5; this.color = '#ff4444'; this.r = 10; this.xpValue = 10;
         }
@@ -1979,6 +1979,16 @@ class Enemy extends Unit {
     }
 
     isPassingThroughLaserFence() {
+        if (GAME_STATE.turrets.length === 0) return false;
+        let hasActiveFences = false;
+        for (const tur of GAME_STATE.turrets) {
+            if (tur.alive && tur.connections && tur.connections.length > 0) {
+                hasActiveFences = true;
+                break;
+            }
+        }
+        if (!hasActiveFences) return false;
+
         for (const tur of GAME_STATE.turrets) {
             if (tur.alive && tur.connections && tur.connections.length > 0) {
                 for (const conn of tur.connections) {
@@ -2084,7 +2094,7 @@ class Enemy extends Unit {
             }
 
             // Attract to proximity mine if closer than player (bosses immune)
-            if (this.type !== 'boss') {
+            if (!this.isBoss()) {
                 for (const m of GAME_STATE.magneticMines) {
                     const dx = m.x - this.x, dy = m.y - this.y;
                     const d2 = dx * dx + dy * dy;
@@ -2101,7 +2111,7 @@ class Enemy extends Unit {
         const dx = target.x - this.x;
         const dy = target.y - this.y;
         const d = Math.sqrt(dx * dx + dy * dy);
-        if (this.type === 'boss') { this.updateBoss(dtFactor, now, target, d, dx, dy); return; }
+        if (this.type === 'octopus' || this.type === 'boss') { this.updateOctopus(dtFactor, now, target, d, dx, dy); return; }
         if (this.type === 'dasher') { this.updateDasher(dtFactor, now, target, d, dx, dy); return; }
         if (this.type === 'marauder') { this.updateMarauder(dtFactor, now, target, d, dx, dy); return; }
         if (this.type === 'stalker') { this.updateStalker(dtFactor, now, target, d, dx, dy); return; }
@@ -2288,19 +2298,40 @@ class Enemy extends Unit {
         }
     }
     updateMedivac(dtFactor, now) {
-        // --- Collect up to 2 wounded allies in range, plus nearest worldwide ---
-        const inRange = [];
-        let nearestWounded = null, nearestWoundedDist = Infinity;
+        // --- Single pass: collect up to 2 closest wounded allies in range + closest monster overall ---
+        let wounded1 = null, woundedDist1 = Infinity;
+        let wounded2 = null, woundedDist2 = Infinity;
+        let closestMonster = null, closestDist = Infinity;
+        const range2 = this.healRange * this.healRange;
+
         for (const e of GAME_STATE.enemies) {
-            if (e === this || e.type === 'medivac' || e.hp <= 0 || e.hp >= e.maxHp) continue;
+            if (e === this || e.type === 'medivac') continue;
             const exdx = e.x - this.x, exdy = e.y - this.y;
-            const ed = Math.sqrt(exdx * exdx + exdy * exdy);
-            if (ed < nearestWoundedDist) { nearestWoundedDist = ed; nearestWounded = e; }
-            if (ed <= this.healRange) inRange.push({ e, ed });
+            const d2 = exdx * exdx + exdy * exdy;
+
+            // Track closest overall monster for follow-behind
+            if (isTargetable(e) && d2 < closestDist) {
+                closestDist = d2;
+                closestMonster = e;
+            }
+
+            // Track wounded allies in heal range
+            if (e.hp > 0 && e.hp < e.maxHp && d2 <= range2) {
+                if (d2 < woundedDist1) {
+                    wounded2 = wounded1;
+                    woundedDist2 = woundedDist1;
+                    wounded1 = e;
+                    woundedDist1 = d2;
+                } else if (d2 < woundedDist2) {
+                    wounded2 = e;
+                    woundedDist2 = d2;
+                }
+            }
         }
-        // Sort by distance, take closest 2
-        inRange.sort((a, b) => a.ed - b.ed);
-        this.healTargets = inRange.slice(0, 2).map(x => x.e);
+
+        this.healTargets = [];
+        if (wounded1) this.healTargets.push(wounded1);
+        if (wounded2) this.healTargets.push(wounded2);
 
         if (this.healTargets.length > 0) {
             // Stand still — decelerate smoothly
@@ -2313,38 +2344,28 @@ class Enemy extends Unit {
                     t.hp = Math.min(t.maxHp, t.hp + this.healPerTick);
                 }
             }
-        } else {
-            // No damaged monsters in reach — follow right behind the closest monster (damaged or full health)
-            let closestMonster = null, closestDist = Infinity;
-            for (const e of GAME_STATE.enemies) {
-                if (e === this || e.type === 'medivac' || !isTargetable(e)) continue;
-                const exdx = e.x - this.x, exdy = e.y - this.y;
-                const ed = Math.sqrt(exdx * exdx + exdy * exdy);
-                if (ed < closestDist) { closestDist = ed; closestMonster = e; }
-            }
-            if (closestMonster) {
-                const exdx = closestMonster.x - this.x, exdy = closestMonster.y - this.y;
-                const ed = closestDist;
-                const nx = exdx / ed, ny = exdy / ed;
-                // Follow right behind: decelerate when close (within follow range) so it hovers right behind the monster
-                const followDist = closestMonster.r + this.r + 15;
-                if (ed < followDist) {
-                    this.vx *= Math.pow(0.88, dtFactor);
-                    this.vy *= Math.pow(0.88, dtFactor);
-                } else {
-                    this.vx += nx * this.accel * dtFactor;
-                    this.vy += ny * this.accel * dtFactor;
-                    const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                    if (spd > this.maxSpd) {
-                        this.vx = (this.vx / spd) * this.maxSpd;
-                        this.vy = (this.vy / spd) * this.maxSpd;
-                    }
-                }
+        } else if (closestMonster) {
+            const ed = Math.sqrt(closestDist);
+            const exdx = closestMonster.x - this.x, exdy = closestMonster.y - this.y;
+            const nx = ed > 0.001 ? exdx / ed : 0;
+            const ny = ed > 0.001 ? exdy / ed : 0;
+            const followDist = closestMonster.r + this.r + 15;
+            if (ed < followDist) {
+                this.vx *= Math.pow(0.88, dtFactor);
+                this.vy *= Math.pow(0.88, dtFactor);
             } else {
-                // No monsters anywhere — idle friction
-                this.vx *= Math.pow(0.95, dtFactor);
-                this.vy *= Math.pow(0.95, dtFactor);
+                this.vx += nx * this.accel * dtFactor;
+                this.vy += ny * this.accel * dtFactor;
+                const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (spd > this.maxSpd) {
+                    this.vx = (this.vx / spd) * this.maxSpd;
+                    this.vy = (this.vy / spd) * this.maxSpd;
+                }
             }
+        } else {
+            // No monsters anywhere — idle friction
+            this.vx *= Math.pow(0.95, dtFactor);
+            this.vy *= Math.pow(0.95, dtFactor);
         }
 
         this.x += this.vx * dtFactor;
@@ -2485,7 +2506,7 @@ class Enemy extends Unit {
 
         // --- Wave progress: 0 at start -> 1 at 2 minutes ---
         const WAVE_DURATION = 120000;
-        const elapsed = Math.max(0, now - GAME_STATE.bossLvl3Start);
+        const elapsed = Math.max(0, now - (GAME_STATE.activeBossStartTime || now));
         const waveFrac = Math.min(1, elapsed / WAVE_DURATION);
 
         // Max speed ramps: very slow start, threatening by the end
@@ -2543,7 +2564,7 @@ class Enemy extends Unit {
             }
         }
     }
-    updateBoss(dtFactor, now, target, d, dx, dy) {
+    updateOctopus(dtFactor, now, target, d, dx, dy) {
         // Move towards target player
         if (target) {
             const nx = d > 0.001 ? dx / d : 0;
@@ -2641,7 +2662,7 @@ class Enemy extends Unit {
     }
     land(now) {
         this.airborne = false;
-        if (this.type === 'boss') {
+        if (this.type === 'octopus' || this.type === 'boss') {
             this.x = this.landX;
             this.y = this.landY;
             for (const p of GAME_STATE.players) {
@@ -2695,7 +2716,7 @@ class Enemy extends Unit {
         }
     }
     draw(now) {
-        if (this.type === 'boss') {
+        if (this.type === 'octopus' || this.type === 'boss') {
             if (this.airborne) {
                 const frac = Math.max(0, Math.min(1, 1 - (this.landAt - now) / 2000));
                 // growing impact marker on the ground
@@ -3860,7 +3881,7 @@ class MagicMissile {
             const vx = Math.cos(angle) * this.speed;
             const vy = Math.sin(angle) * this.speed;
             const kind = (this.player.accuracyModifier === 0) ? 'laser' : 'missile';
-            const proj = new Projectile(this.player.x, this.player.y, vx, vy, dmg, kind, this.player, this.player.unitType);
+            const proj = new Projectile(this.player.x, this.player.y, vx, vy, dmg, kind, this.player, null, this.player.unitType);
             if (isExplosive) {
                 proj.isExplosive = true;
                 proj.aoeRadius = aoeRadius;
@@ -4151,13 +4172,13 @@ class RocketProjectile {
         const dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
         GAME_STATE.hazards.push(new MineExplosion(this.x, this.y, blastRadius, now, this.player));
         for (const e of GAME_STATE.enemies) {
-            if (isDamageable(e)) continue;
+            if (!isDamageable(e)) continue;
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= (blastRadius + e.r) * (blastRadius + e.r)) {
                 e.hp -= dmg;
                 if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
-                    this.player.heal(PROJECTILE_HEAL*dmg)
+                    this.player.heal(PROJECTILE_HEAL*dmg);
                 }
                 spawnHitParticles(e.x, e.y, this.player ? this.player.color : '#ff4400');
             }
@@ -4215,7 +4236,7 @@ class SniperProjectile {
         this.vy = Math.sin(angle) * speed;
         this.damage = damage;
         this.player = player;
-        this.r = 6;
+        this.r = 8;
         this.dead = false;
         this.spawnTime = now;
         this.duration = 2000;
@@ -4250,9 +4271,9 @@ class SniperProjectile {
                 this.hitEnemies.add(e);
                 e.hp -= this.damage;
                 if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
-                    this.player.heal(PROJECTILE_HEAL*this.damage)
+                    this.player.heal(PROJECTILE_HEAL*this.damage);
                 }
-                if (this.player && this.player.freezeEnabled && e.type !== 'boss') {
+                if (this.player && this.player.freezeEnabled && !e.isBoss()) {
                     const dur = (e.type === 'meteor') ? 125 : 250;
                     e.freeze(dur, now);
                 }
@@ -4269,7 +4290,7 @@ class SniperProjectile {
         ctx.save();
         // Cyan / player color outer glow tracer line
         ctx.strokeStyle = this.player ? this.player.color : '#00ffff';
-        ctx.lineWidth = 6;
+        ctx.lineWidth = 3;
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(x1, y1);
@@ -4278,7 +4299,7 @@ class SniperProjectile {
 
         // Intense white inner core line
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(this.x, this.y);
@@ -4287,7 +4308,7 @@ class SniperProjectile {
         // Front glowing pulse bead
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.arc(this.x, this.y, 4.5, 0, Math.PI * 2);
+        ctx.arc(this.x, this.y, 1.5, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
@@ -4756,7 +4777,7 @@ class PlayerMine {
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= this.explosionRadius * this.explosionRadius) {
                 e.hp -= dmg;
-                if (this.player.freezeEnabled && e.type !== 'boss') {
+                if (this.player.freezeEnabled && !e.isBoss()) {
                     let dur = (e.type === 'meteor') ? 500 : 1000;
                     if (this.player.cryoMineBuffed) dur *= 2;
                     e.freeze(dur, now);
@@ -5091,7 +5112,7 @@ class TurretEntity extends Unit {
                 const vx = Math.cos(spreadAngle) * this.projectileSpeed;
                 const vy = Math.sin(spreadAngle) * this.projectileSpeed;
 
-                const proj = new Projectile(this.x, this.y, vx, vy, dmg, kind, this.player, this.unitType);
+                const proj = new Projectile(this.x, this.y, vx, vy, dmg, kind, this.player, null, this.unitType);
                 proj.sourceTurret = true;
                 GAME_STATE.projectiles.push(proj);
 
@@ -5162,7 +5183,7 @@ class TurretEntity extends Unit {
                                 while (diff > Math.PI) diff -= Math.PI * 2;
                                 if (Math.abs(diff) <= coneHalf) {
                                     e.hp -= fDmg;
-                                    if (this.player.freezeEnabled && e.type !== 'boss') {
+                                    if (this.player.freezeEnabled && !e.isBoss()) {
                                         let dur = (e.type === 'meteor') ? 62.5 : 125;
                                         e.freeze(dur, now);
                                     }
@@ -5411,11 +5432,11 @@ class Projectile {
         this.isExplosive = false;
         this.aoeRadius = 0;
         if (kind === 'shrapnel') {
-            this.r = 1.8;
+            this.r = 1.0;
         } else if (kind === 'missile' || kind === 'laser') {
-            this.r = 2.5;
+            this.r = 1.8;
         } else {
-            this.r = 5;
+            this.r = 4;
         }
         this.dead = false;
         this.life = (kind === 'shrapnel') ? 800 : 2000;
@@ -5444,7 +5465,7 @@ class Projectile {
                 
                 e.hp -= this.damage;
                 if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
-                    this.player.heal(PROJECTILE_HEAL*this.damage)
+                    this.player.heal(PROJECTILE_HEAL*this.damage);
                 }
                 
                 if (this.kind === 'shrapnel') {
@@ -5452,7 +5473,7 @@ class Projectile {
                     spawnHitParticles(this.x, this.y, '#ffaa00');
                 } else {
                     this.dead = true;
-                    if (this.player && this.player.freezeEnabled && e.type !== 'boss') {
+                    if (this.player && this.player.freezeEnabled && !e.isBoss()) {
                         let dur = (e.type === 'meteor') ? 125 : 250;
                         if (this.sourceTurret) dur *= 0.5;
                         e.freeze(dur, now);
@@ -5478,9 +5499,9 @@ class Projectile {
             if (dx * dx + dy * dy <= (radius + e.r) * (radius + e.r)) {
                 e.hp -= this.damage;
                 if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
-                    this.player.heal(PROJECTILE_HEAL*this.damage)
+                    this.player.heal(PROJECTILE_HEAL*this.damage);
                 }
-                if (this.player && this.player.freezeEnabled && e.type !== 'boss') {
+                if (this.player && this.player.freezeEnabled && !e.isBoss()) {
                     let dur = (e.type === 'meteor') ? 125 : 250;
                     if (this.sourceTurret) dur *= 0.5;
                     e.freeze(dur, now);
@@ -5536,7 +5557,7 @@ class Projectile {
             
             // Outer glowing line
             ctx.strokeStyle = this.player ? this.player.color : '#33ccff';
-            ctx.lineWidth = 3.5; // Match standard missile sizing visually
+            ctx.lineWidth = 1.8; // Match standard missile sizing visually
             ctx.lineCap = 'round';
             ctx.beginPath();
             ctx.moveTo(x1, y1);
@@ -5545,7 +5566,7 @@ class Projectile {
             
             // Inner core line
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 0.5;
             ctx.beginPath();
             ctx.moveTo(x1, y1);
             ctx.lineTo(this.x, this.y);
@@ -5569,10 +5590,10 @@ class Projectile {
             } else {
                 ctx.fillStyle = 'rgba(255,170,0,0.35)';
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r + 2.5, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, this.r + 1.5, 0, Math.PI * 2);
                 ctx.fill();
                 
-                ctx.fillStyle = '#ffaa00';
+                ctx.fillStyle = this.player ? this.player.color : '#ffaa00';
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
                 ctx.fill();
@@ -5755,7 +5776,7 @@ class PlayerFlail {
                     this.hitCooldown.set(e, now + cd);
                     spawnHitParticles(e.x, e.y, this.player.color);
                     
-                    if (this.player.freezeEnabled && speed >= 5.0 && e.type !== 'boss') {
+                    if (this.player.freezeEnabled && speed >= 5.0 && !e.isBoss()) {
                         const baseDur = this.player.cryoMineBuffed ? 500 : 250;
                         const speedScale = this.player.cryoMineBuffed ? 200 : 100;
                         const dur = baseDur + (speed - 5.0) * speedScale;
@@ -6028,7 +6049,7 @@ class OrbitProjectile {
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= explosionRadius * explosionRadius) {
                 e.hp -= dmg;
-                if (this.player.freezeEnabled && e.type !== 'boss') {
+                if (this.player.freezeEnabled && !e.isBoss()) {
                     let dur = (e.type === 'meteor') ? 500 : 1000;
                     if (this.player.cryoMineBuffed) dur *= 2;
                     e.freeze(dur, now);
@@ -6085,7 +6106,7 @@ class XPGem {
     constructor(x, y, value = 10, vx = 0, vy = 0) {
         this.x = Math.max(15, Math.min(W - 15, x));
         this.y = Math.max(15, Math.min(H - 15, y));
-        this.r = value >= 30 ? 6.5 : 3.5;
+        this.r = value >= 30 ? 4.5 : 2.5;
         this.value = value;
         this.vx = vx;
         this.vy = vy;
@@ -6331,7 +6352,7 @@ class SupplyDrop {
         } else if (this.type === 'freeze') {
             // Large 350px radius freeze
             for (const e of GAME_STATE.enemies) {
-                if (e.hp > 0 && e.type !== 'boss') {
+                if (e.hp > 0 && !e.isBoss()) {
                     const edx = e.x - this.x, edy = e.y - this.y;
                     if (edx * edx + edy * edy <= 350 * 350) {
                         e.freeze(3000, now);
@@ -6582,7 +6603,7 @@ function pickThreeFor(player) {
         if (u.id === 'buckshot_upgrade' && (!hasMissile || player.multiShot === 0)) return false;
         if (u.id === 'cluster_shot_upgrade' && (!taken.has('buckshot_upgrade') || !taken.has('mine_launcher_upgrade'))) return false;
         if (u.id === 'projectile_lifedrain_upgrade' && (!taken.has('buckshot_upgrade') || !taken.has('accuracy'))) return false;
-        if (u.id === 'heal_pack_upgrade' && (GAME_STATE.elapsed < 240000 || GAME_STATE.players.some(p => p.healPackEnabled) || (GAME_STATE.siphonCellsOwner !== null && GAME_STATE.siphonCellsOwner !== player))) return false;
+        if (u.id === 'heal_pack_upgrade' && (GAME_STATE.elapsed < 180000 || GAME_STATE.players.some(p => p.healPackEnabled) || (GAME_STATE.siphonCellsOwner !== null && GAME_STATE.siphonCellsOwner !== player))) return false;
         if (u.id === 'martyrdom_aura_upgrade' && !taken.has('final_blast')) return false;
         if (u.id === 'martyrs_presence_upgrade' && !taken.has('martyrdom_aura_upgrade')) return false;
         if (u.id === 'sacrificial_aegis_upgrade' && !taken.has('martyrs_presence_upgrade')) return false;
@@ -6591,7 +6612,7 @@ function pickThreeFor(player) {
         if (u.id === 'cooldown' && player.attackSpeedCount >= 7) return false;
         if (u.id === 'campervan' && (player.hp > player.maxHp * 0.5 || GAME_STATE.enemies.length < 200)) return false;
         if (u.id === 'final_blast' && (!hasMine || GAME_STATE.players.length < 2 || player.mineAoeCount < 1)) return false;
-        if (u.id === 'projectile_shield' && GAME_STATE.elapsed < 780000) return false;
+        if (u.id === 'projectile_shield' && GAME_STATE.elapsed < 420000) return false;
         if (u.oneShot && taken.has(u.id)) return false;
         if (u.id === 'heal' && player.hp >= player.maxHp * 0.5) return false;
         return true;
@@ -6860,10 +6881,10 @@ function spawnEnemy(now) {
     // Independent rolls in escalating order; first match wins.
     let type = 'swarm';
     const e = GAME_STATE.elapsed;
-    if (e >= 1200000) {
-        // Minute 20+: Starcraft 2 phase (no old monsters spawn)
-        if (e >= 1680000) {
-            // Minute 28+: Hellions join the mix
+    if (e >= 660000) {
+        // Minute 11+: Starcraft 2 phase (no old monsters spawn)
+        if (e >= 1140000) {
+            // Minute 19+: Hellions join the mix
             const r = Math.random();
             if (r < 0.12) type = 'hellion';
             else if (r < 0.16) type = 'medivac';
@@ -6872,8 +6893,8 @@ function spawnEnemy(now) {
             else if (r < 0.48) type = 'marauder';
             else if (r < 0.64) type = 'stalker';
             else type = 'baneling';
-        } else if (e >= 1620000) {
-            // Minute 27–28: Medivacs and Sentries are rare support spawns
+        } else if (e >= 1080000) {
+            // Minute 18–19: Medivacs and Sentries are rare support spawns
             const r = Math.random();
             if (r < 0.04) type = 'medivac';
             else if (r < 0.07) type = 'sentry';
@@ -6881,43 +6902,43 @@ function spawnEnemy(now) {
             else if (r < 0.40) type = 'marauder';
             else if (r < 0.57) type = 'stalker';
             else type = 'baneling';
-        } else if (e >= 1560000) {
-            // Minute 26–27: Sentries are rare
+        } else if (e >= 1020000) {
+            // Minute 17–18: Sentries are rare
             const r = Math.random();
             if (r < 0.03) type = 'sentry';
             else if (r < 0.16) type = 'spine_crawler';
             else if (r < 0.38) type = 'marauder';
             else if (r < 0.55) type = 'stalker';
             else type = 'baneling';
-        } else if (e >= 1380000) {
-            // Minute 23–26: Banelings, Marauders, Spine Crawlers, Stalkers
+        } else if (e >= 840000) {
+            // Minute 14-15: Banelings, Marauders, Spine Crawlers, Stalkers
             const r = Math.random();
             if (r < 0.12) type = 'spine_crawler';
             else if (r < 0.35) type = 'marauder';
             else if (r < 0.55) type = 'stalker';
             else type = 'baneling';
-        } else if (e >= 1320000) {
-            // Minute 22–23: Banelings, Marauders, and Spine Crawlers
+        } else if (e >= 780000) {
+            // Minute 13-14: Banelings, Marauders, and Spine Crawlers
             const r = Math.random();
             if (r < 0.15) type = 'spine_crawler';
             else if (r < 0.45) type = 'marauder';
             else type = 'baneling';
-        } else if (e >= 1260000) {
-            // Minute 21–22: Mix of banelings and marauders
+        } else if (e >= 720000) {
+            // Minute 12–13: Mix of banelings and marauders
             type = Math.random() < 0.55 ? 'baneling' : 'marauder';
         } else {
-            // Minute 20–21: Banelings only
+            // Minute 11–12: Banelings only
             type = 'baneling';
         }
     } else {
-        if (e > 1020000 && Math.random() < 0.08) type = 'spiky';         // 17 min
-        else if (e > 660000 && Math.random() < 0.12) type = 'dasher';    // 11 min
-        else if (e > 780000 && Math.random() < 0.12) type = 'shooter';   // 13 min
-        else if (e > 540000 && Math.random() < 0.10) type = 'meteor';    // 9 min
-        else if (e > 300000 && Math.random() < 0.05) type = 'brute_lord';
-        else if (e > 420000 && Math.random() < 0.20) type = 'speeder';
-        else if (e > 180000 && Math.random() < 0.10) type = 'mega_brute';
-        else if (e > 60000 && Math.random() < 0.30) type = 'brute';
+        if (e > 540000 && Math.random() < 0.08) type = 'spiky';         // 9 min
+        else if (e > 360000 && Math.random() < 0.12) type = 'dasher';    // 6 min
+        else if (e > 420000 && Math.random() < 0.12) type = 'shooter';   // 7 min
+        else if (e > 300000 && Math.random() < 0.10) type = 'meteor';    // 5 min
+        else if (e > 180000 && Math.random() < 0.05) type = 'brute_lord';
+        else if (e > 240000 && Math.random() < 0.20) type = 'speeder';
+        else if (e > 120000 && Math.random() < 0.10) type = 'mega_brute';
+        else if (e > 40000 && Math.random() < 0.30) type = 'brute';
     }
 
     let x, y;
@@ -6935,12 +6956,20 @@ function spawnEnemy(now) {
     GAME_STATE.enemies.push(new Enemy(x, y, type, now));
 }
 
-function spawnBoss(now) {
-    const boss = new Enemy(W / 2, H / 2, 'boss', now);
+// ---------------- Standardized Boss Waves ----------------
+
+function spawnOctopus(now) {
+    const boss = new Enemy(W / 2, H / 2, 'octopus', now);
     GAME_STATE.enemies.push(boss);
 }
 
-function spawnBossLvl2Ring(now) {
+function spawnFelhound(now) {
+    const c = aliveCentroid();
+    const fh = new Enemy(c.x, -40, 'felhound', now);
+    GAME_STATE.enemies.push(fh);
+}
+
+function spawnHordeRing(now) {
     const c = aliveCentroid();
     const count = 40;
     const radius = 350;
@@ -6954,7 +6983,7 @@ function spawnBossLvl2Ring(now) {
     }
 }
 
-function spawnBossLvl2Wave(now, elapsedEvent) {
+function spawnHordeWave(now, elapsedEvent) {
     const waveIdx = Math.floor((elapsedEvent - 4000) / 2000);
     let waveTypes = [];
     if (waveIdx === 0) {
@@ -6984,6 +7013,119 @@ function spawnBossLvl2Wave(now, elapsedEvent) {
     }
     for (const type of waveTypes) {
         spawnFromEdge(type, now);
+    }
+}
+
+const BOSS_CONFIGS = {
+    octopus: {
+        id: 'octopus',
+        name: 'The Octopus',
+        startMs: 480000,    // 8:00
+        durationLimit: 60000, // 9:00 force-resume
+        spawn(now) {
+            spawnOctopus(now);
+        },
+        isCleared() {
+            return !GAME_STATE.enemies.some(e => e.type === 'octopus');
+        },
+        onDefeat(now, enemy) {
+            dropBossHealthPacks(enemy ? enemy.x : W / 2, enemy ? enemy.y : H / 2);
+        }
+    },
+    horde: {
+        id: 'horde',
+        name: 'The Horde',
+        startMs: 600000,   // 10:00
+        durationLimit: 50000, // 10:50 force-resume
+        spawn(now) {
+            GAME_STATE.hordeStartTime = now;
+            GAME_STATE.hordeRingSpawned = false;
+            GAME_STATE.hordeLastWave = 0;
+        },
+        update(now) {
+            const elapsed = now - GAME_STATE.hordeStartTime;
+            if (elapsed >= 4000 && !GAME_STATE.hordeRingSpawned) {
+                GAME_STATE.hordeRingSpawned = true;
+                spawnHordeRing(now);
+            }
+            if (elapsed >= 4000 && now - GAME_STATE.hordeLastWave >= 2000) {
+                GAME_STATE.hordeLastWave = now;
+                spawnHordeWave(now, elapsed);
+            }
+        },
+        isCleared(now) {
+            return GAME_STATE.hordeRingSpawned && (now - GAME_STATE.hordeStartTime > 8000) && !GAME_STATE.enemies.some(e => e.eventEnemy);
+        },
+        onDefeat(now) {}
+    },
+    felhound: {
+        id: 'felhound',
+        name: 'The Felhound',
+        startMs: 900000,   // 15:00
+        durationLimit: 120000, // 17:00 force-resume
+        spawn(now) {
+            spawnFelhound(now);
+        },
+        isCleared() {
+            return !GAME_STATE.enemies.some(e => e.type === 'felhound');
+        },
+        onDefeat(now, enemy) {
+            dropBossHealthPacks(enemy ? enemy.x : W / 2, enemy ? enemy.y : H / 2);
+        }
+    }
+};
+
+function dropBossHealthPacks(x, y) {
+    const totalPacks = 3 * GAME_STATE.players.length;
+    for (let j = 0; j < totalPacks; j++) {
+        const angle = (j / totalPacks) * Math.PI * 2 + Math.random() * 0.2;
+        const dist = 15 + Math.random() * 25;
+        const hx = Math.max(20, Math.min(W - 20, x + Math.cos(angle) * dist));
+        const hy = Math.max(20, Math.min(H - 20, y + Math.sin(angle) * dist));
+        GAME_STATE.gems.push(new HealthPack(hx, hy, gameClock));
+    }
+}
+
+function startBossWave(bossId, now) {
+    const cfg = BOSS_CONFIGS[bossId];
+    if (!cfg) return;
+    GAME_STATE.activeBoss = bossId;
+    GAME_STATE.activeBossStartTime = now;
+    cfg.spawn(now);
+}
+
+function endBossWave(bossId, now, isCleared) {
+    const cfg = BOSS_CONFIGS[bossId];
+    if (!cfg) return;
+    GAME_STATE.activeBoss = null;
+    GAME_STATE.completedBosses.add(bossId);
+    GAME_STATE.resumeNormalSpawnAt = now + (isCleared ? 4000 : 0);
+}
+
+function updateBossState(now) {
+    // 1. Check if an upcoming boss should start
+    if (!GAME_STATE.activeBoss) {
+        for (const key of Object.keys(BOSS_CONFIGS)) {
+            const cfg = BOSS_CONFIGS[key];
+            if (GAME_STATE.elapsed >= cfg.startMs && !GAME_STATE.completedBosses.has(cfg.id)) {
+                startBossWave(cfg.id, now);
+                break;
+            }
+        }
+    }
+
+    // 2. If a boss is currently active, process updates and clear/timeout conditions
+    if (GAME_STATE.activeBoss) {
+        const cfg = BOSS_CONFIGS[GAME_STATE.activeBoss];
+        if (cfg.update) cfg.update(now);
+
+        const elapsedInBoss = GAME_STATE.elapsed - cfg.startMs;
+        const isCleared = cfg.isCleared(now);
+        const isTimedOut = elapsedInBoss >= cfg.durationLimit;
+
+        if (isCleared || isTimedOut) {
+            endBossWave(cfg.id, now, isCleared);
+        }
     }
 }
 
@@ -7050,30 +7192,21 @@ function startGame(playerCount, difficultyKey) {
     const testMin = GAME_STATE.testingMode ? GAME_STATE.testStartMinute : 0;
     const testMs  = testMin * 60000;
 
-    // Boss Lvl1 (starts minute 15, clears ~minute 16)
-    GAME_STATE.bossLvl1Started        = testMs >= 900000;
-    GAME_STATE.bossSpawned            = testMs >= 960000; // already cleared if past minute 16
-    GAME_STATE.bossLvl1ResumeSpawnAt  = testMs >= 960000 ? 0 : (testMs >= 900000 ? Infinity : 0);
+    GAME_STATE.activeBoss = null;
+    GAME_STATE.completedBosses = new Set();
+    GAME_STATE.resumeNormalSpawnAt = 0;
+    GAME_STATE.hordeRingSpawned = false;
+    GAME_STATE.hordeLastWave = 0;
+    GAME_STATE.hordeStartTime = 0;
 
-    // Boss Lvl2 horde (starts minute 17, cleared/wiped by minute 19:50)
-    const inHordeWindow = testMs >= 1020000 && testMs < 1190000;
-    GAME_STATE.bossLvl2Started        = testMs >= 1020000;
-    GAME_STATE.bossLvl2Active         = inHordeWindow;
-    GAME_STATE.bossLvl2RingSpawned    = testMs >= 1020000; // ring already placed
-    // Set bossLvl2Start far in the past so elapsedEvent is large (ring + waves are pre-resolved)
-    GAME_STATE.bossLvl2Start          = inHordeWindow ? (performance.now() - 60000) : 0;
-    GAME_STATE.bossLvl2LastWave       = inHordeWindow ? performance.now() : 0;
-    GAME_STATE.bossLvl2ResumeSpawnAt  = testMs >= 1190000 ? 0 : (inHordeWindow ? Infinity : 0);
-
-    // Horde wipeout (minute 19:50 / 1190000ms)
-    GAME_STATE.hordeWipeDone          = testMs >= 1190000;
-
-    // Boss Lvl3: Felhound (minute 24-26)
-    GAME_STATE.bossLvl3Started        = testMs >= 1440000;
-    GAME_STATE.bossLvl3Active         = testMs >= 1440000 && testMs < 1560000;
-    GAME_STATE.bossLvl3Start          = testMs >= 1440000 ? 1440000 : 0; // gameClock basis: wave starts at 1440000ms
-    GAME_STATE.bossLvl3ResumeSpawnAt  = testMs >= 1560000 ? 0 : (testMs >= 1440000 ? Infinity : 0);
-    GAME_STATE.felhoundSpawned        = testMs >= 1560000; // only mark as already done if past the whole wave
+    // In testing mode, pre-complete previous bosses
+    if (GAME_STATE.testingMode) {
+        const testMin = GAME_STATE.testStartMinute || 0;
+        const testMs = testMin * 60000;
+        if (testMs > 480000) GAME_STATE.completedBosses.add('octopus');
+        if (testMs > 600000) GAME_STATE.completedBosses.add('horde');
+        if (testMs > 900000) GAME_STATE.completedBosses.add('felhound');
+    }
     GAME_STATE.level = 1;
     GAME_STATE.xp = 0;
     GAME_STATE.nextXp = 100;
@@ -7720,107 +7853,18 @@ function update(dt, dtFactor, now) {
         }
     }
 
-    // Trigger boss level 1 at minute 15 (900000ms)
-    if (GAME_STATE.elapsed >= 900000 && !GAME_STATE.bossLvl1Started) {
-        GAME_STATE.bossLvl1Started = true;
-        GAME_STATE.bossLvl1ResumeSpawnAt = Infinity; // block spawning indefinitely until cleared or minute 16
-    }
-    if (GAME_STATE.bossLvl1Started && !GAME_STATE.bossSpawned) {
-        if (GAME_STATE.elapsed >= 905000) {
-            GAME_STATE.bossSpawned = true;
-            spawnBoss(now);
-        }
-    }
+    // Standardized boss wave processing
+    updateBossState(now);
 
-    // Trigger boss level 2 event at minute 19 (1140000ms)
-    if (GAME_STATE.elapsed >= 1140000 && !GAME_STATE.bossLvl2Started) {
-        GAME_STATE.bossLvl2Started = true;
-        GAME_STATE.bossLvl2Active = true;
-        GAME_STATE.bossLvl2Start = now;
-        GAME_STATE.bossLvl2LastWave = 0;
-        GAME_STATE.bossLvl2ResumeSpawnAt = Infinity; // block spawning indefinitely until cleared or minute 20
-    }
-
-    if (GAME_STATE.bossLvl2Active) {
-        const elapsedEvent = now - GAME_STATE.bossLvl2Start;
-        
-        // Spawn ring at exactly 4 seconds
-        if (elapsedEvent >= 4000 && !GAME_STATE.bossLvl2RingSpawned) {
-            GAME_STATE.bossLvl2RingSpawned = true;
-            spawnBossLvl2Ring(now);
-        }
-        
-        // Spawn waves every 2 seconds starting from 4 seconds
-        if (elapsedEvent >= 4000 && now - GAME_STATE.bossLvl2LastWave >= 2000) {
-            GAME_STATE.bossLvl2LastWave = now;
-            spawnBossLvl2Wave(now, elapsedEvent);
-        }
-        
-        // Check for clearance: all event monsters are dead
-        const hasEventMonsters = GAME_STATE.enemies.some(e => e.eventEnemy);
-        if (!hasEventMonsters && GAME_STATE.bossLvl2RingSpawned && elapsedEvent > 8000) {
-            GAME_STATE.bossLvl2Active = false;
-            GAME_STATE.bossLvl2ResumeSpawnAt = now + 5000; // resume spawning normally 5 seconds after clearing
-        }
-        
-        // Force resume normal spawning if not cleared before minute 19:50 (1190000ms)
-        if (GAME_STATE.elapsed >= 1190000) {
-            GAME_STATE.bossLvl2Active = false;
-            GAME_STATE.bossLvl2ResumeSpawnAt = now;
-        }
-    }
-
-    // Trigger Felhound boss wave at minute 24 (1440000ms)
-    if (GAME_STATE.elapsed >= 1440000 && !GAME_STATE.bossLvl3Started) {
-        GAME_STATE.bossLvl3Started = true;
-        GAME_STATE.bossLvl3Active = true;
-        GAME_STATE.bossLvl3Start = now;
-        GAME_STATE.bossLvl3ResumeSpawnAt = Infinity; // block all normal spawning
-    }
-    if (GAME_STATE.bossLvl3Started && !GAME_STATE.felhoundSpawned) {
-        if (GAME_STATE.elapsed >= 1440000) { // spawn immediately once wave starts
-            GAME_STATE.felhoundSpawned = true;
-            const c = aliveCentroid();
-            const fh = new Enemy(c.x, -40, 'felhound', now);
-            GAME_STATE.enemies.push(fh);
-        }
-    }
-    if (GAME_STATE.bossLvl3Active) {
-        const elapsedWave = now - GAME_STATE.bossLvl3Start;
-        // Check for early kill
-        const hasFelhound = GAME_STATE.enemies.some(e => e.type === 'felhound');
-        if (!hasFelhound && GAME_STATE.felhoundSpawned) {
-            GAME_STATE.bossLvl3Active = false;
-            GAME_STATE.bossLvl3ResumeSpawnAt = now + 3000; // resume in 3s after kill
-        }
-        // Force-end at minute 26 (1560000ms)
-        if (GAME_STATE.elapsed >= 1560000) {
-            GAME_STATE.bossLvl3Active = false;
-            GAME_STATE.bossLvl3ResumeSpawnAt = now;
-        }
-    }
-
-    // spawn enemies every 2s, but check boss levels presence and overrides
-    const bossLvl1Active = GAME_STATE.enemies.some(e => e.type === 'boss') || (GAME_STATE.bossLvl1Started && !GAME_STATE.bossSpawned);
-    const past16Min = GAME_STATE.elapsed >= 960000;
-    const bossLvl2Active = GAME_STATE.bossLvl2Active;
-    const past19Min50Sec = GAME_STATE.elapsed >= 1190000;
-    const bossLvl3Active = GAME_STATE.bossLvl3Active;
-    const past26Min = GAME_STATE.elapsed >= 1560000;
-
-    const canSpawnNormally = (!bossLvl1Active || past16Min) &&
-                             (now >= GAME_STATE.bossLvl1ResumeSpawnAt) &&
-                             (!bossLvl2Active || past19Min50Sec) &&
-                             (now >= GAME_STATE.bossLvl2ResumeSpawnAt) &&
-                             (!bossLvl3Active || past26Min) &&
-                             (now >= GAME_STATE.bossLvl3ResumeSpawnAt);
+    // Normal monster spawning (runs only when no boss is active and breather has passed)
+    const canSpawnNormally = !GAME_STATE.activeBoss && (now >= GAME_STATE.resumeNormalSpawnAt);
 
     if (now - GAME_STATE.lastSpawn > 2000 || GAME_STATE.enemies.length === 0) {
         if (canSpawnNormally) {
             GAME_STATE.lastSpawn = now;
-            const SC2_START = 1200000; // minute 20
+            const SC2_START = 660000; // minute 11
             const rampElapsed = GAME_STATE.elapsed >= SC2_START
-                ? GAME_STATE.elapsed - SC2_START   // restart ramp from minute 20
+                ? GAME_STATE.elapsed - SC2_START   // restart ramp from minute 11
                 : GAME_STATE.elapsed;
             const count = GAME_STATE.elapsed >= SC2_START
                 ? 3 + Math.floor(rampElapsed / 30000)  // SC2 phase: starts at 3
@@ -7840,9 +7884,12 @@ function update(dt, dtFactor, now) {
     for (const g of GAME_STATE.gems) g.update(dtFactor);
     for (const pa of GAME_STATE.particles) pa.update(dt, dtFactor);
 
-    // Sentry shield restore: after ALL damage is applied, restore 50% of damage
+    // Sentry shield restore: after ALL damage is applied, restore 75% of damage
     // taken by any enemy inside an alive sentry's guardian shield aura.
-    const aliveSentries = GAME_STATE.enemies.filter(s => s.type === 'sentry' && s.hp > 0);
+    const aliveSentries = [];
+    for (const e of GAME_STATE.enemies) {
+        if (e.type === 'sentry' && e.hp > 0) aliveSentries.push(e);
+    }
     if (aliveSentries.length > 0) {
         for (const e of GAME_STATE.enemies) {
             if (e.type === 'sentry') continue; // sentries don't shield each other
@@ -7856,18 +7903,18 @@ function update(dt, dtFactor, now) {
         }
     }
 
-    // process dead enemies -> drop gems
-    for (let i = GAME_STATE.enemies.length - 1; i >= 0; i--) {
+    // Process dead enemies -> drop gems & trigger death abilities
+    const hasHealPackUpgrade = GAME_STATE.players.some(p => p.alive && p.healPackEnabled);
+    const healPackChance = 0.005 + 0.005 * GAME_STATE.players.length;
+    let anyEnemyDied = false;
+
+    for (let i = 0; i < GAME_STATE.enemies.length; i++) {
         const e = GAME_STATE.enemies[i];
         if (e.hp <= 0) {
-            XPGem.createXPGems(e.x, e.y, e.xpValue)
-            const hasHealPackUpgrade = GAME_STATE.players.some(p => p.alive && p.healPackEnabled);
-            if (hasHealPackUpgrade) {
-                const playerCount = GAME_STATE.players.length;
-                const chance = 0.005 + 0.005 * playerCount;
-                if (Math.random() < chance) {
-                    GAME_STATE.gems.push(new HealthPack(e.x, e.y, gameClock));
-                }
+            anyEnemyDied = true;
+            XPGem.createXPGems(e.x, e.y, e.xpValue);
+            if (hasHealPackUpgrade && Math.random() < healPackChance) {
+                GAME_STATE.gems.push(new HealthPack(e.x, e.y, gameClock));
             }
             if (e.type === 'spiky') {
                 e.triggerSpikeExplosion(now);
@@ -7877,7 +7924,7 @@ function update(dt, dtFactor, now) {
             }
             if (e.type === 'spine_crawler' && !e.spawnedZerglings) {
                 e.spawnedZerglings = true;
-                // Burst open: release 4 zerglings in a tight scatter
+                // Burst open: release 7 zerglings in a tight scatter
                 const zergCount = 7;
                 for (let j = 0; j < zergCount; j++) {
                     const angle = (j / zergCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.8;
@@ -7889,23 +7936,19 @@ function update(dt, dtFactor, now) {
                     ));
                 }
             }
-            if (e.type === 'boss') {
-                GAME_STATE.bossLvl1ResumeSpawnAt = now + 5000;
-                
-                // Drop exactly 3 health packs per player, distributed in a small ring
-                const totalPacks = 3 * GAME_STATE.players.length;
-                for (let j = 0; j < totalPacks; j++) {
-                    const angle = (j / totalPacks) * Math.PI * 2 + Math.random() * 0.2;
-                    const dist = 15 + Math.random() * 25;
-                    const hx = e.x + Math.cos(angle) * dist;
-                    const hy = e.y + Math.sin(angle) * dist;
-                    GAME_STATE.gems.push(new HealthPack(hx, hy, gameClock));
-                }
+            if (e.type === 'octopus' || e.type === 'boss') {
+                dropBossHealthPacks(e.x, e.y);
+                endBossWave('octopus', now, true);
+            } else if (e.type === 'felhound') {
+                dropBossHealthPacks(e.x, e.y);
+                endBossWave('felhound', now, true);
             }
             spawnHitParticles(e.x, e.y, e.color);
-            GAME_STATE.enemies.splice(i, 1);
             GAME_STATE.kills++;
         }
+    }
+    if (anyEnemyDied) {
+        GAME_STATE.enemies = GAME_STATE.enemies.filter(e => e.hp > 0);
     }
     GAME_STATE.projectiles = GAME_STATE.projectiles.filter(p => !p.dead);
     GAME_STATE.enemyProjectiles = GAME_STATE.enemyProjectiles.filter(p => !p.dead);
@@ -7917,7 +7960,7 @@ function update(dt, dtFactor, now) {
     GAME_STATE.particles = GAME_STATE.particles.filter(p => !p.dead);
     // Cap particles at 250 to avoid drawing overhead
     if (GAME_STATE.particles.length > 250) {
-        GAME_STATE.particles.splice(0, GAME_STATE.particles.length - 250);
+        GAME_STATE.particles = GAME_STATE.particles.slice(-250);
     }
 }
 
@@ -7971,40 +8014,46 @@ function draw(now) {
     for (const ep of GAME_STATE.enemyProjectiles) ep.draw();
     for (const p of GAME_STATE.players) p.draw(now);
 
-    if (GAME_STATE.bossLvl1Started && !GAME_STATE.bossSpawned) {
+    if (GAME_STATE.activeBoss) {
+        const bossId = GAME_STATE.activeBoss;
+        const elapsed = now - (GAME_STATE.activeBossStartTime || now);
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#ff1100';
         ctx.shadowColor = '#000';
         ctx.shadowBlur = 4;
-        
-        ctx.font = 'bold 36px sans-serif';
-        ctx.fillText('WARNING: IMMINENT THREAT...', W / 2, H / 2 - 20);
-        ctx.font = '20px sans-serif';
-        ctx.fillStyle = '#ffaa00';
-        ctx.fillText('PREPARE FOR BOSS BATTLE', W / 2, H / 2 + 20);
-        ctx.restore();
-    }
 
-    if (GAME_STATE.bossLvl2Active) {
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#ff1100';
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur = 4;
-        
-        const elapsed = now - GAME_STATE.bossLvl2Start;
-        if (elapsed < 4000) {
-            ctx.font = 'bold 36px sans-serif';
-            ctx.fillText('WARNING: HORDE APPROACHING...', W / 2, H / 2 - 20);
-            ctx.font = '20px sans-serif';
-            ctx.fillStyle = '#ffaa00';
-            ctx.fillText('PREPARE YOUR DEFENSES', W / 2, H / 2 + 20);
-        } else {
-            ctx.font = 'bold 24px sans-serif';
-            ctx.fillText('SURVIVE THE HORDE EVENT!', W / 2, 45);
+        if (bossId === 'octopus') {
+            const octopus = GAME_STATE.enemies.find(e => e.type === 'octopus');
+            if (octopus && octopus.airborne) {
+                ctx.fillStyle = '#ff1100';
+                ctx.font = 'bold 36px sans-serif';
+                ctx.fillText('WARNING: IMMINENT THREAT...', W / 2, H / 2 - 20);
+                ctx.font = '20px sans-serif';
+                ctx.fillStyle = '#ffaa00';
+                ctx.fillText('PREPARE FOR OCTOPUS BOSS', W / 2, H / 2 + 20);
+            }
+        } else if (bossId === 'horde') {
+            ctx.fillStyle = '#ff1100';
+            if (elapsed < 4000) {
+                ctx.font = 'bold 36px sans-serif';
+                ctx.fillText('WARNING: HORDE APPROACHING...', W / 2, H / 2 - 20);
+                ctx.font = '20px sans-serif';
+                ctx.fillStyle = '#ffaa00';
+                ctx.fillText('PREPARE YOUR DEFENSES', W / 2, H / 2 + 20);
+            } else {
+                ctx.font = 'bold 24px sans-serif';
+                ctx.fillText('SURVIVE THE HORDE EVENT!', W / 2, 45);
+            }
+        } else if (bossId === 'felhound') {
+            if (elapsed < 4000) {
+                ctx.fillStyle = '#ff1100';
+                ctx.font = 'bold 36px sans-serif';
+                ctx.fillText('WARNING: FELHOUND APPROACHING...', W / 2, H / 2 - 20);
+                ctx.font = '20px sans-serif';
+                ctx.fillStyle = '#ffaa00';
+                ctx.fillText('PREPARE FOR BOSS BATTLE', W / 2, H / 2 + 20);
+            }
         }
         ctx.restore();
     }
