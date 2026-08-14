@@ -158,7 +158,7 @@
     }
     #gameOverModal h2 { color: #ff4444; }
     #countdown { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: clamp(80px, 7.9vw, 160px); font-weight: bold; color: #00ffcc; text-shadow: 0 0 25px #000, 0 0 12px #00ffcc; pointer-events: none; }
-    #levelUpLayer { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; }
+    #levelUpLayer { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 80; }
     #levelUpLayer.show { display: block; }
     .player-panel {
         position: absolute;
@@ -735,17 +735,17 @@
     </div>
 
     <div style="margin-bottom: 12px; background: rgba(255,255,255,0.03); border: 1px solid #333; border-radius: 6px; padding: 10px 12px;">
-        <div style="font-size: 12px; font-weight: bold; color: #00ffcc; text-transform: uppercase; margin-bottom: 3px;">How It Works & Details</div>
+        <div style="font-size: 12px; font-weight: bold; color: #00ffcc; text-transform: uppercase; margin-bottom: 3px;">How It Works</div>
         <div id="upgradeDetailHowText" style="font-size: 13px; color: #ddd; line-height: 1.45;"></div>
     </div>
 
     <div id="upgradeDetailCaveatsSection" style="margin-bottom: 12px; background: rgba(255,255,255,0.03); border: 1px solid #333; border-radius: 6px; padding: 10px 12px;">
-        <div style="font-size: 12px; font-weight: bold; color: #ffcc00; text-transform: uppercase; margin-bottom: 3px;">Caveats & Notes</div>
+        <div style="font-size: 12px; font-weight: bold; color: #ffcc00; text-transform: uppercase; margin-bottom: 3px;">Caveats</div>
         <div id="upgradeDetailCaveatsText" style="font-size: 13px; color: #ccc; line-height: 1.45;"></div>
     </div>
 
     <div style="margin-bottom: 16px; background: rgba(255,255,255,0.03); border: 1px solid #333; border-radius: 6px; padding: 10px 12px;">
-        <div style="font-size: 12px; font-weight: bold; color: #00ffcc; text-transform: uppercase; margin-bottom: 4px;">Future Unlocks</div>
+        <div style="font-size: 12px; font-weight: bold; color: #00ffcc; text-transform: uppercase; margin-bottom: 4px;">Continuation Upgrades</div>
         <div id="upgradeDetailUnlocksList" style="font-size: 13px; color: #ddd; line-height: 1.45;"></div>
     </div>
 
@@ -5822,7 +5822,7 @@ class MeleeSweep {
 
 function applyExplosionHealing(x, y, radius, totalDmg, causingPlayer) {
     if (!causingPlayer || !causingPlayer.explosionHealEnabled || totalDmg <= 0) return;
-    const healAmt = totalDmg * 0.01;
+    const healAmt = totalDmg * 0.005;
     for (const p of GAME_STATE.players) {
         if (!p.isAlive()) continue;
         const dx = p.x - x;
@@ -7813,7 +7813,7 @@ const UPGRADE_POOL = [
     { id: 'cryo_mine_upgrade', name: 'Polar Blast', desc: 'Increase Proximity Mine and Scourge Flail freeze duration by 100%.', oneShot: true, effect: (p) => p.cryoMineBuffed = true },
     { id: 'mine_scatter_upgrade', name: 'Scatter Charges', desc: '10% chance when dropping a mine to scatter 3-4 extra mines in random directions around you.', oneShot: true, effect: (p) => p.scatterMinesEnabled = true },
     { id: 'mine_launcher_upgrade', name: 'Mine Launcher', desc: 'Throw one mine forward in addition to the normal mine.', oneShot: true, effect: (p) => p.mineThrowEnabled = true },
-    { id: 'explosion_heal_upgrade', name: 'Blast Mending', desc: 'Explosions caused by you heal all players inside their blast radius equal to 1% of total damage dealt.', oneShot: true, effect: (p) => p.explosionHealEnabled = true },
+    { id: 'explosion_heal_upgrade', name: 'Blast Mending', desc: 'Explosions caused by you heal all players inside their blast radius equal to 0.5% of total damage dealt.', oneShot: true, effect: (p) => p.explosionHealEnabled = true },
     { id: 'mine_ring', name: 'Explosive Ring', desc: 'Replace the fire ring with spinning explosive charges.', oneShot: true, effect: (p) => p.mineRingEnabled = true },
     { id: 'heal_pack_upgrade', name: 'Siphon Cells', desc: 'Slaying monsters has a chance to drop a health pack that heals 30 HP.', oneShot: true, effect: (p) => { p.healPackEnabled = true; GAME_STATE.siphonCellsOwner = p; } },
     { id: 'melee_sledge_upgrade', name: 'Sledge Hammer', desc: 'Melee attacks trigger a heavy forward cone slam in your movement direction, dealing 400% damage.', oneShot: true, effect: (p) => p.sledgeEnabled = true },
@@ -8168,7 +8168,7 @@ const UPGRADE_DETAILS = {
     },
     'explosion_heal_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Calculates the total damage dealt by every player explosion (mines, cluster shots, seeking rockets, explosive rings, phase detonations). All players within the explosion blast radius heal for 1% of that total damage.',
+        how: 'Calculates the total damage dealt by every player explosion (mines, cluster shots, seeking rockets, explosive rings, phase detonations). All players within the explosion blast radius heal for 0.5% of that total damage.',
         caveats: 'Only heals players who are physically inside the explosion radius when it detonates.'
     },
     'mine_ring': {
@@ -8338,7 +8338,7 @@ function showUpgradeDetailModal(u) {
         caveatsSection.style.display = 'none';
     }
 
-    // 4. Future Unlocks List (built dynamically from UPGRADE_DEPENDENCIES with short descriptions)
+    // 4. Continuation Upgrades List (built dynamically from UPGRADE_DEPENDENCIES with short descriptions)
     const unlocksList = document.getElementById('upgradeDetailUnlocksList');
     const unlocks = getUpgradeUnlockInfo(u.id);
     if (!unlocks || unlocks.length === 0) {
@@ -9750,7 +9750,7 @@ const TREE_BRANCHES = [
             { id: "mine_all_attract_upgrade", name: "Singularity Core", desc: "100% of mines attract enemies" },
             { id: "mine_scatter_upgrade", name: "Scatter Charges", desc: "10% chance to drop 3-4 extra mines" },
             { id: "mine_launcher_upgrade", name: "Mine Launcher", desc: "Throw one mine forward in addition to the normal mine" },
-            { id: "explosion_heal_upgrade", name: "Blast Mending", desc: "Explosions heal players in blast radius for 1% of damage dealt" },
+            { id: "explosion_heal_upgrade", name: "Blast Mending", desc: "Explosions heal players in blast radius for 0.5% of damage dealt" },
             { id: "mine_ring", name: "Explosive Ring", desc: "Replace the fire ring with spinning explosive charges" },
             { id: "phase_detonation_upgrade", name: "Phase Detonation", desc: "Phase Dash landing explodes and releases explosive missiles" },
             { id: "cluster_shot_upgrade", name: "Cluster Shot", desc: "Magic Missile and Buckshot shrapnel explode on hit" },
