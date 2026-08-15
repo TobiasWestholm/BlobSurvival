@@ -648,11 +648,11 @@
         <div class="difficulty-list">
             <button class="upgrade-btn difficulty-card" data-difficulty="easy">
                 <span class="name">EASY</span>
-                <span class="desc">Deal 200% · take 50% · much sharper aim · 130% speed</span>
+                <span class="desc">Deal 200% · take 50% · much sharper aim · 140% speed</span>
             </button>
             <button class="upgrade-btn difficulty-card" data-difficulty="normal">
                 <span class="name">NORMAL</span>
-                <span class="desc">Deal 150% · take 75% · sharper aim · 115% speed</span>
+                <span class="desc">Deal 150% · take 75% · sharper aim · 120% speed</span>
             </button>
             <button class="upgrade-btn difficulty-card" data-difficulty="hard">
                 <span class="name">BRUTALLY HARD</span>
@@ -673,9 +673,23 @@
         <!-- Columns will be populated dynamically via JavaScript -->
     </div>
     
-    <div style="border-top: 1px solid #333; padding-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+    <div style="border-top: 1px solid #333; padding-top: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <button class="upgrade-btn" id="resetTestingBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 10px 20px;">Reset All</button>
-        <div style="display: flex; gap: 12px;">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div id="selectedUpgradesWidget" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #aaa; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 8px 14px; font-family: monospace;">
+                <span style="color: #888; font-weight: bold; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">Selected:</span>
+                <strong id="selectedUpgradesCount" style="color: #00ffcc; font-size: 14px;">0</strong>
+            </div>
+            <div id="expectedLevelsWidget" style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #aaa; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 8px 14px; font-family: monospace;">
+                <span style="color: #888; font-weight: bold; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">Expected Level:</span>
+                <span style="color: #fff;"><span style="color: #888;">4m:</span> <strong id="expLvl4" style="color: #00ffcc;">-</strong></span>
+                <span style="color: #444;">•</span>
+                <span style="color: #fff;"><span style="color: #888;">7m:</span> <strong id="expLvl7" style="color: #00ffcc;">-</strong></span>
+                <span style="color: #444;">•</span>
+                <span style="color: #fff;"><span style="color: #888;">10m:</span> <strong id="expLvl10" style="color: #00ffcc;">-</strong></span>
+                <span style="color: #444;">•</span>
+                <span style="color: #fff;"><span style="color: #888;">15m:</span> <strong id="expLvl15" style="color: #00ffcc;">-</strong></span>
+            </div>
             <button class="upgrade-btn" id="presetTestingBtn" style="margin: 0; width: auto; background: #222; color: #00ffcc; border-color: #00ffcc; padding: 10px 20px; font-weight: bold;">Preset</button>
             <button class="upgrade-btn" id="closeTestingBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 10px 20px;">Cancel</button>
             <button class="upgrade-btn" id="tryUpgradesBtn" style="margin: 0; width: auto; background: #00ffcc; color: #000; font-weight: bold; border-color: #00ffcc; padding: 10px 20px; box-shadow: 0 0 12px rgba(0,255,200,0.3);">Try Upgrades</button>
@@ -711,8 +725,8 @@
         </div>
         
         <label style="display: block; font-weight: bold; margin-bottom: 8px; color: #00ffcc; font-size: 14px;">2. Choose Difficulty & Launch:</label>
-        <button class="upgrade-btn test-diff-btn" data-diff="easy" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">EASY</span> (200% dmg, 50% taken, 130% speed)</button>
-        <button class="upgrade-btn test-diff-btn" data-diff="normal" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">NORMAL</span> (150% dmg, 75% taken, 115% speed)</button>
+        <button class="upgrade-btn test-diff-btn" data-diff="easy" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">EASY</span> (200% dmg, 50% taken, 140% speed)</button>
+        <button class="upgrade-btn test-diff-btn" data-diff="normal" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">NORMAL</span> (150% dmg, 75% taken, 120% speed)</button>
         <button class="upgrade-btn test-diff-btn" data-diff="hard" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">HARD</span> (100% dmg, 100% taken, 100% speed)</button>
     </div>
     <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
@@ -917,8 +931,8 @@ const PLAYER_DASH_BURST = 24;      // magic-missile projectiles fired radially a
 // dmgMult = weapon damage dealt; speedMult = base move speed; accuracy = starting
 // accuracyModifier (lower = tighter spread); takenMult = damage taken.
 const DIFFICULTIES = {
-    easy:   { name: 'Easy',   dmgMult: 2.0, speedMult: 1.3,  accuracy: 0.4225, takenMult: 0.5 },
-    normal: { name: 'Normal', dmgMult: 1.5, speedMult: 1.15, accuracy: 0.65,   takenMult: 0.75 },
+    easy:   { name: 'Easy',   dmgMult: 2.0, speedMult: 1.4,  accuracy: 0.4225, takenMult: 0.5 },
+    normal: { name: 'Normal', dmgMult: 1.5, speedMult: 1.2,  accuracy: 0.65,   takenMult: 0.75 },
     hard:   { name: 'Hard',   dmgMult: 1.0, speedMult: 1.0,  accuracy: 1.0,    takenMult: 1.0 }
 };
 
@@ -1044,8 +1058,9 @@ function tryStartDash(p) {
     p.dashing = true;
     p.dashBurstFired = false;
     p.dashUntil = gameClock + PLAYER_DASH_MS;
-    p.dashVx = (dx / len) * PLAYER_DASH_SPEED;
-    p.dashVy = (dy / len) * PLAYER_DASH_SPEED;
+    const dashSpeed = PLAYER_DASH_SPEED * (p.dashLvl2 ? 1.25 : 1.0);
+    p.dashVx = (dx / len) * dashSpeed;
+    p.dashVy = (dy / len) * dashSpeed;
 }
 
 class Unit {
@@ -2279,7 +2294,7 @@ class Enemy extends Unit {
                 s *= 0.5;
             }
             if (this.isPassingThroughLaserFence()) {
-                s *= 0.70; // 30% speed reduction while passing through laser fence
+                s *= 0.60; // 40% speed reduction while passing through laser fence
             }
         }
         return s;
@@ -4416,6 +4431,30 @@ function brightenColor(hex, factor = 1.8) {
     return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 
+function checkDeflectorOrbiterBlock(proj, now) {
+    if (!proj || proj.dead) return false;
+    for (const p of GAME_STATE.players) {
+        if (!p.alive) continue;
+        const deflectorWeapon = p.weapons ? p.weapons.find(w => w.id === 'projectile_shield') : null;
+        if (!deflectorWeapon || !deflectorWeapon.orbiters) continue;
+        for (const orb of deflectorWeapon.orbiters) {
+            if (now < orb.inactiveUntil) continue;
+            const dx = proj.x - orb.x, dy = proj.y - orb.y;
+            const touch = orb.r + (proj.r || 6) + 4;
+            if (dx * dx + dy * dy < touch * touch) {
+                proj.dead = true;
+                orb.inactiveUntil = now + 3000; // Shield destroyed: respawns in 3s
+                for (let i = 0; i < 8; i++) {
+                    const a = Math.random() * Math.PI * 2, s = 1.5 + Math.random() * 2.5;
+                    GAME_STATE.particles.push(new Particle(proj.x, proj.y, Math.cos(a) * s, Math.sin(a) * s, p.color, 300));
+                }
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // ---------------- Enemy projectiles & hazards ----------------
 class EnemyProjectile {
     constructor(x, y, vx, vy, damage, sourceEnemy = null, kind = 'standard') {
@@ -4433,6 +4472,9 @@ class EnemyProjectile {
         this.life -= dt;
         if (this.life <= 0) this.dead = true;
         if (this.x < -40 || this.y < -40 || this.x > W + 40 || this.y > H + 40) this.dead = true;
+        
+        // Deflector Orbiters interception check (Shooter bolts, Spikes)
+        if (checkDeflectorOrbiterBlock(this, now)) return;
         for (const p of GAME_STATE.players) {
             if (!p.alive) continue;
             const dx = p.x - this.x, dy = p.y - this.y;
@@ -4530,6 +4572,9 @@ class MarauderMissile {
 
         if (this.life <= 0) this.dead = true;
         if (this.x < -50 || this.y < -50 || this.x > W + 50 || this.y > H + 50) this.dead = true;
+
+        // Deflector Orbiters interception check (Marauder missiles)
+        if (checkDeflectorOrbiterBlock(this, now)) return;
 
         for (const p of GAME_STATE.players) {
             if (!p.alive) continue;
@@ -5084,7 +5129,7 @@ function fireInstantMissile(sourceX, sourceY, targetEnemy, dmg, isExplosive, aoe
             buckshotExplosive = true;
             buckshotAoe = (60 / 3) * player.mineAoeModifier;
         } else {
-            buckshotDmg = dmg / 6;
+            buckshotDmg = dmg / 3;
         }
         // Direction of fire is from shooter to monster
         const forwardAngle = Math.atan2(targetEnemy.y - sourceY, targetEnemy.x - sourceX);
@@ -5467,8 +5512,49 @@ class SniperProjectile {
         }
         const prevX = this.x;
         const prevY = this.y;
-        this.x += this.vx * dtFactor;
-        this.y += this.vy * dtFactor;
+        const nextX = this.x + this.vx * dtFactor;
+        const nextY = this.y + this.vy * dtFactor;
+
+        // 1. Raycast continuous step from (prevX, prevY) to (nextX, nextY) against all shield bearers
+        const shieldCheck = findShieldArcIntersection(prevX, prevY, nextX, nextY, null);
+        if (shieldCheck && shieldCheck.blocked) {
+            this.x = shieldCheck.hitX;
+            this.y = shieldCheck.hitY;
+            if (this.player && this.player.laserSniperEnabled) {
+                GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
+            }
+            this.dead = true;
+            spawnHitParticles(this.x, this.y, '#00e5ff');
+            return;
+        }
+
+        // 2. Point/proximity check against Shield Bearer shields at next position
+        for (const e of GAME_STATE.enemies) {
+            if (e.type !== 'shield_bearer' || e.hp <= 0) continue;
+            const dx = e.x - nextX, dy = e.y - nextY;
+            const sR = (e.shieldRadius || 100) + this.r;
+            if (dx * dx + dy * dy <= sR * sR) {
+                const angleToProj = Math.atan2(nextY - e.y, nextX - e.x);
+                let angleDiff = Math.abs(angleToProj - (e.facingAngle || 0));
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                angleDiff = Math.abs(angleDiff);
+                if (angleDiff <= (e.shieldHalfArc || Math.PI * 0.5)) {
+                    // Blocked at shield boundary
+                    this.x = e.x + Math.cos(angleToProj) * (e.shieldRadius || 100);
+                    this.y = e.y + Math.sin(angleToProj) * (e.shieldRadius || 100);
+                    if (this.player && this.player.laserSniperEnabled) {
+                        GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
+                    }
+                    this.dead = true;
+                    spawnHitParticles(this.x, this.y, '#00e5ff');
+                    return;
+                }
+            }
+        }
+
+        // 3. If unblocked by shields, advance position and spawn laser trail segment
+        this.x = nextX;
+        this.y = nextY;
         if (this.player && this.player.laserSniperEnabled) {
             GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
         }
@@ -5477,24 +5563,7 @@ class SniperProjectile {
             return;
         }
 
-        // Check shield bearer blocking before dealing damage
-        for (const e of GAME_STATE.enemies) {
-            if (e.type !== 'shield_bearer' || e.hp <= 0) continue;
-            const dx = e.x - this.x, dy = e.y - this.y;
-            if (dx * dx + dy * dy >= (e.shieldRadius + this.r) * (e.shieldRadius + this.r)) continue;
-            const angleToProj = Math.atan2(this.y - e.y, this.x - e.x);
-            let angleDiff = Math.abs(angleToProj - (e.facingAngle || 0));
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-            angleDiff = Math.abs(angleDiff);
-            if (angleDiff <= (e.shieldHalfArc || Math.PI * 0.5)) {
-                // Sniper shot is blocked by the shield
-                this.dead = true;
-                spawnHitParticles(this.x, this.y, '#00e5ff');
-                return;
-            }
-        }
-
-        // Damage everything along the line once
+        // 4. Damage monsters along the unblocked path
         for (const e of GAME_STATE.enemies) {
             if (!isTargetable(e)) continue;
             if (this.hitEnemies.has(e)) continue;
@@ -5502,10 +5571,22 @@ class SniperProjectile {
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy < (e.r + this.r) * (e.r + this.r)) {
+                // If the enemy itself is a shield bearer, check if hit is in front arc
+                if (e.type === 'shield_bearer') {
+                    const angleToHit = Math.atan2(prevY - e.y, prevX - e.x);
+                    let diff = Math.abs(angleToHit - (e.facingAngle || 0));
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    diff = Math.abs(diff);
+                    if (diff <= (e.shieldHalfArc || Math.PI * 0.5)) {
+                        this.dead = true;
+                        spawnHitParticles(this.x, this.y, '#00e5ff');
+                        return;
+                    }
+                }
                 this.hitEnemies.add(e);
                 e.hp -= this.damage;
-                if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
-                    this.player.heal(PROJECTILE_HEAL*this.damage);
+                if (this.player && this.player.projectileLifedrainEnabled && this.sourceUnitType === 'player') {
+                    this.player.heal(PROJECTILE_HEAL * this.damage);
                 }
                 if (this.player && this.player.freezeEnabled && !e.isBoss()) {
                     const dur = (e.type === 'meteor') ? 125 : 250;
@@ -5957,7 +6038,7 @@ class PlayerMine {
         this.player = player;
         this.dead = false;
         this.explosionRadius = 60 * this.player.mineAoeModifier;
-        this.attractsEnemies = player.mineAllAttractEnabled || (player.mineAttractEnabled && Math.random() < 0.10);
+        this.attractsEnemies = player.mineAllAttractEnabled || (player.mineAttractEnabled && Math.random() < 0.20);
         this.triggeredTime = 0;
         this.vx = 0;
         this.vy = 0;
@@ -6110,7 +6191,7 @@ class ProximityMine {
             }
             
             if (this.player.scatterMinesEnabled && Math.random() < 0.10) {
-                const count = 3 + Math.floor(Math.random() * 2);
+                const count = 6 + Math.floor(Math.random() * 2);
                 for (let i = 0; i < count; i++) {
                     const angle = Math.random() * Math.PI * 2;
                     const speed = 3.0 + Math.random() * 4.0;
@@ -6294,7 +6375,7 @@ class TurretEntity extends Unit {
         // Laser Fences continuation upgrade: damaging laser trail on turret fences
         if (this.player && this.player.laserWallsEnabled && this.connections && this.connections.length > 0) {
             if (!this.laserWallHitCooldown) this.laserWallHitCooldown = new Map();
-            const dmgPerSec = 25 * this.player.damageModifier * GAME_STATE.dmgFactor;
+            const dmgPerSec = 50 * this.player.damageModifier * GAME_STATE.dmgFactor;
             const dmgThisFrame = dmgPerSec * (dt / 1000);
 
             for (const conn of this.connections) {
@@ -6829,7 +6910,7 @@ class Projectile {
             isExplosive = true;
             aoeRadius = (60 / 3) * this.player.mineAoeModifier;
         } else {
-            dmg = this.damage / 6;
+            dmg = this.damage / 3;
         }
         
         for (let i = 0; i < 3; i++) {
@@ -6930,7 +7011,7 @@ class DeflectorShields {
     constructor(player) {
         this.id = 'projectile_shield';
         this.player = player;
-        this.rotSpeed = -0.045; // CCW rotation
+        this.rotSpeed = -0.075; // CCW rotation
         this.radius = 40;
         this.orbiters = [];
         this.initialized = false;
@@ -7218,7 +7299,7 @@ class DeflectorOrbiter {
         this.dead = false;
         this.x = player.x + Math.cos(startAngle) * radius;
         this.y = player.y + Math.sin(startAngle) * radius;
-        this.r = 9; // hit radius for blocking projectiles
+        this.r = 13; // hit radius for blocking projectiles
         this.inactiveUntil = 0;
     }
     update(dt, dtFactor = 1.0, now) {
@@ -7227,55 +7308,83 @@ class DeflectorOrbiter {
             return;
         }
         
-        const shieldSpeedScale = 1.0 + (1.0 / this.player.cooldownModifier - 1.0) * 0.08;
+        // Dynamic Attack Speed scaling: rotation speed scales directly with player attack speed
+        const attackSpeedRatio = 1.0 / (this.player.cooldownModifier || 1.0);
+        const shieldSpeedScale = attackSpeedRatio;
         
-        if (now < this.inactiveUntil) {
-            this.angle += this.rotSpeed * shieldSpeedScale * dtFactor;
-            this.x = this.player.x + Math.cos(this.angle) * this.orbitRadius;
-            this.y = this.player.y + Math.sin(this.angle) * this.orbitRadius;
-            return;
-        }
+        const prevX = this.x;
+        const prevY = this.y;
         
         this.angle += this.rotSpeed * shieldSpeedScale * dtFactor;
         this.x = this.player.x + Math.cos(this.angle) * this.orbitRadius;
         this.y = this.player.y + Math.sin(this.angle) * this.orbitRadius;
         
-        // Collide and destroy enemy projectiles
+        if (now < this.inactiveUntil) {
+            return;
+        }
+        
+        // Collide and destroy enemy projectiles (Shooter bolts, Spikes, Marauder missiles)
+        const dx_sweep = this.x - prevX;
+        const dy_sweep = this.y - prevY;
+        const sweepLen2 = dx_sweep * dx_sweep + dy_sweep * dy_sweep;
+
         for (const proj of GAME_STATE.enemyProjectiles) {
             if (proj.dead) continue;
-            const dx = proj.x - this.x;
-            const dy = proj.y - this.y;
-            const touch = this.r + proj.r + 2;
-            if (dx * dx + dy * dy < touch * touch) {
+            
+            // Continuous distance to the orbiter's sweep segment
+            let dist2;
+            if (sweepLen2 > 0) {
+                const t = Math.max(0, Math.min(1, ((proj.x - prevX) * dx_sweep + (proj.y - prevY) * dy_sweep) / sweepLen2));
+                const cx = prevX + t * dx_sweep;
+                const cy = prevY + t * dy_sweep;
+                const pdx = proj.x - cx;
+                const pdy = proj.y - cy;
+                dist2 = pdx * pdx + pdy * pdy;
+            } else {
+                const pdx = proj.x - this.x;
+                const pdy = proj.y - this.y;
+                dist2 = pdx * pdx + pdy * pdy;
+            }
+
+            const touch = this.r + (proj.r || 6) + 4;
+            if (dist2 < touch * touch) {
                 proj.dead = true;
-                // Deflector block particles (sparks)
-                for (let i = 0; i < 6; i++) {
-                    const a = Math.random() * Math.PI * 2, s = 1.0 + Math.random() * 1.5;
-                    GAME_STATE.particles.push(new Particle(proj.x, proj.y, Math.cos(a) * s, Math.sin(a) * s, this.player.color, 250));
+                this.inactiveUntil = now + 3000; // Shield destroyed: respawns in 3s
+                for (let i = 0; i < 8; i++) {
+                    const a = Math.random() * Math.PI * 2, s = 1.5 + Math.random() * 2.5;
+                    GAME_STATE.particles.push(new Particle(proj.x, proj.y, Math.cos(a) * s, Math.sin(a) * s, this.player.color, 300));
                 }
-                this.inactiveUntil = now + 2000; // temporarily disappear for 2 seconds
                 break;
             }
         }
     }
     draw() {
-        if (performance.now() < this.inactiveUntil) return;
+        const currentTime = (typeof gameClock !== 'undefined') ? gameClock : performance.now();
+        if (currentTime < this.inactiveUntil) return;
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle + Math.PI / 2);
         
-        // Draw the shield curve arc (facing along the orbit path)
-        ctx.strokeStyle = this.player.color;
-        ctx.lineWidth = 3.5;
+        // Outer glow arc (facing along the orbit path)
+        ctx.strokeStyle = this.player ? this.player.color : '#00ffff';
+        ctx.lineWidth = 4.0;
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.arc(0, 0, 7, -Math.PI / 3, Math.PI / 3);
+        ctx.arc(0, 0, 10, -Math.PI / 2.5, Math.PI / 2.5);
+        ctx.stroke();
+
+        // Inner bright core arc
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, -Math.PI / 3, Math.PI / 3);
         ctx.stroke();
         
         // Transparent player inner aura glow
-        ctx.fillStyle = this.player.color;
-        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = this.player ? this.player.color : '#00ffff';
+        ctx.globalAlpha = 0.3;
         ctx.beginPath();
-        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.arc(0, 0, 7, 0, Math.PI * 2);
         ctx.fill();
         
         ctx.restore();
@@ -7789,7 +7898,7 @@ const UPGRADE_POOL = [
     { id: 'laser_sniper_upgrade', name: 'Laser Sniper', desc: 'Increases Sniper Shot damage to 5x Magic Missile and leaves a decaying laser trail along its path.', oneShot: true, effect: (p) => p.laserSniperEnabled = true },
     { id: 'multishot', name: 'Split Shot', desc: 'Magic Missile fires at one additional enemy.', effect: (p) => p.multiShot += 1 },
     { id: 'dash', name: 'Phase Dash', desc: 'Double-tap a move key to dash, then burst missiles around you.', oneShot: true, effect: (p) => p.dashEnabled = true },
-    { id: 'dash_lvl2', name: 'Phase Mastery', desc: 'Increases Phase Dash recharge speed by 100%, leaves a burning fire trail when dashing, and grants invulnerability and a shield during the first half of recharge.', oneShot: true, effect: (p) => { p.dashLvl2 = true; p.dashCooldown = PLAYER_DASH_COOLDOWN / 2; } },
+    { id: 'dash_lvl2', name: 'Phase Mastery', desc: 'Increases Phase Dash range by 25%, recharge speed by 100%, leaves a burning fire trail when dashing, and grants invulnerability and a shield during the first half of recharge.', oneShot: true, effect: (p) => { p.dashLvl2 = true; p.dashCooldown = PLAYER_DASH_COOLDOWN / 2; } },
     { id: 'phase_detonation_upgrade', name: 'Phase Detonation', desc: 'Phase Dash landing triggers a full mine explosion and releases explosive magic missiles.', oneShot: true, effect: (p) => p.phaseDetonationEnabled = true },
     { id: 'unlock_ring', name: 'Fire Ring', desc: 'Unlock orbiting fire balls around you.', oneShot: true, effect: (p) => p.unlockWeapon('fire_ring') },
     { id: 'unlock_missile', name: 'Magic Missile', desc: 'Unlock the auto-firing Magic Missile weapon.', oneShot: true, effect: (p) => p.unlockWeapon('magic_missile') },
@@ -7797,8 +7906,8 @@ const UPGRADE_POOL = [
     { id: 'unlock_mine', name: 'Proximity Mine', desc: 'Unlock proximity mines that explode for AoE damage.', oneShot: true, effect: (p) => p.unlockWeapon('proximity_mine') },
     { id: 'unlock_turret', name: 'Auto-Turret', desc: 'Unlock deployable turrets that drop every 10s and shoot high-speed missiles for 35s.', oneShot: true, effect: (p) => p.unlockWeapon('turret') },
     { id: 'slow_walls_upgrade', name: 'Slow Walls', desc: 'Turrets create slowing laser fences between them that reduce monster movement speed by 40%.', oneShot: true, effect: (p) => p.slowWallsEnabled = true },
-    { id: 'laser_walls_upgrade', name: 'Laser Fences', desc: 'Turret fences become high-energy laser barriers dealing 25 damage/sec while maintaining 40% slow.', oneShot: true, effect: (p) => { p.laserWallsEnabled = true; p.slowWallsEnabled = true; } },
-    { id: 'building_duration_upgrade', name: 'Fortified Structures', desc: 'Increases the duration of turrets by 25% and turret HP by 50%.', effect: (p) => { p.buildingDurationModifier *= 1.25; p.buildingHealthModifier *= 1.5; p.buildingDurationCount = (p.buildingDurationCount || 0) + 1; } },
+    { id: 'laser_walls_upgrade', name: 'Laser Fences', desc: 'Turret fences become high-energy laser barriers dealing 50 damage/sec while maintaining 40% slow.', oneShot: true, effect: (p) => { p.laserWallsEnabled = true; p.slowWallsEnabled = true; } },
+    { id: 'building_duration_upgrade', name: 'Fortified Structures', desc: 'Increases the duration of turrets by 30% and turret HP by 50%.', effect: (p) => { p.buildingDurationModifier *= 1.30; p.buildingHealthModifier *= 1.5; p.buildingDurationCount = (p.buildingDurationCount || 0) + 1; } },
     { id: 'turret_cooldown_upgrade', name: 'Rapid Deployment', desc: 'Reduces turret placement, dispenser, and Autonomous Network expansion timers by 30%.', effect: (p) => { p.buildingCooldownModifier = (p.buildingCooldownModifier || 1.0) * 0.70; p.turretCooldownCount = (p.turretCooldownCount || 0) + 1; } },
     { id: 'turret_flamethrower_upgrade', name: 'Flamethrower Turret', desc: 'Adds a 2nd firing head to turrets that unleashes a flame cone every 4th attack for 4x damage.', oneShot: true, effect: (p) => p.turretFlamethrowerEnabled = true },
     { id: 'turret_flamethrower_lvl2_upgrade', name: 'Inferno Nozzles', desc: 'Extends Flamethrower Turret range from 120px to 150px and widens the fire cone to 135°.', oneShot: true, effect: (p) => p.infernoNozzlesEnabled = true },
@@ -7807,11 +7916,11 @@ const UPGRADE_POOL = [
     { id: 'turret_saw_upgrade', name: 'Sawblade Turrets', desc: 'Equips turrets with rotating sawblades dealing continuous 15 damage/sec to all nearby monsters within 50px.', oneShot: true, effect: (p) => p.turretSawEnabled = true },
     { id: 'turret_dispenser_upgrade', name: 'Supply Dispenser', desc: 'Each active turret has a 2% chance every 10s to dispense power-up items.', oneShot: true, effect: (p) => p.turretDispenserEnabled = true },
     { id: 'mine_aoe_upgrade', name: 'Volatile Powder', desc: 'Increase proximity mine explosion radius by 60% and Martyrdom blast radius by 10%.', effect: (p) => { p.mineAoeModifier *= 1.60; p.mineAoeCount = (p.mineAoeCount || 0) + 1; } },
-    { id: 'mine_attract_upgrade', name: 'Magnetic Core', desc: '10% of proximity mines attract enemies for 2.5s before exploding.', oneShot: true, effect: (p) => p.mineAttractEnabled = true },
+    { id: 'mine_attract_upgrade', name: 'Magnetic Core', desc: '20% of proximity mines attract enemies for 2.5s before exploding.', oneShot: true, effect: (p) => p.mineAttractEnabled = true },
     { id: 'mine_all_attract_upgrade', name: 'Singularity Core', desc: 'All proximity mines attract enemies for 2.5s before exploding.', oneShot: true, effect: (p) => p.mineAllAttractEnabled = true },
     { id: 'freeze_upgrade', name: 'Cryo Freeze', desc: 'Magic Missiles and Scourge Flail freeze enemies for 0.25s, and mines freeze for 1s.', oneShot: true, effect: (p) => p.freezeEnabled = true },
     { id: 'cryo_mine_upgrade', name: 'Polar Blast', desc: 'Increase Proximity Mine and Scourge Flail freeze duration by 100%.', oneShot: true, effect: (p) => p.cryoMineBuffed = true },
-    { id: 'mine_scatter_upgrade', name: 'Scatter Charges', desc: '10% chance when dropping a mine to scatter 3-4 extra mines in random directions around you.', oneShot: true, effect: (p) => p.scatterMinesEnabled = true },
+    { id: 'mine_scatter_upgrade', name: 'Scatter Charges', desc: '10% chance when dropping a mine to scatter 6-7 extra mines in random directions around you.', oneShot: true, effect: (p) => p.scatterMinesEnabled = true },
     { id: 'mine_launcher_upgrade', name: 'Mine Launcher', desc: 'Throw one mine forward in addition to the normal mine.', oneShot: true, effect: (p) => p.mineThrowEnabled = true },
     { id: 'explosion_heal_upgrade', name: 'Blast Mending', desc: 'Explosions caused by you heal all players inside their blast radius equal to 0.5% of total damage dealt.', oneShot: true, effect: (p) => p.explosionHealEnabled = true },
     { id: 'mine_ring', name: 'Explosive Ring', desc: 'Replace the fire ring with spinning explosive charges.', oneShot: true, effect: (p) => p.mineRingEnabled = true },
@@ -7823,18 +7932,18 @@ const UPGRADE_POOL = [
     { id: 'melee_reflect_upgrade', name: 'Barbed Carapace', desc: 'Deals 25% of your Max HP back as damage to any monster that damages you, and turrets reflect 2.5% max HP.', oneShot: true, effect: (p) => p.reflectDamageEnabled = true },
     { id: 'melee_range_upgrade', name: 'Extended Joints', desc: 'Increase the range of all melee attacks by 40%.', oneShot: true, effect: (p) => p.meleeRangeModifier = 1.40 },
     { id: 'rocket_upgrade', name: 'Seeking Rocket', desc: '10% chance when firing magic missiles to launch a homing rocket that deals AoE damage.', oneShot: true, effect: (p) => p.rocketEnabled = true },
-    { id: 'buckshot_upgrade', name: 'Buckshot Volley', desc: 'Magic missiles spawn 3 smaller forward-spreading shrapnel projectiles upon hit, dealing 1/6 damage.', oneShot: true, effect: (p) => p.buckshotEnabled = true },
+    { id: 'buckshot_upgrade', name: 'Buckshot Volley', desc: 'Magic missiles spawn 3 smaller forward-spreading shrapnel projectiles upon hit, dealing 1/3 damage.', oneShot: true, effect: (p) => p.buckshotEnabled = true },
     { id: 'cluster_shot_upgrade', name: 'Cluster Shot', desc: 'Magic Missile and Buckshot shrapnel are replaced by explosive projectiles scaling with mine damage and AoE.', oneShot: true, effect: (p) => p.clusterShotEnabled = true },
     { id: 'projectile_lifedrain_upgrade', name: 'Warlock darts', desc: 'Gain health equal to 0.1% of the damage you deal with projectiles fired by you.', oneShot: true, effect: (p) => p.projectileLifedrainEnabled = true },
     { id: 'campervan', name: 'Campervan Rampage', desc: 'Transform into an invulnerable campervan for 20 seconds that crushes everything in its path.', oneShot: true, effect: (p) => { p.campervanUntil = gameClock + 20000; } },
     { id: 'final_blast', name: 'Martyrdom', desc: 'Explode in a nuclear blast upon death, and permanently halve your respawn time.', oneShot: true, effect: (p) => { p.finalBlastEnabled = true; p.reviveTimeModifier = 0.5; } },
-    { id: 'projectile_shield', name: 'Deflector Orbiters', desc: 'Unlock an orbiting barrier of 3 shields that rotates and absorbs enemy projectiles.', oneShot: true, effect: (p) => p.unlockWeapon('projectile_shield') },
+    { id: 'projectile_shield', name: 'Deflector Orbiters', desc: 'Unlock an orbiting barrier of 3 shields that block enemy projectiles. Absorbing a projectile destroys the shield, respawning after 3s. Scales with Attack Speed.', oneShot: true, effect: (p) => p.unlockWeapon('projectile_shield') },
     { id: 'heal', name: 'Second Wind', desc: 'Fully restore HP and double your Max HP.', effect: (p) => { p.secondWindCount = (p.secondWindCount || 0) + 1; p.maxHp = Math.round(p.maxHp * 2.0); p.hp = p.maxHp; } },
     { id: 'martyrdom_aura_upgrade', name: "Martyr's Aura", desc: 'Leaves a healing aura when you are dead, damaging and slowing enemies.', oneShot: true, effect: (p) => { p.martyrdomAuraEnabled = true; } },
     { id: 'martyrs_presence_upgrade', name: "Martyr's Presence", desc: "Enlarges Martyr's Aura by 50%, knocks back surviving enemies on nuclear death, and provokes nearby enemies.", oneShot: true, effect: (p) => { p.martyrsPresenceEnabled = true; } },
     { id: 'sacrificial_aegis_upgrade', name: 'Sacrificial Aegis', desc: 'Reduces damage taken by nearby allies by 25%, while increasing your damage taken by 50%, and further reduces respawn time by 25%.', oneShot: true, effect: (p) => { p.sacrificialAegisEnabled = true; p.reviveTimeModifier *= 0.75; } },
     { id: 'carapace_healer_upgrade', name: 'Sympathetic Shell', desc: 'Increases size by 50%, and heals all players 0.25% of your Max HP when taking damage.', oneShot: true, effect: (p) => { p.carapaceHealerEnabled = true; p.r *= 1.5; } },
-    { id: 'ice_trail_upgrade', name: 'Glacial Slide', desc: 'Increase movement speed by another 20%, leave a slowing ice trail, and gain immunity to fire damage while on ice.', oneShot: true, effect: (p) => { p.speed *= 1.20; p.iceTrailEnabled = true; } }
+    { id: 'ice_trail_upgrade', name: 'Glacial Slide', desc: 'Increase movement speed by another 30%, leave a slowing ice trail, and gain immunity to fire damage while on ice.', oneShot: true, effect: (p) => { p.speed *= 1.30; p.iceTrailEnabled = true; } }
 ];
 
 const ONE_SHOT_WEIGHT = 0.75;
@@ -7917,7 +8026,7 @@ function pickThreeFor(player) {
         if (u.id === 'sacrificial_aegis_upgrade' && !taken.has('martyrs_presence_upgrade')) return false;
         if (u.id === 'carapace_healer_upgrade' && !taken.has('melee_reflect_upgrade')) return false;
         if (u.id === 'ice_trail_upgrade' && (!taken.has('speed_lvl2') || !taken.has('freeze_upgrade'))) return false;
-        if (u.id === 'cooldown' && player.attackSpeedCount >= 7) return false;
+        if (u.id === 'cooldown' && player.attackSpeedCount >= 6) return false;
         if (u.id === 'campervan' && (player.hp > player.maxHp * 0.5 || GAME_STATE.enemies.length < 200)) return false;
         if (u.id === 'final_blast' && (!hasMine || GAME_STATE.players.length < 2 || player.mineAoeCount < 1)) return false;
         if (u.id === 'projectile_shield' && GAME_STATE.elapsed < 420000) return false;
@@ -7938,7 +8047,7 @@ function pickThreeFor(player) {
             if (u.oneShot || u.id === 'unlock_ring') return false;
             if (u.id === 'multishot' && !hasMissile) return false;
             if (u.id === 'mine_aoe_upgrade' && (!hasMine || player.mineAoeCount >= 3)) return false;
-            if (u.id === 'cooldown' && player.attackSpeedCount >= 7) return false;
+            if (u.id === 'cooldown' && player.attackSpeedCount >= 6) return false;
             return true;
         });
         out.push(base[Math.floor(Math.random() * base.length)]);
@@ -8012,9 +8121,9 @@ const UPGRADE_DETAILS = {
         caveats: 'Damage increases multiply with difficulty damage multipliers.'
     },
     'cooldown': {
-        stacking: 'Can be selected up to 7 times. Attack interval divisor increases by 1.50x per stack (mines by 1.25x).',
+        stacking: 'Can be selected up to 6 times. Attack interval divisor increases by 1.50x per stack (mines by 1.25x).',
         how: 'Reduces the delay between weapon attacks, allowing Magic Missiles, Melee Sweeps, and Turrets to fire 50% faster with each stack.',
-        caveats: 'Has a maximum cap of 7 stacks.'
+        caveats: 'Has a maximum cap of 6 stacks.'
     },
     'accuracy': {
         stacking: 'One-shot permanent unlock.',
@@ -8048,7 +8157,7 @@ const UPGRADE_DETAILS = {
     },
     'dash_lvl2': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Cuts Phase Dash cooldown in half (from 3.0s to 1.5s), leaves a trail of scorching fire behind your dash path, and grants complete invulnerability and an impenetrable shield for the first half of the recharge duration.',
+        how: 'Increases Phase Dash distance by +25%, cuts Phase Dash cooldown in half (from 3.0s to 1.5s), leaves a trail of scorching fire behind your dash path, and grants complete invulnerability and an impenetrable shield for the first half of the recharge duration.',
         caveats: 'Invulnerability shield lasts for 0.75s after dashing.'
     },
     'phase_detonation_upgrade': {
@@ -8088,11 +8197,11 @@ const UPGRADE_DETAILS = {
     },
     'laser_walls_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Turret fences become energized laser barriers dealing 25 damage per second to monsters passing through, while maintaining the 40% slow.',
+        how: 'Turret fences become energized laser barriers dealing 50 damage per second to monsters passing through, while maintaining the 40% slow.',
         caveats: 'Damage scales continuously as long as monsters remain inside the laser fence.'
     },
     'building_duration_upgrade': {
-        stacking: 'Can be selected multiple times. Each selection adds +25% turret duration and +50% turret HP.',
+        stacking: 'Can be selected multiple times. Each selection adds +30% turret duration and +50% turret HP.',
         how: 'Extends how long turrets stay alive before expiring and increases their maximum health to survive heavy monster swarms.',
         caveats: 'Applies to all currently placed and future turrets.'
     },
@@ -8138,7 +8247,7 @@ const UPGRADE_DETAILS = {
     },
     'mine_attract_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: '10% of dropped proximity mines become magnetic singularities, pulling nearby enemies inward for 2.5 seconds before exploding.',
+        how: '20% of dropped proximity mines become magnetic singularities, pulling nearby enemies inward for 2.5 seconds before exploding.',
         caveats: 'Attracted enemies are pulled towards the center of the mine.'
     },
     'mine_all_attract_upgrade': {
@@ -8158,7 +8267,7 @@ const UPGRADE_DETAILS = {
     },
     'mine_scatter_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: '10% chance when dropping a mine to scatter 3 to 4 additional bonus mines in random directions around you.',
+        how: '10% chance when dropping a mine to scatter 6 to 7 additional bonus mines in random directions around you.',
         caveats: 'Scattered mines arm and detonate with identical stats to normal mines.'
     },
     'mine_launcher_upgrade': {
@@ -8218,7 +8327,7 @@ const UPGRADE_DETAILS = {
     },
     'buckshot_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'When Magic Missiles hit an enemy, they burst into 3 forward-spreading shrapnel projectiles that pierce through nearby enemies for 1/6 damage.',
+        how: 'When Magic Missiles hit an enemy, they burst into 3 forward-spreading shrapnel projectiles that pierce through nearby enemies for 1/3 damage.',
         caveats: 'Shrapnel spreads in a forward cone from the impact point.'
     },
     'cluster_shot_upgrade': {
@@ -8243,8 +8352,8 @@ const UPGRADE_DETAILS = {
     },
     'projectile_shield': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Spawns 3 orbiting deflector shields around you that rotate counter-clockwise and absorb incoming enemy projectiles on contact.',
-        caveats: 'Only unlocks after Minute 7 (420s).'
+        how: 'Spawns 3 orbiting deflector shields around you that rotate counter-clockwise and destroy incoming enemy projectiles (Shooter bolts, Spikes, and Marauder missiles) on contact. When a shield blocks a projectile, that shield is destroyed and respawns after 3 seconds. Rotation speed scales directly with your Attack Speed.',
+        caveats: 'Each individual shield has a 3-second respawn cooldown after blocking a projectile.'
     },
     'heal': {
         stacking: 'This upgrade can be selected multiple times without limit.',
@@ -8273,7 +8382,7 @@ const UPGRADE_DETAILS = {
     },
     'ice_trail_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Increases movement speed by another +20%, leaves a persistent ice trail that slows enemy movement by 50%, boosts Laser Trail damage, and grants complete immunity to fire damage while walking on ice.',
+        how: 'Increases movement speed by another +30%, leaves a persistent ice trail that slows enemy movement by 50%, boosts Laser Trail damage, and grants complete immunity to fire damage while walking on ice.',
         caveats: 'Ice trail persists for several seconds behind your movement path.'
     }
 };
@@ -9382,8 +9491,9 @@ function startGame(playerCount, difficultyKey) {
     const diff = DIFFICULTIES[difficultyKey] || DIFFICULTIES.normal;
     GAME_STATE.difficulty = diff;
     GAME_STATE.siphonCellsOwner = null;
-    // +5% base movement speed per extra player (1p=1.00 ... 4p=1.15), then difficulty.
-    const speedFactor = (1 + 0.05 * (n - 1)) * diff.speedMult;
+    // Co-op base movement speed bonus: 1p = +0% (1.00), 2p = +10% (1.10), 3p = +15% (1.15), 4p = +20% (1.20), then difficulty.
+    const coopSpeedBonus = n > 1 ? (1 + 0.05 * n) : 1.0;
+    const speedFactor = coopSpeedBonus * diff.speedMult;
     GAME_STATE.players = [];
     for (let i = 0; i < n; i++) {
         const p = new Player(i, PLAYER_DEFS[i]);
@@ -9727,17 +9837,17 @@ const TREE_BRANCHES = [
         title: "Ranged",
         nodes: [
             { id: "unlock_missile", name: "Magic Missile", desc: "Unlock magic missiles" },
-            { id: "accuracy", name: "Steady Aim", desc: "Reduce projectile spread to zero" },
+            { id: "accuracy", name: "Accurate Shot", desc: "Magic Missile tracks with precision and penetrates 1 extra target" },
             { id: "instant_missile_upgrade", name: "Instant Precision", desc: "Missiles, Lasers and Cluster Shots hit instantly (also Turrets)" },
             { id: "sniper_shot_upgrade", name: "Sniper Shot", desc: "Every 3rd volley fires a piercing beam at the strongest enemy" },
             { id: "laser_sniper_upgrade", name: "Laser Sniper", desc: "Sniper Shot deals 5x damage and leaves a laser trail" },
-            { id: "multishot", name: "Split Shot", desc: "Target +1 extra enemy (stacks)" },
-            { id: "buckshot_upgrade", name: "Buckshot Volley", desc: "Spawns 3 forward shrapnel on hit" },
+            { id: "multishot", name: "Multishot", desc: "+1 Magic Missile per volley" },
+            { id: "buckshot_upgrade", name: "Buckshot Volley", desc: "Spawns 3 forward shrapnel on hit dealing 1/3 damage" },
             { id: "cluster_shot_upgrade", name: "Cluster Shot", desc: "Magic Missile and Buckshot shrapnel explode on hit" },
             { id: "projectile_lifedrain_upgrade", name: "Warlock darts", desc: "Gain 0.1% of projectile damage" },
             { id: "rocket_upgrade", name: "Seeking Rocket", desc: "10% chance to launch homing rocket" },
             { id: "dash", name: "Phase Dash", desc: "Double tap to dash & fire missiles" },
-            { id: "dash_lvl2", name: "Phase Mastery", desc: "Reduce dash CD & gain fire trail" },
+            { id: "dash_lvl2", name: "Phase Mastery", desc: "+25% dash range, reduce CD & gain fire trail" },
             { id: "phase_detonation_upgrade", name: "Phase Detonation", desc: "Phase Dash landing explodes and releases explosive missiles" },
         ]
     },
@@ -9746,9 +9856,9 @@ const TREE_BRANCHES = [
         nodes: [
             { id: "unlock_mine", name: "Proximity Mine", desc: "Unlock proximity mines" },
             { id: "mine_aoe_upgrade", name: "Volatile Powder", desc: "Increase mine radius (stacks, max 3)" },
-            { id: "mine_attract_upgrade", name: "Magnetic Core", desc: "10% of mines attract enemies" },
+            { id: "mine_attract_upgrade", name: "Magnetic Core", desc: "20% of mines attract enemies" },
             { id: "mine_all_attract_upgrade", name: "Singularity Core", desc: "100% of mines attract enemies" },
-            { id: "mine_scatter_upgrade", name: "Scatter Charges", desc: "10% chance to drop 3-4 extra mines" },
+            { id: "mine_scatter_upgrade", name: "Scatter Charges", desc: "10% chance to drop 6-7 extra mines" },
             { id: "mine_launcher_upgrade", name: "Mine Launcher", desc: "Throw one mine forward in addition to the normal mine" },
             { id: "explosion_heal_upgrade", name: "Blast Mending", desc: "Explosions heal players in blast radius for 0.5% of damage dealt" },
             { id: "mine_ring", name: "Explosive Ring", desc: "Replace the fire ring with spinning explosive charges" },
@@ -9779,10 +9889,10 @@ const TREE_BRANCHES = [
         title: "Turrets",
         nodes: [
             { id: "unlock_turret", name: "Auto-Turret", desc: "Unlock deployable turrets" },
-            { id: "slow_walls_upgrade", name: "Slow Walls", desc: "Turrets form laser fences between them that slow monsters by 30%" },
-            { id: "laser_walls_upgrade", name: "Laser Fences", desc: "Turret laser fences deal 25 damage/sec to monsters passing through, while slowing them 30%" },
-            { id: "building_duration_upgrade", name: "Fortified Structures", desc: "Increases the duration of all turrets by 40% (stacks)" },
-            { id: "turret_cooldown_upgrade", name: "Rapid Deployment", desc: "Reduces turret placement, dispenser & expansion timers by 20% (stacks)" },
+            { id: "slow_walls_upgrade", name: "Slow Walls", desc: "Turrets form laser fences between them that slow monsters by 40%" },
+            { id: "laser_walls_upgrade", name: "Laser Fences", desc: "Turret laser fences deal 50 damage/sec to monsters passing through, while slowing them 40%" },
+            { id: "building_duration_upgrade", name: "Fortified Structures", desc: "Increases the duration of all turrets by 30% (stacks)" },
+            { id: "turret_cooldown_upgrade", name: "Rapid Deployment", desc: "Reduces turret placement, dispenser & expansion timers by 30% (stacks)" },
             { id: "turret_dispenser_upgrade", name: "Supply Dispenser", desc: "Turrets have 2% chance every 10s to dispense supplies with equal probability" },
             { id: "turret_flamethrower_upgrade", name: "Flamethrower Turret", desc: "Adds 2nd head firing a 120px 90° 4x damage flame cone every 4th attack" },
             { id: "turret_flamethrower_lvl2_upgrade", name: "Inferno Nozzles", desc: "Extends flamethrower range to 150px and widens cone to 135°" },
@@ -9796,12 +9906,12 @@ const TREE_BRANCHES = [
         nodes: [
             { id: "speed", name: "Agility Boost", desc: "Increase movement speed by 30%" },
             { id: "speed_lvl2", name: "Temporal Drift", desc: "Leave damaging speed laser trail" },
-            { id: "ice_trail_upgrade", name: "Glacial Slide", desc: "Ice trail slows enemies, increases movement, grants player fire immunity" },
+            { id: "ice_trail_upgrade", name: "Glacial Slide", desc: "Ice trail slows enemies, +30% speed, fire immunity on ice" },
             { id: "unlock_ring", name: "Fire Ring", desc: "Orbiting fireballs barrier" },
-            { id: "projectile_shield", name: "Deflector Orbiters", desc: "Orbiting shields absorb projectiles" },
+            { id: "projectile_shield", name: "Deflector Orbiters", desc: "Orbiting shields block projectiles (3s respawn, scales with Attack Speed)" },
             { id: "freeze_upgrade", name: "Cryo Freeze", desc: "Freeze enemies on hit" },
             { id: "damage", name: "Heavy Impact", desc: "Increase damage by 40% (mines 60%) (stacks)" },
-            { id: "cooldown", name: "Hyper-drive", desc: "Increase attack speed (stacks, max 7)" },
+            { id: "cooldown", name: "Hyper-drive", desc: "Increase attack speed (stacks, max 6)" },
             { id: "heal", name: "Second Wind", desc: "Full heal and double max HP" },
             { id: "heal_pack_upgrade", name: "Siphon Cells", desc: "Slain enemies drop health pack" },
             { id: "campervan", name: "Campervan Rampage", desc: "Campervan form when <50% HP" }
@@ -9876,7 +9986,7 @@ function adjustStackCount(id, delta, event) {
     let next = current + delta;
     
     if (next < 0) next = 0;
-    if (id === 'cooldown' && next > 7) next = 7;
+    if (id === 'cooldown' && next > 6) next = 6;
     if (id === 'mine_aoe_upgrade' && next > 3) next = 3;
     
     if (next === 0) {
@@ -9954,6 +10064,159 @@ function renderUpgradeTree() {
         }
         grid.appendChild(branchCol);
     }
+    
+    let totalSelected = 0;
+    for (const count of selectedTestUpgrades.values()) {
+        totalSelected += count;
+    }
+    const selCountEl = document.getElementById('selectedUpgradesCount');
+    if (selCountEl) selCountEl.textContent = totalSelected;
+}
+
+// ---------------- Expected Level Calculation ----------------
+function calculateMeanXPGemYield(xpValue) {
+    if (!xpValue || xpValue <= 0) return 0;
+    // Empirically sample XPGem.createXPGems directly to ensure full automatic reactivity if XPGem logic changes
+    const oldGems = GAME_STATE.gems;
+    let total = 0;
+    const trials = 300;
+    for (let t = 0; t < trials; t++) {
+        const testGems = [];
+        GAME_STATE.gems = testGems;
+        XPGem.createXPGems(0, 0, xpValue);
+        for (let i = 0; i < testGems.length; i++) total += (testGems[i].value || 0);
+    }
+    GAME_STATE.gems = oldGems;
+    return total / trials;
+}
+
+const MONSTER_BASE_XP = {
+    swarm: 2, brute: 4, mega_brute: 6, brute_lord: 8, speeder: 8,
+    meteor: 10, shooter: 10, dasher: 12, spiky: 14, baneling: 16,
+    marauder: 18, stalker: 20, spine_crawler: 22, sentry: 22,
+    medivac: 24, hellion: 24, shield_bearer: 40, warp_anomaly: 45, viper: 50,
+    octopus: 80, felhound: 200
+};
+
+function getSpawnProbabilitiesAtTime(e) {
+    const probs = {};
+    if (e >= 720000) {
+        if (e >= 1380000) {
+            probs.viper = 0.007; probs.shield_bearer = 0.018; probs.warp_anomaly = 0.012;
+            probs.hellion = 0.103; probs.medivac = 0.03; probs.sentry = 0.015;
+            probs.spine_crawler = 0.135; probs.stalker = 0.18; probs.marauder = 0.22; probs.baneling = 0.28;
+        } else if (e >= 1320000) {
+            probs.shield_bearer = 0.018; probs.warp_anomaly = 0.012; probs.hellion = 0.10;
+            probs.medivac = 0.03; probs.sentry = 0.015; probs.spine_crawler = 0.145;
+            probs.stalker = 0.18; probs.marauder = 0.22; probs.baneling = 0.28;
+        } else if (e >= 1260000) {
+            probs.warp_anomaly = 0.015; probs.hellion = 0.105; probs.medivac = 0.03;
+            probs.sentry = 0.015; probs.spine_crawler = 0.135; probs.stalker = 0.20;
+            probs.marauder = 0.20; probs.baneling = 0.30;
+        } else if (e >= 1200000) {
+            probs.hellion = 0.12; probs.medivac = 0.03; probs.sentry = 0.018;
+            probs.spine_crawler = 0.132; probs.stalker = 0.20; probs.marauder = 0.20; probs.baneling = 0.30;
+        } else if (e >= 1140000) {
+            probs.medivac = 0.03; probs.sentry = 0.02; probs.spine_crawler = 0.15;
+            probs.stalker = 0.24; probs.marauder = 0.24; probs.baneling = 0.32;
+        } else if (e >= 1080000) {
+            probs.sentry = 0.02; probs.spine_crawler = 0.16; probs.stalker = 0.24;
+            probs.marauder = 0.26; probs.baneling = 0.32;
+        } else if (e >= 900000) {
+            probs.spine_crawler = 0.15; probs.stalker = 0.27; probs.marauder = 0.28; probs.baneling = 0.30;
+        } else if (e >= 840000) {
+            probs.stalker = 0.30; probs.marauder = 0.35; probs.baneling = 0.35;
+        } else if (e >= 780000) {
+            probs.marauder = 0.45; probs.baneling = 0.55;
+        } else {
+            probs.baneling = 1.0;
+        }
+    } else {
+        let rem = 1.0;
+        if (e > 540000) { probs.spiky = 0.08; rem *= (1 - 0.08); }
+        if (e > 360000) { probs.dasher = rem * 0.12; rem *= (1 - 0.12); }
+        if (e > 420000) { probs.shooter = rem * 0.12; rem *= (1 - 0.12); }
+        if (e > 300000) { probs.meteor = rem * 0.10; rem *= (1 - 0.10); }
+        if (e > 180000) { probs.brute_lord = rem * 0.05; rem *= (1 - 0.05); }
+        if (e > 240000) { probs.speeder = rem * 0.20; rem *= (1 - 0.20); }
+        if (e > 120000) { probs.mega_brute = rem * 0.10; rem *= (1 - 0.10); }
+        if (e > 40000) { probs.brute = rem * 0.30; rem *= (1 - 0.30); }
+        probs.swarm = rem;
+    }
+    return probs;
+}
+
+function calculateExpectedPlayerLevel(targetMinutes) {
+    const targetMs = targetMinutes * 60000;
+    let totalExpectedXp = 0;
+    const SC2_START = 720000;
+    
+    // Cache mean gem yield for each unique xpValue
+    const meanYieldCache = {};
+    for (const key of Object.keys(MONSTER_BASE_XP)) {
+        const val = MONSTER_BASE_XP[key];
+        if (meanYieldCache[val] === undefined) {
+            meanYieldCache[val] = calculateMeanXPGemYield(val);
+        }
+    }
+    
+    // Step through spawning schedule
+    const spawnInterval = 2000;
+    for (let t = spawnInterval; t <= targetMs; t += spawnInterval) {
+        if (t >= 480000 && t < 540000) {
+            if (t === 510000) totalExpectedXp += (meanYieldCache[MONSTER_BASE_XP.octopus] || 0);
+            continue;
+        }
+        if (t >= 660000 && t < 717000) {
+            if (t === 660000) totalExpectedXp += 40 * (meanYieldCache[MONSTER_BASE_XP.swarm] || 0);
+            const elapsedEvent = t - 660000;
+            const waveIdx = Math.floor((elapsedEvent - 4000) / 2000);
+            if (waveIdx === 0) totalExpectedXp += 45 * (meanYieldCache[2] || 0);
+            else if (waveIdx === 1) totalExpectedXp += 35 * (meanYieldCache[4] || 0);
+            else if (waveIdx === 2) totalExpectedXp += 25 * (meanYieldCache[6] || 0);
+            else if (waveIdx === 3) totalExpectedXp += 15 * (meanYieldCache[8] || 0);
+            else if (waveIdx === 4) totalExpectedXp += 30 * (meanYieldCache[8] || 0);
+            else if (waveIdx === 5) totalExpectedXp += 20 * (meanYieldCache[10] || 0);
+            else if (waveIdx === 6) totalExpectedXp += 18 * (meanYieldCache[12] || 0);
+            else if (waveIdx === 7) totalExpectedXp += 18 * (meanYieldCache[10] || 0);
+            else if (waveIdx === 8) totalExpectedXp += 15 * (meanYieldCache[14] || 0);
+            else if (waveIdx > 8) totalExpectedXp += 30 * (meanYieldCache[8] || 0);
+            continue;
+        }
+        
+        const rampElapsed = t >= SC2_START ? t - SC2_START : t;
+        const count = 1 + Math.floor(rampElapsed / 30000);
+        const probs = getSpawnProbabilitiesAtTime(t);
+        for (const type of Object.keys(probs)) {
+            const prob = probs[type];
+            const xpVal = MONSTER_BASE_XP[type] || 2;
+            const meanYield = meanYieldCache[xpVal] || 0;
+            totalExpectedXp += count * prob * meanYield;
+        }
+    }
+    
+    let level = 1;
+    let xp = totalExpectedXp;
+    let nextXp = 20;
+    while (xp >= nextXp) {
+        xp -= nextXp;
+        level++;
+        nextXp = Math.floor(nextXp * 1.2) + 10;
+    }
+    return level;
+}
+
+function updateTestingLabExpectedLevels() {
+    const el4 = document.getElementById('expLvl4');
+    const el7 = document.getElementById('expLvl7');
+    const el10 = document.getElementById('expLvl10');
+    const el15 = document.getElementById('expLvl15');
+    if (!el4 || !el7 || !el10 || !el15) return;
+    
+    el4.textContent = calculateExpectedPlayerLevel(4);
+    el7.textContent = calculateExpectedPlayerLevel(7);
+    el10.textContent = calculateExpectedPlayerLevel(10);
+    el15.textContent = calculateExpectedPlayerLevel(15);
 }
 
 // Bind UI actions
@@ -9962,6 +10225,7 @@ document.getElementById('testingBtn').onclick = () => {
     document.getElementById('startMenu').classList.remove('show');
     document.getElementById('testingModal').classList.add('show');
     renderUpgradeTree();
+    updateTestingLabExpectedLevels();
 };
 
 document.getElementById('closeTestingBtn').onclick = () => {
@@ -9978,7 +10242,7 @@ document.getElementById('resetTestingBtn').onclick = () => {
 document.getElementById('presetTestingBtn').onclick = () => {
     selectedTestUpgrades.clear();
     selectedTestUpgrades.set('heal', 10);
-    selectedTestUpgrades.set('cooldown', 7);
+    selectedTestUpgrades.set('cooldown', 6);
     selectedTestUpgrades.set('damage', 10);
     selectedTestUpgrades.set('unlock_missile', 1);
     selectedTestUpgrades.set('multishot', 2);
