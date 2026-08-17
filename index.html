@@ -31,6 +31,38 @@
         pointer-events: none;
         z-index: 60;
     }
+    #soundToggleBtn {
+        position: fixed;
+        top: calc(max(16px, env(safe-area-inset-top, 16px)) + 12px);
+        right: calc(max(16px, env(safe-area-inset-right, 16px)) + 12px);
+        background: rgba(20, 20, 20, 0.85);
+        color: #00ffcc;
+        border: 1px solid #00ffcc;
+        border-radius: 6px;
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 18px;
+        z-index: 65;
+        box-shadow: 0 0 10px rgba(0, 255, 204, 0.25);
+        transition: all 0.15s ease;
+        user-select: none;
+        pointer-events: auto;
+    }
+    #soundToggleBtn:hover {
+        background: #00ffcc;
+        color: #000;
+        box-shadow: 0 0 14px rgba(0, 255, 204, 0.6);
+    }
+    #soundToggleBtn.muted {
+        color: #888;
+        border-color: #555;
+        box-shadow: none;
+        background: rgba(15, 15, 15, 0.8);
+    }
     
     /* Desktop / Relative Fluid Interaction Boxes */
     .modal {
@@ -622,6 +654,7 @@
 </div>
 <div id="timer">0:00</div>
 <div id="fpsCounter">60 FPS</div>
+<button id="soundToggleBtn" title="Toggle Audio (M)" aria-label="Toggle Audio">🔊</button>
 
 <div id="startMenu" class="modal show">
     <h1>BLOB SURVIVAL</h1>
@@ -983,6 +1016,1057 @@ const PLAYER_DEFS = [
     { color: '#66aaff', ring: '#001a33', keys: { up: ['u'], left: ['h'], down: ['j'], right: ['k'] } }
 ];
 
+// ---------------- Procedural Web Audio API Sound Engine ----------------
+const SOUND_PRIORITY = {
+    CRITICAL: 100, // Player Death, Revived, Nuke, Level Up, Boss Spawn, Campervan
+    HIGH: 75,     // Player Damaged, Phase Dash, Shield Block, Supply Drop
+    MEDIUM: 50,   // Mine Explosion, Melee Sweep, Flamethrower, Missile/Turret, Laser Sniper
+    LOW: 25       // Enemy Hit Spark, XP Gem Pickup, UI Click
+};
+
+const SoundEngine = {
+    ctx: null,
+    masterGain: null,
+    duckingGain: null,
+    sfxBus: null,
+    musicBus: null,
+    uiBus: null,
+    compressor: null,
+    noiseBuffer: null,
+    laserBuffer: null,
+    missileBuffer: null,
+    damageBuffer: null,
+    
+    // Background Soundtrack Synth Preset (Opus-style progressive sawtooth)
+    SYNTH_SOUND_PRESET: [, 0, 110, 0.01, 0.33, 0.4, 2, , , , , , , 0.2, , , , , , 0.18],
+    
+    // Voice allocation & Priority Queue
+    MAX_VOICES: 10,
+    activeVoices: [],
+    lastPlayTimes: {},
+    
+    // XP Gem combo tier tracking
+    gemComboCount: 0,
+    lastGemPickupTime: 0,
+    
+    // Mute & Volume State
+    isMuted: false,
+    masterVolume: 0.35,
+    musicVolume: 0.28,
+
+    // Pre-render ZzFX parameter array into an AudioBuffer (zero GC during gameplay)
+    buildZzfxBuffer(params) {
+        if (!this.ctx) return null;
+        let [volume = 1, randomness = .05, frequency = 220, attack = 0, sustain = 0, release = .1,
+             shape = 0, shapeCurve = 1, slide = 0, deltaSlide = 0, pitchJump = 0, pitchJumpTime = 0,
+             repeatTime = 0, noise = 0, modulation = 0, bitCrush = 0, delay = 0, sustainVolume = 1,
+             decay = 0, tremolo = 0, filter = 0] = params;
+
+        let sampleRate = this.ctx.sampleRate || 44100;
+        let PI2 = Math.PI * 2, abs = Math.abs, sign = v => v < 0 ? -1 : 1;
+        let startSlide = slide *= 500 * PI2 / sampleRate / sampleRate;
+        let startFrequency = frequency *= (1 + randomness * 2 * Math.random() - randomness) * PI2 / sampleRate;
+        let modOffset = 0, repeat = 0, crush = 0, jump = 1, length, b = [], t = 0, i = 0, s = 0, f;
+
+        let quality = 2, w = PI2 * abs(filter) * 2 / sampleRate;
+        let cos = Math.cos(w), alpha = Math.sin(w) / 2 / quality;
+        let a0 = 1 + alpha, a1 = -2 * cos / a0, a2 = (1 - alpha) / a0;
+        let b0 = (1 + sign(filter) * cos) / 2 / a0, b1 = -(sign(filter) + cos) / a0, b2 = b0;
+        let x2 = 0, x1 = 0, y2 = 0, y1 = 0;
+
+        const minAttack = 9;
+        attack = attack * sampleRate || minAttack;
+        decay *= sampleRate;
+        sustain *= sampleRate;
+        release *= sampleRate;
+        delay *= sampleRate;
+        deltaSlide *= 500 * PI2 / sampleRate ** 3;
+        modulation *= PI2 / sampleRate;
+        pitchJump *= PI2 / sampleRate;
+        pitchJumpTime *= sampleRate;
+        repeatTime = repeatTime * sampleRate | 0;
+
+        for (length = attack + decay + sustain + release + delay | 0; i < length; b[i++] = s * volume) {
+            if (!(++crush % (bitCrush * 100 | 0))) {
+                s = shape ? shape > 1 ? shape > 2 ? shape > 3 ? shape > 4 ?
+                    (t / PI2 % 1 < shapeCurve / 2) * 2 - 1 :
+                    Math.sin(t ** 3) :
+                    Math.max(Math.min(Math.tan(t), 1), -1) :
+                    1 - (2 * t / PI2 % 2 + 2) % 2 :
+                    1 - 4 * abs(Math.round(t / PI2) - t / PI2) :
+                    Math.sin(t);
+
+                s = (repeatTime ? 1 - tremolo + tremolo * Math.sin(PI2 * i / repeatTime) : 1) *
+                    (shape > 4 ? s : sign(s) * abs(s) ** shapeCurve) *
+                    (i < attack ? i / attack :
+                    i < attack + decay ? 1 - ((i - attack) / decay) * (1 - sustainVolume) :
+                    i < attack + decay + sustain ? sustainVolume :
+                    i < length - delay ? (length - i - delay) / release * sustainVolume : 0);
+
+                s = delay ? s / 2 + (delay > i ? 0 : (i < length - delay ? 1 : (length - i) / delay) * b[i - delay | 0] / 2 / volume) : s;
+
+                if (filter)
+                    s = y1 = b2 * x2 + b1 * (x2 = x1) + b0 * (x1 = s) - a2 * y2 - a1 * (y2 = y1);
+            }
+
+            f = (frequency += slide += deltaSlide) * Math.cos(modulation * modOffset++);
+            t += f + f * noise * Math.sin(i ** 5);
+
+            if (jump && ++jump > pitchJumpTime) {
+                frequency += pitchJump;
+                startFrequency += pitchJump;
+                jump = 0;
+            }
+
+            if (repeatTime && !(++repeat % repeatTime)) {
+                frequency = startFrequency;
+                slide = startSlide;
+                jump = jump || 1;
+            }
+        }
+
+        const buffer = this.ctx.createBuffer(1, b.length, sampleRate);
+        buffer.getChannelData(0).set(b);
+        return buffer;
+    },
+
+    // Pre-render SFXR parameter object into an AudioBuffer (zero GC during gameplay)
+    buildSfxrBuffer(ps) {
+        if (!this.ctx) return null;
+        const OVERSAMPLING = 8;
+        const SQUARE = 0, SAWTOOTH = 1, SINE = 2, NOISE = 3;
+
+        let elapsedSinceRepeat = 0;
+        let period = 100 / (ps.p_base_freq * ps.p_base_freq + 0.001);
+        let periodMax = 100 / (ps.p_freq_limit * ps.p_freq_limit + 0.001);
+        let enableFrequencyCutoff = (ps.p_freq_limit > 0);
+        let periodMult = 1 - Math.pow(ps.p_freq_ramp, 3) * 0.01;
+        let periodMultSlide = -Math.pow(ps.p_freq_dramp, 3) * 0.000001;
+
+        let dutyCycle = 0.5 - ps.p_duty * 0.5;
+        let dutyCycleSlide = -ps.p_duty_ramp * 0.00005;
+
+        let arpeggioMultiplier;
+        if (ps.p_arp_mod >= 0)
+            arpeggioMultiplier = 1 - Math.pow(ps.p_arp_mod, 2) * .9;
+        else
+            arpeggioMultiplier = 1 + Math.pow(ps.p_arp_mod, 2) * 10;
+        let arpeggioTime = Math.floor(Math.pow(1 - ps.p_arp_speed, 2) * 20000 + 32);
+        if (ps.p_arp_speed === 1) arpeggioTime = 0;
+
+        let waveShape = parseInt(ps.wave_type);
+        let fltw = Math.pow(ps.p_lpf_freq, 3) * 0.1;
+        let enableLowPassFilter = (ps.p_lpf_freq != 1);
+        let fltw_d = 1 + ps.p_lpf_ramp * 0.0001;
+        let fltdmp = 5 / (1 + Math.pow(ps.p_lpf_resonance, 2) * 20) * (0.01 + fltw);
+        if (fltdmp > 0.8) fltdmp = 0.8;
+        let flthp = Math.pow(ps.p_hpf_freq, 2) * 0.1;
+        let flthp_d = 1 + ps.p_hpf_ramp * 0.0003;
+
+        let vibratoSpeed = Math.pow(ps.p_vib_speed, 2) * 0.01;
+        let vibratoAmplitude = ps.p_vib_strength * 0.5;
+
+        let envelopeLength = [
+            Math.floor(ps.p_env_attack * ps.p_env_attack * 100000),
+            Math.floor(ps.p_env_sustain * ps.p_env_sustain * 100000),
+            Math.floor(ps.p_env_decay * ps.p_env_decay * 100000)
+        ];
+        let envelopePunch = ps.p_env_punch;
+
+        let flangerOffset = Math.pow(ps.p_pha_offset, 2) * 1020;
+        if (ps.p_pha_offset < 0) flangerOffset = -flangerOffset;
+        let flangerOffsetSlide = Math.pow(ps.p_pha_ramp, 2) * 1;
+        if (ps.p_pha_ramp < 0) flangerOffsetSlide = -flangerOffsetSlide;
+
+        let repeatTime = Math.floor(Math.pow(1 - ps.p_repeat_speed, 2) * 20000 + 32);
+        if (ps.p_repeat_speed === 0) repeatTime = 0;
+
+        let gain = Math.exp(ps.sound_vol) - 1;
+        let sampleRate = ps.sample_rate || 44100;
+
+        let fltp = 0, fltdp = 0, fltphp = 0;
+        let noise_buffer = Array(32);
+        for (let i = 0; i < 32; ++i) noise_buffer[i] = Math.random() * 2 - 1;
+
+        let envelopeStage = 0, envelopeElapsed = 0, vibratoPhase = 0, phase = 0, ipp = 0;
+        let flanger_buffer = Array(1024).fill(0);
+        let normalized = [];
+        let sample_sum = 0, num_summed = 0, summands = Math.floor(44100 / sampleRate) || 1;
+
+        function initForRepeat() {
+            elapsedSinceRepeat = 0;
+            period = 100 / (ps.p_base_freq * ps.p_base_freq + 0.001);
+            periodMax = 100 / (ps.p_freq_limit * ps.p_freq_limit + 0.001);
+            enableFrequencyCutoff = (ps.p_freq_limit > 0);
+            periodMult = 1 - Math.pow(ps.p_freq_ramp, 3) * 0.01;
+            periodMultSlide = -Math.pow(ps.p_freq_dramp, 3) * 0.000001;
+            dutyCycle = 0.5 - ps.p_duty * 0.5;
+            dutyCycleSlide = -ps.p_duty_ramp * 0.00005;
+            if (ps.p_arp_mod >= 0)
+                arpeggioMultiplier = 1 - Math.pow(ps.p_arp_mod, 2) * .9;
+            else
+                arpeggioMultiplier = 1 + Math.pow(ps.p_arp_mod, 2) * 10;
+            arpeggioTime = Math.floor(Math.pow(1 - ps.p_arp_speed, 2) * 20000 + 32);
+            if (ps.p_arp_speed === 1) arpeggioTime = 0;
+        }
+
+        for (let t = 0; ; ++t) {
+            if (repeatTime != 0 && ++elapsedSinceRepeat >= repeatTime) initForRepeat();
+
+            if (arpeggioTime != 0 && t >= arpeggioTime) {
+                arpeggioTime = 0;
+                period *= arpeggioMultiplier;
+            }
+
+            periodMult += periodMultSlide;
+            period *= periodMult;
+            if (period > periodMax) {
+                period = periodMax;
+                if (enableFrequencyCutoff) break;
+            }
+
+            let rfperiod = period;
+            if (vibratoAmplitude > 0) {
+                vibratoPhase += vibratoSpeed;
+                rfperiod = period * (1 + Math.sin(vibratoPhase) * vibratoAmplitude);
+            }
+            let iperiod = Math.floor(rfperiod);
+            if (iperiod < OVERSAMPLING) iperiod = OVERSAMPLING;
+
+            dutyCycle += dutyCycleSlide;
+            if (dutyCycle < 0) dutyCycle = 0;
+            if (dutyCycle > 0.5) dutyCycle = 0.5;
+
+            if (++envelopeElapsed > envelopeLength[envelopeStage]) {
+                envelopeElapsed = 0;
+                if (++envelopeStage > 2) break;
+            }
+
+            let env_vol;
+            let envf = envelopeElapsed / envelopeLength[envelopeStage];
+            if (envelopeStage === 0) env_vol = envf;
+            else if (envelopeStage === 1) env_vol = 1 + (1 - envf) * 2 * envelopePunch;
+            else env_vol = 1 - envf;
+
+            flangerOffset += flangerOffsetSlide;
+            let iphase = Math.abs(Math.floor(flangerOffset));
+            if (iphase > 1023) iphase = 1023;
+
+            if (flthp_d != 0) {
+                flthp *= flthp_d;
+                if (flthp < 0.00001) flthp = 0.00001;
+                if (flthp > 0.1) flthp = 0.1;
+            }
+
+            let sample = 0;
+            for (let si = 0; si < OVERSAMPLING; ++si) {
+                let sub_sample = 0;
+                phase++;
+                if (phase >= iperiod) {
+                    phase %= iperiod;
+                    if (waveShape === NOISE)
+                        for (let i = 0; i < 32; ++i) noise_buffer[i] = Math.random() * 2 - 1;
+                }
+
+                let fp = phase / iperiod;
+                if (waveShape === SQUARE) {
+                    sub_sample = fp < dutyCycle ? 0.5 : -0.5;
+                } else if (waveShape === SAWTOOTH) {
+                    sub_sample = fp < dutyCycle ? -1 + 2 * fp / dutyCycle : 1 - 2 * (fp - dutyCycle) / (1 - dutyCycle);
+                } else if (waveShape === SINE) {
+                    sub_sample = Math.sin(fp * 2 * Math.PI);
+                } else if (waveShape === NOISE) {
+                    sub_sample = noise_buffer[Math.floor(phase * 32 / iperiod)];
+                }
+
+                let pp = fltp;
+                fltw *= fltw_d;
+                if (fltw < 0) fltw = 0;
+                if (fltw > 0.1) fltw = 0.1;
+                if (enableLowPassFilter) {
+                    fltdp += (sub_sample - fltp) * fltw;
+                    fltdp -= fltdp * fltdmp;
+                } else {
+                    fltp = sub_sample;
+                    fltdp = 0;
+                }
+                fltp += fltdp;
+
+                fltphp += fltp - pp;
+                fltphp -= fltphp * flthp;
+                sub_sample = fltphp;
+
+                flanger_buffer[ipp & 1023] = sub_sample;
+                sub_sample += flanger_buffer[(ipp - iphase + 1024) & 1023];
+                ipp = (ipp + 1) & 1023;
+
+                sample += sub_sample * env_vol;
+            }
+
+            sample_sum += sample;
+            if (++num_summed >= summands) {
+                num_summed = 0;
+                sample = sample_sum / summands;
+                sample_sum = 0;
+            } else {
+                continue;
+            }
+
+            sample = sample / OVERSAMPLING;
+            sample *= gain;
+            normalized.push(sample);
+        }
+
+        const buffer = this.ctx.createBuffer(1, normalized.length, sampleRate);
+        buffer.getChannelData(0).set(normalized);
+        return buffer;
+    },
+
+    init() {
+        if (this.ctx) {
+            if (this.ctx.state === 'suspended') {
+                this.ctx.resume().catch(() => {});
+            }
+            return this.ctx;
+        }
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) return null;
+            this.ctx = new AudioContextClass();
+            
+            // Master Gain Node
+            this.masterGain = this.ctx.createGain();
+            this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : this.masterVolume, this.ctx.currentTime);
+            
+            // Master Dynamics Compressor (Limiter against clipping)
+            this.compressor = this.ctx.createDynamicsCompressor();
+            this.compressor.threshold.setValueAtTime(-12, this.ctx.currentTime);
+            this.compressor.knee.setValueAtTime(8, this.ctx.currentTime);
+            this.compressor.ratio.setValueAtTime(12, this.ctx.currentTime);
+            this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
+            this.compressor.release.setValueAtTime(0.15, this.ctx.currentTime);
+            
+            // Ducking Gain (for Critical priority sidechaining)
+            this.duckingGain = this.ctx.createGain();
+            this.duckingGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+            
+            // Sub-Buses
+            this.sfxBus = this.ctx.createGain();
+            this.sfxBus.gain.setValueAtTime(1.0, this.ctx.currentTime);
+
+            this.musicBus = this.ctx.createGain();
+            this.musicBus.gain.setValueAtTime(this.musicVolume, this.ctx.currentTime);
+            
+            this.uiBus = this.ctx.createGain();
+            this.uiBus.gain.setValueAtTime(0.8, this.ctx.currentTime);
+            
+            // Connect Graph:
+            // sfxBus & musicBus -> duckingGain -> compressor -> masterGain -> destination
+            // uiBus -> masterGain -> destination
+            this.sfxBus.connect(this.duckingGain);
+            this.musicBus.connect(this.duckingGain);
+            this.duckingGain.connect(this.compressor);
+            this.compressor.connect(this.masterGain);
+            
+            this.uiBus.connect(this.masterGain);
+            this.masterGain.connect(this.ctx.destination);
+            
+            // Pre-allocate 0.5-second white noise buffer (zero GC overhead during gameplay)
+            const bufferSize = Math.floor(this.ctx.sampleRate * 0.5);
+            this.noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = this.noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+
+            // Pre-render ZzFX laser shot buffer [.8,,1e3,.02,.06,.09,5,.5,,,443,.03,,,45,,.04,.52,.04,,-1464] (~0.25s snappy beam)
+            this.laserBuffer = this.buildZzfxBuffer([.8,,1e3,.02,.06,.09,5,.5,,,443,.03,,,45,,.04,.52,.04,,-1464]);
+
+            // Pre-render SFXR Magic Missile buffer
+            const sfxrMissilePreset = {
+                wave_type: 2,
+                p_env_attack: 0.084,
+                p_env_sustain: 0.228,
+                p_env_punch: 0,
+                p_env_decay: 1,
+                p_base_freq: 1,
+                p_freq_limit: 0.19,
+                p_freq_ramp: -0.445,
+                p_freq_dramp: 0.276,
+                p_vib_strength: 0,
+                p_vib_speed: 0,
+                p_arp_mod: -1,
+                p_arp_speed: 0,
+                p_duty: 0.7919760591157696,
+                p_duty_ramp: -0.28015083413655467,
+                p_repeat_speed: 0,
+                p_pha_offset: 0.1404706566781668,
+                p_pha_ramp: -0.0038287628234192407,
+                p_lpf_freq: 1,
+                p_lpf_ramp: 0,
+                p_lpf_resonance: 0,
+                p_hpf_freq: 0.238,
+                p_hpf_ramp: 0.999,
+                sound_vol: 0.25,
+                sample_rate: this.ctx.sampleRate || 44100
+            };
+            this.missileBuffer = this.buildSfxrBuffer(sfxrMissilePreset);
+
+            // Pre-render ZzFX Player Damaged buffer [2.3,,300,.04,,.07,,.4,-5,,-50,.33,,.6,2,,.1,.96,.06]
+            this.damageBuffer = this.buildZzfxBuffer([2.3,,300,.04,,.07,,.4,-5,,-50,.33,,.6,2,,.1,.96,.06]);
+            
+            // Load persisted mute preference
+            try {
+                if (localStorage.getItem('blob_survival_muted') === 'true') {
+                    this.setMute(true);
+                }
+            } catch(e) {}
+            
+            return this.ctx;
+        } catch (err) {
+            console.warn('AudioContext init failed:', err);
+            return null;
+        }
+    },
+
+    toggleMute() {
+        this.setMute(!this.isMuted);
+    },
+
+    setMute(muted) {
+        this.isMuted = muted;
+        try {
+            localStorage.setItem('blob_survival_muted', muted ? 'true' : 'false');
+        } catch(e) {}
+        
+        if (this.masterGain && this.ctx) {
+            this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : this.masterVolume, this.ctx.currentTime);
+        }
+        
+        const btn = document.getElementById('soundToggleBtn');
+        if (btn) {
+            btn.textContent = this.isMuted ? '🔇' : '🔊';
+            btn.classList.toggle('muted', this.isMuted);
+            btn.title = this.isMuted ? 'Unmute Audio (M)' : 'Mute Audio (M)';
+        }
+    },
+
+    // Throttle duplicate sounds in same frame / short sliding window
+    throttle(soundId, minIntervalMs) {
+        const now = performance.now();
+        if (now - (this.lastPlayTimes[soundId] || 0) < minIntervalMs) {
+            return false;
+        }
+        this.lastPlayTimes[soundId] = now;
+        return true;
+    },
+
+    // Priority-based voice allocation with voice stealing
+    allocateVoice(priority, soundId, durationSeconds, isUI = false) {
+        if (this.isMuted) return null;
+        const ctx = this.init();
+        if (!ctx) return null;
+        
+        const now = ctx.currentTime;
+        
+        // Clean up expired voices
+        this.activeVoices = this.activeVoices.filter(v => v.endTime > now);
+        
+        // Check voice cap
+        if (this.activeVoices.length >= this.MAX_VOICES) {
+            // Find lowest priority active voice
+            let minIndex = -1;
+            let minPriority = Infinity;
+            for (let i = 0; i < this.activeVoices.length; i++) {
+                if (this.activeVoices[i].priority < minPriority) {
+                    minPriority = this.activeVoices[i].priority;
+                    minIndex = i;
+                }
+            }
+            // Voice stealing: replace only if new sound has strictly higher priority
+            if (minIndex !== -1 && priority > minPriority) {
+                const stolen = this.activeVoices.splice(minIndex, 1)[0];
+                try {
+                    stolen.gainNode.gain.cancelScheduledValues(now);
+                    stolen.gainNode.gain.setValueAtTime(stolen.gainNode.gain.value, now);
+                    stolen.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.005);
+                    if (stolen.stopFn) setTimeout(stolen.stopFn, 10);
+                } catch(e) {}
+            } else {
+                return null; // Voice pool saturated with higher or equal priority sounds
+            }
+        }
+        
+        // Dynamic Sidechain Ducking on CRITICAL priority events
+        if (priority === SOUND_PRIORITY.CRITICAL && this.duckingGain) {
+            try {
+                this.duckingGain.gain.cancelScheduledValues(now);
+                this.duckingGain.gain.setValueAtTime(this.duckingGain.gain.value, now);
+                this.duckingGain.gain.linearRampToValueAtTime(0.55, now + 0.015); // -5 dB
+                this.duckingGain.gain.setValueAtTime(0.55, now + 0.35);
+                this.duckingGain.gain.linearRampToValueAtTime(1.0, now + 0.50);
+            } catch(e) {}
+        }
+        
+        const voiceGain = ctx.createGain();
+        const dest = isUI ? this.uiBus : this.sfxBus;
+        voiceGain.connect(dest);
+        
+        const voiceRecord = {
+            id: soundId,
+            priority,
+            gainNode: voiceGain,
+            endTime: now + durationSeconds + 0.05,
+            stopFn: null
+        };
+        this.activeVoices.push(voiceRecord);
+        
+        return { ctx, now, voiceGain, voiceRecord };
+    },
+
+    // ---------------- Sound Recipes ----------------
+
+    // 1. CRITICAL: Player Death (sub-bass descending thud & flatline tone)
+    playerDeath() {
+        if (!this.throttle('player_death', 150)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.CRITICAL, 'player_death', 0.8);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(140, now);
+        osc.frequency.exponentialRampToValueAtTime(32, now + 0.7);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(350, now);
+        filter.frequency.exponentialRampToValueAtTime(45, now + 0.7);
+
+        voiceGain.gain.setValueAtTime(0.8, now);
+        voiceGain.gain.linearRampToValueAtTime(0.001, now + 0.75);
+
+        osc.connect(filter);
+        filter.connect(voiceGain);
+        osc.start(now);
+        osc.stop(now + 0.8);
+        v.voiceRecord.stopFn = () => { try { osc.stop(); } catch(e){} };
+    },
+
+    // 2. CRITICAL: Player Revived (uplifting ascending dual-chime)
+    playerRevived() {
+        if (!this.throttle('player_revived', 200)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.CRITICAL, 'player_revived', 0.6);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        const freqs = [587.33, 880.0, 1174.66, 1760.0]; // D5, A5, D6, A6
+        freqs.forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const noteGain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + i * 0.08);
+
+            noteGain.gain.setValueAtTime(0, now + i * 0.08);
+            noteGain.gain.linearRampToValueAtTime(0.3, now + i * 0.08 + 0.03);
+            noteGain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.35);
+
+            osc.connect(noteGain);
+            noteGain.connect(voiceGain);
+            osc.start(now + i * 0.08);
+            osc.stop(now + i * 0.08 + 0.38);
+        });
+    },
+
+    // 3. CRITICAL: Level Up (4-note sparkling major arpeggio)
+    levelUp() {
+        if (!this.throttle('level_up', 250)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.CRITICAL, 'level_up', 0.65, true);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const noteGain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+
+            noteGain.gain.setValueAtTime(0, now + idx * 0.07);
+            noteGain.gain.linearRampToValueAtTime(0.35, now + idx * 0.07 + 0.02);
+            noteGain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.3);
+
+            osc.connect(noteGain);
+            noteGain.connect(voiceGain);
+            osc.start(now + idx * 0.07);
+            osc.stop(now + idx * 0.07 + 0.35);
+        });
+    },
+
+    // 4. CRITICAL: Nuclear Blast (deep sub-bass shockwave rumble)
+    nukeExplosion() {
+        if (!this.throttle('nuke', 300)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.CRITICAL, 'nuke', 1.0);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        if (this.noiseBuffer) {
+            const noise = ctx.createBufferSource();
+            noise.buffer = this.noiseBuffer;
+            noise.loop = true;
+
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(320, now);
+            filter.frequency.exponentialRampToValueAtTime(38, now + 0.95);
+
+            voiceGain.gain.setValueAtTime(1.0, now);
+            voiceGain.gain.linearRampToValueAtTime(0.001, now + 0.95);
+
+            noise.connect(filter);
+            filter.connect(voiceGain);
+            noise.start(now);
+            noise.stop(now + 1.0);
+            v.voiceRecord.stopFn = () => { try { noise.stop(); } catch(e){} };
+        }
+    },
+
+    // 5. CRITICAL: Boss Spawn Warning (menacing brass horn sweep)
+    bossSpawn() {
+        if (!this.throttle('boss_spawn', 500)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.CRITICAL, 'boss_spawn', 0.9);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(380, now);
+        osc.frequency.linearRampToValueAtTime(620, now + 0.25);
+        osc.frequency.exponentialRampToValueAtTime(240, now + 0.85);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, now);
+        filter.frequency.linearRampToValueAtTime(1600, now + 0.25);
+        filter.frequency.exponentialRampToValueAtTime(300, now + 0.85);
+
+        voiceGain.gain.setValueAtTime(0, now);
+        voiceGain.gain.linearRampToValueAtTime(0.65, now + 0.1);
+        voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+
+        osc.connect(filter);
+        filter.connect(voiceGain);
+        osc.start(now);
+        osc.stop(now + 0.9);
+        v.voiceRecord.stopFn = () => { try { osc.stop(); } catch(e){} };
+    },
+
+    // 6. CRITICAL: Campervan Rampage (retro dual-tone vehicle horn)
+    campervan() {
+        if (!this.throttle('campervan', 500)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.CRITICAL, 'campervan', 0.6);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        [440, 554.37].forEach(f => {
+            const osc = ctx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(f, now);
+
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1400, now);
+
+            voiceGain.gain.setValueAtTime(0.4, now);
+            voiceGain.gain.setValueAtTime(0.4, now + 0.45);
+            voiceGain.gain.linearRampToValueAtTime(0.001, now + 0.55);
+
+            osc.connect(filter);
+            filter.connect(voiceGain);
+            osc.start(now);
+            osc.stop(now + 0.6);
+        });
+    },
+
+    // 7. HIGH: Player Damaged (ZzFX visceral impact thud)
+    playerDamaged() {
+        if (!this.throttle('player_damaged', 70)) return;
+        const duration = 0.28;
+        const v = this.allocateVoice(SOUND_PRIORITY.HIGH, 'player_damaged', duration);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        if (this.damageBuffer) {
+            const source = ctx.createBufferSource();
+            source.buffer = this.damageBuffer;
+
+            voiceGain.gain.setValueAtTime(0.55, now);
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            source.connect(voiceGain);
+            source.start(now);
+            source.stop(now + duration + 0.02);
+            v.voiceRecord.stopFn = () => { try { source.stop(); } catch(e){} };
+        }
+    },
+
+    // 8. HIGH: Phase Dash Woosh (air displacement sweep)
+    phaseDash() {
+        if (!this.throttle('phase_dash', 120)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.HIGH, 'phase_dash', 0.22);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        if (this.noiseBuffer) {
+            const noise = ctx.createBufferSource();
+            noise.buffer = this.noiseBuffer;
+
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.Q.setValueAtTime(2.0, now);
+            filter.frequency.setValueAtTime(380, now);
+            filter.frequency.exponentialRampToValueAtTime(950, now + 0.09);
+            filter.frequency.exponentialRampToValueAtTime(260, now + 0.2);
+
+            voiceGain.gain.setValueAtTime(0.65, now);
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+            noise.connect(filter);
+            filter.connect(voiceGain);
+            noise.start(now);
+            noise.stop(now + 0.22);
+        }
+    },
+
+    // 9. HIGH: Deflector Shield Block (resonant metallic laser clang)
+    shieldBlock() {
+        if (!this.throttle('shield_block', 60)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.HIGH, 'shield_block', 0.2);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(2200, now);
+        osc.frequency.exponentialRampToValueAtTime(900, now + 0.18);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.Q.setValueAtTime(7.0, now); // Metallic ring
+        filter.frequency.setValueAtTime(2200, now);
+        filter.frequency.exponentialRampToValueAtTime(1100, now + 0.18);
+
+        voiceGain.gain.setValueAtTime(0.5, now);
+        voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+        osc.connect(filter);
+        filter.connect(voiceGain);
+        osc.start(now);
+        osc.stop(now + 0.2);
+    },
+
+    // 10. HIGH: Supply Drop Landed (crisp high double-ping)
+    supplyDrop() {
+        if (!this.throttle('supply_drop', 200)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.HIGH, 'supply_drop', 0.25);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        [0, 0.08].forEach((delay, i) => {
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(i === 0 ? 3200 : 4800, now + delay);
+
+            const noteGain = ctx.createGain();
+            noteGain.gain.setValueAtTime(0.3, now + delay);
+            noteGain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.12);
+
+            osc.connect(noteGain);
+            noteGain.connect(voiceGain);
+            osc.start(now + delay);
+            osc.stop(now + delay + 0.14);
+        });
+    },
+
+    // 11. MEDIUM: Proximity Mine Explosion (low-pass noise sweep)
+    mineExplosion(scale = 1.0) {
+        if (!this.throttle('mine_explosion', 50)) return;
+        const duration = Math.min(0.45, 0.22 * Math.max(0.7, scale));
+        const v = this.allocateVoice(SOUND_PRIORITY.MEDIUM, 'mine_explosion', duration);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        if (this.noiseBuffer) {
+            const noise = ctx.createBufferSource();
+            noise.buffer = this.noiseBuffer;
+
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(280 * Math.min(1.5, scale), now);
+            filter.frequency.exponentialRampToValueAtTime(55, now + duration);
+
+            voiceGain.gain.setValueAtTime(0.55, now);
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            noise.connect(filter);
+            filter.connect(voiceGain);
+            noise.start(now);
+            noise.stop(now + duration + 0.02);
+        }
+    },
+
+    // 12. MEDIUM: Melee Sweep & Sledge Hammer (heavy blunt thump)
+    meleeSweep(isSledge = false) {
+        const tag = isSledge ? 'sledge' : 'melee';
+        if (!this.throttle(tag, isSledge ? 100 : 80)) return;
+        const duration = isSledge ? 0.22 : 0.14;
+        const v = this.allocateVoice(SOUND_PRIORITY.MEDIUM, tag, duration);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        const osc = ctx.createOscillator();
+        osc.type = isSledge ? 'sawtooth' : 'triangle';
+        osc.frequency.setValueAtTime(isSledge ? 220 : 180, now);
+        osc.frequency.exponentialRampToValueAtTime(45, now + duration);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(isSledge ? 400 : 250, now);
+        filter.frequency.exponentialRampToValueAtTime(70, now + duration);
+
+        voiceGain.gain.setValueAtTime(isSledge ? 0.6 : 0.4, now);
+        voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        osc.connect(filter);
+        filter.connect(voiceGain);
+        osc.start(now);
+        osc.stop(now + duration + 0.02);
+    },
+
+    // 13. MEDIUM: Flamethrower Jet (textured fire hiss)
+    flamethrower() {
+        if (!this.throttle('flame', 80)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.MEDIUM, 'flame', 0.15);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        if (this.noiseBuffer) {
+            const noise = ctx.createBufferSource();
+            noise.buffer = this.noiseBuffer;
+
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(950, now);
+
+            voiceGain.gain.setValueAtTime(0.35, now);
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+            noise.connect(filter);
+            filter.connect(voiceGain);
+            noise.start(now);
+            noise.stop(now + 0.15);
+        }
+    },
+
+    // 14. MEDIUM: Magic Missile (SFXR preset)
+    missileFire() {
+        if (!this.throttle('missile_fire', 35)) return;
+        const duration = 0.10;
+        const v = this.allocateVoice(SOUND_PRIORITY.MEDIUM, 'missile_fire', duration);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        if (this.missileBuffer) {
+            const source = ctx.createBufferSource();
+            source.buffer = this.missileBuffer;
+
+            voiceGain.gain.setValueAtTime(0.45, now);
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            source.connect(voiceGain);
+            source.start(now);
+            source.stop(now + duration + 0.02);
+            v.voiceRecord.stopFn = () => { try { source.stop(); } catch(e){} };
+        }
+    },
+
+    // 15. MEDIUM: Laser Shot (shortened ZzFX modulated beam)
+    laserSniper() {
+        if (!this.throttle('laser_sniper', 60)) return;
+        const duration = 0.25;
+        const v = this.allocateVoice(SOUND_PRIORITY.MEDIUM, 'laser_sniper', duration);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        if (this.laserBuffer) {
+            const source = ctx.createBufferSource();
+            source.buffer = this.laserBuffer;
+
+            voiceGain.gain.setValueAtTime(0.7, now);
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            source.connect(voiceGain);
+            source.start(now);
+            source.stop(now + duration + 0.02);
+            v.voiceRecord.stopFn = () => { try { source.stop(); } catch(e){} };
+        }
+    },
+
+    // 16. LOW: Enemy Hit Spark (disabled)
+    enemyHit() {
+        // Disabled per user request
+    },
+
+    // 17. LOW: XP Gem Pickup (pure sine bell with ascending combo scale)
+    gemPickup() {
+        if (!this.throttle('gem_pickup', 25)) return;
+        const nowMs = performance.now();
+        if (nowMs - this.lastGemPickupTime > 600) {
+            this.gemComboCount = 0;
+        }
+        this.lastGemPickupTime = nowMs;
+        const tier = this.gemComboCount % 5;
+        this.gemComboCount++;
+
+        const v = this.allocateVoice(SOUND_PRIORITY.LOW, 'gem_pickup', 0.08);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        // Pentatonic crystal scale: E7 (2637), G7 (3136), A7 (3520), B7 (3951), D8 (4698)
+        const scale = [2637.02, 3135.96, 3520.0, 3951.07, 4698.63];
+        const freq = scale[tier];
+
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.08, now + 0.07);
+
+        voiceGain.gain.setValueAtTime(0.16, now);
+        voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+        osc.connect(voiceGain);
+        osc.start(now);
+        osc.stop(now + 0.08);
+    },
+
+    // 18. LOW: UI Button Click (monster hit sound)
+    uiClick() {
+        if (!this.throttle('ui_click', 40)) return;
+        const v = this.allocateVoice(SOUND_PRIORITY.LOW, 'ui_click', 0.035, true);
+        if (!v) return;
+        const { ctx, now, voiceGain } = v;
+
+        if (this.noiseBuffer) {
+            const noise = ctx.createBufferSource();
+            noise.buffer = this.noiseBuffer;
+
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'highpass';
+            filter.frequency.setValueAtTime(1600, now);
+
+            voiceGain.gain.setValueAtTime(0.22, now);
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+            noise.connect(filter);
+            filter.connect(voiceGain);
+            noise.start(now);
+            noise.stop(now + 0.035);
+        }
+    },
+
+    // 19. Progressive Soundtrack Synth Note (Eric Prydz 'Opus' style progressive sawtooth synth)
+    // Preset recipe: [, 0, freq, 0.01, sustain, decay, 2, , , , , , , 0.2, , , , , , 0.18]
+    playSynthNote(freq = 110, sustain = 0.33, decay = 0.4, volume = 0.3) {
+        if (!this.ctx || this.isMuted) return null;
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+        }
+        const now = this.ctx.currentTime;
+        const noteParams = [
+            volume,         // 0: volume
+            0,              // 1: randomness (0 = deterministic pitch for melody)
+            freq,           // 2: frequency in Hz
+            0.01,           // 3: attack (10ms)
+            sustain,        // 4: sustain duration (decreases as tempo accelerates)
+            decay,          // 5: decay/release duration (decreases as tempo accelerates)
+            2,              // 6: shape (2 = Sawtooth wave)
+            1,              // 7: shapeCurve
+            0,              // 8: slide
+            0,              // 9: deltaSlide
+            0,              // 10: pitchJump
+            0,              // 11: pitchJumpTime
+            0,              // 12: repeatTime
+            0,              // 13: noise
+            0.2,            // 14: modulation (gentle analog chorusing)
+            0,              // 15: bitCrush
+            0,              // 16: delay
+            1,              // 17: sustainVolume
+            0,              // 18: decayCycle
+            0,              // 19: tremolo
+            0.18            // 20: filter
+        ];
+
+        const buffer = this.buildZzfxBuffer(noteParams);
+        if (!buffer) return null;
+
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+
+        const noteGain = this.ctx.createGain();
+        noteGain.gain.setValueAtTime(1.0, now);
+
+        source.connect(noteGain);
+        noteGain.connect(this.musicBus || this.sfxBus || this.masterGain);
+
+        source.start(now);
+        source.stop(now + buffer.duration + 0.05);
+
+        return source;
+    }
+};
+
+// Global audio unlock listeners on first user gesture
+['pointerdown', 'keydown', 'click'].forEach(evt => {
+    window.addEventListener(evt, () => {
+        SoundEngine.init();
+    }, { once: false, passive: true });
+});
+
+// Auto-suspend audio on tab blur/hide to save battery and avoid buffer buildup
+document.addEventListener('visibilitychange', () => {
+    if (SoundEngine.ctx) {
+        if (document.hidden) {
+            SoundEngine.ctx.suspend().catch(() => {});
+        } else {
+            SoundEngine.ctx.resume().catch(() => {});
+        }
+    }
+});
+
+// UI Click sound hook
+document.addEventListener('click', (e) => {
+    if (e.target && e.target.closest('button, .upgrade-btn, .upgrade-node, .upgrade-help-btn, .time-preset-btn')) {
+        SoundEngine.uiClick();
+    }
+});
+
+// Toggle audio via M key or HUD button
+window.addEventListener('keydown', (e) => {
+    if (e.key && e.key.toLowerCase() === 'm' && !e.repeat) {
+        SoundEngine.init();
+        SoundEngine.toggleMute();
+    }
+});
+
+const soundBtn = document.getElementById('soundToggleBtn');
+if (soundBtn) {
+    soundBtn.onclick = (e) => {
+        e.stopPropagation();
+        SoundEngine.init();
+        SoundEngine.toggleMute();
+    };
+}
+
 const keys = {};
 window.addEventListener('keydown', e => {
     if (e.key === 'Escape' || e.key === 'Esc') {
@@ -1069,6 +2153,7 @@ function tryStartDash(p) {
         duration: PLAYER_DASH_MS + 220,
         dashDuration: PLAYER_DASH_MS
     };
+    SoundEngine.phaseDash();
 }
 
 class Unit {
@@ -1842,6 +2927,7 @@ class Player extends Unit {
             const elapsed = now - this.sniperCharge.startTime;
             if (!this.sniperCharge.fired && elapsed >= this.sniperCharge.preFireDuration) {
                 this.sniperCharge.fired = true;
+                SoundEngine.laserSniper();
                 const tipDist = this.r * 3.8;
                 const tipX = this.x + Math.cos(this.sniperCharge.angle) * tipDist;
                 const tipY = this.y + Math.sin(this.sniperCharge.angle) * tipDist;
@@ -2054,6 +3140,7 @@ class Player extends Unit {
             this.hp = 0;
             this.alive = false;
             this.deadAt = now;
+            SoundEngine.playerDeath();
             if (this.viperGrabber) {
                 if (this.viperGrabber.heldPlayer === this) {
                     this.viperGrabber.heldPlayer = null;
@@ -2067,6 +3154,8 @@ class Player extends Unit {
             }
             // Instant game over only if everyone is simultaneously down.
             if (!GAME_STATE.players.some(p => p.alive)) gameOver();
+        } else {
+            SoundEngine.playerDamaged();
         }
     }
     spawnLaserTrails(x1, y1, x2, y2, now) {
@@ -2150,6 +3239,7 @@ class Player extends Unit {
         this.hp = this.maxHp / 2;
         this.invuln = REVIVE_INVULN;
         this.spawnInvuln = REVIVE_INVULN;
+        SoundEngine.playerRevived();
         // reappears exactly where it fell
     }
     draw(now) {
@@ -5444,6 +6534,7 @@ function checkDeflectorOrbiterBlock(proj, now) {
             if (dx * dx + dy * dy < touch * touch) {
                 proj.dead = true;
                 orb.inactiveUntil = now + 3000; // Shield destroyed: respawns in 3s
+                SoundEngine.shieldBlock();
                 orb.lastBlockTime = now;
                 if (p.mitosisBuds) {
                     p.mitosisBuds.push({ angle: orb.angle, time: now, duration: 260 });
@@ -5818,6 +6909,7 @@ class MagicMissile {
         const spread = this.baseSpread * this.player.accuracyModifier;
         const { e } = this.volley.shift();
         this.nextShotAt = now + this.staggerMs;
+        SoundEngine.missileFire();
         if (this.player && this.player.instantMissileEnabled) {
             fireInstantMissile(this.player.x, this.player.y, e, dmg, isExplosive, aoeRadius, now, this.player, this.player.unitType, false, this.player);
         } else {
@@ -6964,6 +8056,7 @@ class MeleeSweep {
         // Normal Melee sweep triggers on cooldown (1400ms base)
         if (now - this.lastFire >= cd) {
             this.lastFire = now;
+            SoundEngine.meleeSweep(false);
             const dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
             
             // Sweep damage to close enemies
@@ -6983,6 +8076,7 @@ class MeleeSweep {
         // Fires half as often as the normal melee weapon (2x cooldown = 2800ms base)
         if (this.player.sledgeEnabled && now - this.lastSledgeFire >= cd * 2) {
             this.lastSledgeFire = now;
+            SoundEngine.meleeSweep(true);
             const dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
             const sledgeDmg = dmg * 4;
             const radius = 120 * this.player.meleeRangeModifier;
@@ -7049,6 +8143,7 @@ class MineExplosion {
         this.duration = 300;
         this.dead = false;
         this.player = player;
+        SoundEngine.mineExplosion(r / 60);
     }
     update(dt, now = gameClock) {
         const curTime = (typeof now === 'number' && !isNaN(now)) ? now : gameClock;
@@ -7107,6 +8202,7 @@ class NukeExplosion {
         this.spawnTime = (typeof now === 'number' && !isNaN(now)) ? now : gameClock;
         this.duration = 320;
         this.dead = false;
+        SoundEngine.nukeExplosion();
     }
     update(dt, now = gameClock) {
         const curTime = (typeof now === 'number' && !isNaN(now)) ? now : gameClock;
@@ -7731,6 +8827,7 @@ class TurretEntity extends Unit {
                 this.angle = targetAngle; // Head 1 independently tracks closest enemy
 
                 const dmg = this.baseDamage * this.player.damageModifier * GAME_STATE.dmgFactor;
+                SoundEngine.missileFire();
 
                 if (this.player && this.player.instantMissileEnabled) {
                     fireInstantMissile(this.x, this.y, closestMissile, dmg, false, 0, now, this.player, this.unitType, true, this);
@@ -7778,6 +8875,7 @@ class TurretEntity extends Unit {
                         const mult = this.player.laserSniperEnabled ? 5.0 : 3.0;
                         const sniperDmg = turretDmg * mult * 0.5;
                         GAME_STATE.projectiles.push(new SniperProjectile(this.x, this.y, angle, sniperDmg, this.player, now, this.unitType));
+                        SoundEngine.laserSniper();
                     }
                 }
             }
@@ -7795,6 +8893,7 @@ class TurretEntity extends Unit {
                     if (this.flameAttackCount % 4 === 0) {
                         this.flameActiveUntil = now + 400;
                         this.flameCenterAngle = flameTargetAngle;
+                        SoundEngine.flamethrower();
                         const fDmg = this.flameDamage * this.player.damageModifier * GAME_STATE.dmgFactor;
                         const coneHalf = this.flameConeWidth / 2;
                         const fRange = this.flameRange;
@@ -9582,6 +10681,7 @@ class XPGem {
             }
             if (d < target.r + this.r) {
                 this.dead = true;
+                SoundEngine.gemPickup();
                 addXp(this.value);
             }
         }
@@ -9865,6 +10965,7 @@ function addXp(amount) {
         gained++;
     }
     if (gained > 0) {
+        SoundEngine.levelUp();
         GAME_STATE.pendingLevels += gained;
         startLevelUpFlow();
     }
@@ -9944,7 +11045,7 @@ const UPGRADE_POOL = [
     { id: 'buckshot_upgrade', name: 'Buckshot Volley', desc: 'Magic missiles spawn 3 smaller forward-spreading shrapnel projectiles upon hit, dealing 1/3 damage.', oneShot: true, effect: (p) => p.buckshotEnabled = true },
     { id: 'cluster_shot_upgrade', name: 'Cluster Shot', desc: 'Magic Missile and Buckshot shrapnel are replaced by explosive projectiles scaling with mine damage and AoE.', oneShot: true, effect: (p) => p.clusterShotEnabled = true },
     { id: 'projectile_lifedrain_upgrade', name: 'Warlock darts', desc: 'Gain health equal to 0.1% of the damage you deal with projectiles fired by you.', oneShot: true, effect: (p) => p.projectileLifedrainEnabled = true },
-    { id: 'campervan', name: 'Campervan Rampage', desc: 'Transform into an invulnerable campervan for 20 seconds that crushes everything in its path.', oneShot: true, effect: (p) => { p.campervanUntil = gameClock + 20000; } },
+    { id: 'campervan', name: 'Campervan Rampage', desc: 'Transform into an invulnerable campervan for 20 seconds that crushes everything in its path.', oneShot: true, effect: (p) => { p.campervanUntil = gameClock + 20000; SoundEngine.campervan(); } },
     { id: 'final_blast', name: 'Martyrdom', desc: 'Explode in a nuclear blast upon death, and permanently halve your respawn time.', oneShot: true, effect: (p) => { p.finalBlastEnabled = true; p.reviveTimeModifier = 0.5; } },
     { id: 'projectile_shield', name: 'Deflector Orbiters', desc: 'Unlock an orbiting barrier of 3 shields that block enemy projectiles. Absorbing a projectile destroys the shield, respawning after 3s. Scales with Attack Speed.', oneShot: true, effect: (p) => p.unlockWeapon('projectile_shield') },
     { id: 'heal', name: 'Second Wind', desc: 'Fully restore HP and double your Max HP.', effect: (p) => { p.secondWindCount = (p.secondWindCount || 0) + 1; p.maxHp = Math.round(p.maxHp * 2.0); p.hp = p.maxHp; } },
@@ -11432,6 +12533,7 @@ function startBossWave(bossId, now) {
     if (!cfg) return;
     GAME_STATE.activeBoss = bossId;
     GAME_STATE.activeBossStartTime = now;
+    SoundEngine.bossSpawn();
     cfg.spawn(now);
 }
 
