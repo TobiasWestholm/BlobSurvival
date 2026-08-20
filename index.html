@@ -982,12 +982,114 @@ const DASHER_LUNGE_COOLDOWN = 1500;
 const DASHER_SIDE_SPEED = 3.8;     // lateral dash speed while approaching
 const DASHER_SIDE_MS = 240;        // duration of each sideways dash
 const DASHER_SIDE_GAP = 200;       // pause between sideways dashes
+// =========================================================================
+// Centralized Game Configuration Constants (Single Source of Truth)
+// All UI strings, tooltips, upgrade cards, and gameplay logic fetch numbers here.
+// =========================================================================
+const GAME_CONFIG = {
+    DASH: {
+        DOUBLE_TAP_WINDOW_MS: 200,
+        SPEED: 14,
+        DURATION_MS: 90,
+        COOLDOWN_MS: 2500, // 2.5s base cooldown
+        BURST_MISSILES: 24,
+        LVL2_RANGE_BOOST_PCT: 25,
+        LVL2_COOLDOWN_DIVISOR: 2, // halves cooldown (100% recharge speed boost)
+    },
+    TURRET: {
+        PLACEMENT_INTERVAL_SEC: 10,
+        LIFETIME_SEC: 25, // 25s base lifetime
+        BASE_HP: 800,
+        BASE_DAMAGE: 4,
+        ATTACK_COOLDOWN_MS: 1170,
+        PROJECTILE_SPEED: 11.0,
+        SLOW_WALL_SLOW_PCT: 40,
+        LASER_WALL_DPS: 50,
+        FORTIFIED_DURATION_BOOST_PCT: 40,
+        FORTIFIED_HP_BOOST_PCT: 50,
+        RAPID_DEPLOYMENT_REDUCTION_PCT: 30,
+        FLAME_INTERVAL_ATTACKS: 4,
+        FLAME_DAMAGE_MULT: 4, // 4x base damage = 16
+        FLAME_BASE_RANGE: 120,
+        FLAME_LVL2_RANGE: 150,
+        FLAME_SWEEP_RANGE: 180,
+        FLAME_BASE_CONE_DEG: 90,
+        FLAME_LVL2_CONE_DEG: 135,
+        NETWORK_INTERVAL_SEC: 60,
+        SAW_DPS: 15,
+        SAW_RADIUS: 50,
+        DISPENSER_CHANCE_PCT: 2,
+        DISPENSER_INTERVAL_SEC: 10,
+    },
+    SUPPLIES: {
+        HEALTH_PACK_HP: 30,
+        XP_CLUSTER_XP: 80,
+        AEGIS_DURATION_SEC: 4,
+        NITRO_SPEED_BOOST_PCT: 50,
+        NITRO_DURATION_SEC: 6,
+        MAGNET_RADIUS: 450,
+        NUKE_RADIUS: 350,
+        NUKE_DAMAGE: 120,
+        FREEZE_RADIUS: 350,
+        FREEZE_DURATION_SEC: 3,
+        OVERCLOCK_TURRET_SPEED_MULT: 2,
+        OVERCLOCK_DURATION_SEC: 5,
+    },
+    UPGRADES: {
+        SPEED_BOOST_PCT: 30,
+        SPEED_LVL2_BOOST_PCT: 30,
+        DAMAGE_WEAPONS_BOOST_PCT: 40,
+        DAMAGE_MINES_BOOST_PCT: 60,
+        ATTACK_SPEED_BOOST_PCT: 50,
+        MINE_COOLDOWN_BOOST_PCT: 25,
+        ATTACK_SPEED_MAX_STACKS: 6,
+        SNIPER_SHOT_INTERVAL: 3,
+        SNIPER_SHOT_DAMAGE_MULT: 3,
+        LASER_SNIPER_DAMAGE_MULT: 5,
+        LASER_SNIPER_TRAIL_DURATION_MS: 600,
+        MINE_AOE_BOOST_PCT: 60,
+        MINE_AOE_MAX_STACKS: 3,
+        MARTYRDOM_AOE_BOOST_PCT: 10,
+        MINE_ATTRACT_CHANCE_PCT: 10,
+        MINE_ALL_ATTRACT_CHANCE_PCT: 30,
+        MINE_ATTRACT_DURATION_SEC: 2.5,
+        FREEZE_PROJECTILE_DURATION_SEC: 0.25,
+        FREEZE_MINE_DURATION_SEC: 1.0,
+        CRYO_MINE_BOOST_PCT: 100,
+        MINE_SCATTER_CHANCE_PCT: 10,
+        MINE_SCATTER_MIN: 6,
+        MINE_SCATTER_MAX: 7,
+        EXPLOSION_HEAL_PCT: 0.5,
+        SIPHON_CELLS_HEAL_HP: 30,
+        MELEE_SLEDGE_DAMAGE_PCT: 400,
+        MELEE_SHIELD_DAMAGE_REDUCTION_PCT: 40, // 40% damage reduction (0.60x taken)
+        REFLECT_DAMAGE_PLAYER_MAX_HP_PCT: 25,
+        REFLECT_DAMAGE_TURRET_MAX_HP_PCT: 2.5,
+        MELEE_RANGE_BOOST_PCT: 40,
+        ROCKET_PLAYER_CHANCE_PCT: 10,
+        ROCKET_TURRET_CHANCE_PCT: 5,
+        BUCKSHOT_SHRAPNEL_COUNT: 3,
+        PROJECTILE_LIFEDRAIN_PCT: 0.1,
+        CAMPERVAN_DURATION_SEC: 20,
+        DEFLECTOR_ORBITERS_COUNT: 3,
+        DEFLECTOR_ORBITERS_RESPAWN_SEC: 3,
+        MARTYRS_PRESENCE_RADIUS_BOOST_PCT: 50,
+        SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT: 25,
+        SACRIFICIAL_AEGIS_SELF_INCREASE_PCT: 50,
+        SACRIFICIAL_AEGIS_REVIVE_REDUCTION_PCT: 25,
+        CARAPACE_HEALER_SIZE_BOOST_PCT: 50,
+        CARAPACE_HEALER_TEAM_HEAL_PCT: 0.25,
+        ICE_TRAIL_SPEED_BOOST_PCT: 30,
+        ICE_TRAIL_SLOW_PCT: 50,
+    }
+};
+
 // Player dash (Phase Dash upgrade): double-tap a move key to blink, then burst missiles.
-const DOUBLE_TAP_MS = 200;         // window between taps to count as a double-tap (wall-clock)
-const PLAYER_DASH_SPEED = 14;      // px/frame during the dash
-const PLAYER_DASH_MS = 90;         // dash duration (gameClock) -> ~75px
-const PLAYER_DASH_COOLDOWN = 2500; // gameClock cooldown before dashing again
-const PLAYER_DASH_BURST = 24;      // magic-missile projectiles fired radially at dash end
+const DOUBLE_TAP_MS = GAME_CONFIG.DASH.DOUBLE_TAP_WINDOW_MS;
+const PLAYER_DASH_SPEED = GAME_CONFIG.DASH.SPEED;
+const PLAYER_DASH_MS = GAME_CONFIG.DASH.DURATION_MS;
+const PLAYER_DASH_COOLDOWN = GAME_CONFIG.DASH.COOLDOWN_MS;
+const PLAYER_DASH_BURST = GAME_CONFIG.DASH.BURST_MISSILES;
 
 // Difficulty multipliers applied on top of the co-op player-count scaling.
 // dmgMult = weapon damage dealt; speedMult = base move speed; accuracy = starting
@@ -1103,6 +1205,7 @@ const SoundEngine = {
     musicNoteCache: {},
 
     MELODY_NOTES: {
+        'C0': 65.41,
         'D0': 73.42,
         'F0': 87.31,
         'G0': 98.00,
@@ -1210,7 +1313,7 @@ const SoundEngine = {
         'F0', 'D2', 'A0', 'C1',
         'F0', 'D2', 'A0', 'C1',
         'F0', 'D2', 'A0', 'C1',
-        'F0', 'D2', 'A0', 'C1',
+        'F0', 'D2', 'F0', 'A0',
 
         // 4x: D0, C2, F0, A0
         'D0', 'C2', 'F0', 'A0',
@@ -1230,11 +1333,11 @@ const SoundEngine = {
         'D0', 'B1', 'F0', 'A0',
         'D0', 'B1', 'F0', 'A0',
 
-        // 4x: D0, C2, F0, A0
-        'D0', 'B1', 'F0', 'A0',
-        'D0', 'B1', 'F0', 'A0',
-        'D0', 'B1', 'F0', 'A0',
-        'D0', 'B1', 'F0', 'A0'
+        // 4x: D0, D2, F0, A0
+        'D0', 'B1', 'A0', 'D1',
+        'D0', 'B1', 'A0', 'D1',
+        'D0', 'B1', 'A0', 'F1',
+        'F0', 'B1', 'A0', 'F1',
     ],
     
     // Voice allocation & Priority Queue
@@ -1623,25 +1726,25 @@ const SoundEngine = {
             this.uiBus = this.ctx.createGain();
             this.uiBus.gain.setValueAtTime(this.isMuted ? 0 : 0.8, this.ctx.currentTime);
             
-            // Global Spatial Reverb Bus for SFX (Parallel Send/Return Convolver)
+            // Global Spatial Reverb Bus for SFX (Parallel Send/Return Convolver with tight room response)
             this.reverbConvolver = this.ctx.createConvolver();
-            this.reverbConvolver.buffer = this.buildImpulseResponse(0.5, 2.0);
+            this.reverbConvolver.buffer = this.buildImpulseResponse(0.45, 2.2);
 
             this.reverbWetGain = this.ctx.createGain();
-            this.reverbWetGain.gain.setValueAtTime(0.48, this.ctx.currentTime); // ~48% lush spatial wet return
+            this.reverbWetGain.gain.setValueAtTime(0.45, this.ctx.currentTime); // ~45% tight spatial wet return
 
             this.reverbDryGain = this.ctx.createGain();
             this.reverbDryGain.gain.setValueAtTime(1.0, this.ctx.currentTime); // 100% crisp direct dry path
 
-            // Melody Dynamic Reverb Bus (Starts spacious: 3.5s decay 3.0 -> Ends tight: 0.5s decay 2.0 matching SFX)
+            // Melody Dynamic Reverb Bus (Starts spacious: 4.5s decay 2.2 -> Ends rich & sustained: 1.6s decay 1.7)
             this.musicReverbConvolverStart = this.ctx.createConvolver();
-            this.musicReverbConvolverStart.buffer = this.buildImpulseResponse(3.5, 3.0);
+            this.musicReverbConvolverStart.buffer = this.buildImpulseResponse(4.5, 2.2);
 
             this.musicReverbConvolverEnd = this.ctx.createConvolver();
-            this.musicReverbConvolverEnd.buffer = this.buildImpulseResponse(0.5, 2.0);
+            this.musicReverbConvolverEnd.buffer = this.buildImpulseResponse(1.6, 1.7);
 
             this.musicWetGainStart = this.ctx.createGain();
-            this.musicWetGainStart.gain.setValueAtTime(0.45, this.ctx.currentTime);
+            this.musicWetGainStart.gain.setValueAtTime(0.68, this.ctx.currentTime);
 
             this.musicWetGainEnd = this.ctx.createGain();
             this.musicWetGainEnd.gain.setValueAtTime(0.0, this.ctx.currentTime);
@@ -1843,7 +1946,7 @@ const SoundEngine = {
             }
             if (this.musicWetGainStart) {
                 this.musicWetGainStart.gain.cancelScheduledValues(this.ctx.currentTime);
-                this.musicWetGainStart.gain.setValueAtTime(0.45, this.ctx.currentTime);
+                this.musicWetGainStart.gain.setValueAtTime(0.68, this.ctx.currentTime);
             }
             if (this.musicWetGainEnd) {
                 this.musicWetGainEnd.gain.cancelScheduledValues(this.ctx.currentTime);
@@ -1852,8 +1955,12 @@ const SoundEngine = {
         }
     },
 
-    startMusic() {
+    startMusic(forceReset = true) {
         this.init();
+        if (!forceReset && this.musicMode === 'gameplay' && this.isMusicPlaying) {
+            this.resumeMusic();
+            return;
+        }
         this.musicMode = 'gameplay';
         this.isMusicPlaying = true;
         this.isMusicPaused = false;
@@ -1872,7 +1979,7 @@ const SoundEngine = {
             }
             if (this.musicWetGainStart) {
                 this.musicWetGainStart.gain.cancelScheduledValues(this.ctx.currentTime);
-                this.musicWetGainStart.gain.setValueAtTime(0.45, this.ctx.currentTime);
+                this.musicWetGainStart.gain.setValueAtTime(0.68, this.ctx.currentTime);
             }
             if (this.musicWetGainEnd) {
                 this.musicWetGainEnd.gain.cancelScheduledValues(this.ctx.currentTime);
@@ -1898,10 +2005,10 @@ const SoundEngine = {
     },
 
     resumeMusic() {
+        if (!this.isMusicPaused) return;
         this.isMusicPaused = false;
         this.musicLastTickTime = performance.now();
-        if (this.ctx) {
-            // Align next note to resume seamlessly in real-time
+        if (this.ctx && this.musicNextNoteTime < this.ctx.currentTime) {
             this.musicNextNoteTime = this.ctx.currentTime + 0.05;
         }
     },
@@ -1915,7 +2022,7 @@ const SoundEngine = {
         }
 
         const freq = this.MELODY_NOTES[noteName] || 110;
-        const bpm = 10 + (132 - 10) * progress;
+        const bpm = 10 + (135 - 10) * progress;
         const stepDuration = 60 / (bpm * 4);
 
         // Long attack in beginning (~0.35s) smoothly tapering to 8ms at 1 minute
@@ -1971,7 +2078,7 @@ const SoundEngine = {
             // Loading / Menu Screen Melody: Fixed 95 BPM, 400 Hz lowpass filter, 3.5s early reverb
             const bpm = 95 * this.tempoFactor;
             const stepDuration = 60 / (bpm * 4);
-            const progress95 = (95 - 10) / (132 - 10); // Synth settings at 95 BPM
+            const progress95 = (95 - 10) / (135 - 10); // Synth settings at 95 BPM
 
             if (this.musicFilter && !this.isMuffled) {
                 if (Number.isFinite(this.ctx.currentTime)) {
@@ -1979,7 +2086,7 @@ const SoundEngine = {
                 }
             }
             if (this.musicWetGainStart && this.musicWetGainEnd && this.ctx && !this.isMuffled) {
-                this.musicWetGainStart.gain.setTargetAtTime(0.45, this.ctx.currentTime, 0.05);
+                this.musicWetGainStart.gain.setTargetAtTime(0.68, this.ctx.currentTime, 0.05);
                 this.musicWetGainEnd.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.05);
             }
 
@@ -2040,10 +2147,10 @@ const SoundEngine = {
             }
         }
 
-        // Dynamic melody reverb morphing: long 3.5s ambient decay -> tight 0.5s decay (matching SFX reverb)
+        // Dynamic melody reverb morphing: long 4.5s ambient decay -> rich 1.6s decay
         if (this.musicWetGainStart && this.musicWetGainEnd && this.ctx && !this.isMuffled && GAME_STATE.current === STATES.GAMEPLAY) {
-            const startWet = 0.45 * Math.pow(invProgress, 1.2);
-            const endWet = 0.48 * Math.pow(progress, 0.8);
+            const startWet = 0.68 * Math.pow(invProgress, 1.2);
+            const endWet = 0.68 * Math.pow(progress, 0.8);
             if (Number.isFinite(startWet) && Number.isFinite(this.ctx.currentTime)) {
                 this.musicWetGainStart.gain.setTargetAtTime(startWet, this.ctx.currentTime, 0.05);
             }
@@ -2064,7 +2171,7 @@ const SoundEngine = {
         const lookahead = 0.15;
         while (this.musicNextNoteTime < this.ctx.currentTime + lookahead) {
             const playTime = Math.max(this.ctx.currentTime, this.musicNextNoteTime);
-            const baseBpm = 10 + (132 - 10) * progress;
+            const baseBpm = 10 + (135 - 10) * progress;
             const bpm = baseBpm * this.tempoFactor;
             const stepDuration = 60 / (bpm * 4);
 
@@ -3755,7 +3862,7 @@ class Player extends Unit {
     updateNetworkExpansion(now) {
         if (!this.turretNetworkEnabled) return;
         if (!this.lastNetworkExpansion) this.lastNetworkExpansion = now;
-        const interval = 60000 * (this.buildingCooldownModifier || 1.0);
+        const interval = (GAME_CONFIG.TURRET.NETWORK_INTERVAL_SEC * 1000) * (this.buildingCooldownModifier || 1.0);
         if (now - this.lastNetworkExpansion >= interval) {
             this.lastNetworkExpansion = now;
 
@@ -3818,7 +3925,7 @@ class Player extends Unit {
     }
     fireDashBurst(now = gameClock) {
         const mm = this.weapons.find(w => w.id === 'magic_missile');
-        const rangeMultiplier = this.dashLvl2 ? 1.25 : 1.0;
+        const rangeMultiplier = this.dashLvl2 ? (1 + GAME_CONFIG.DASH.LVL2_RANGE_BOOST_PCT / 100) : 1.0;
         const speed = (mm ? mm.speed : 7.3) * rangeMultiplier;
         const burstCount = Math.round(PLAYER_DASH_BURST * rangeMultiplier);
         const kind = (this.accuracyModifier === 0) ? 'laser' : 'missile';
@@ -3840,7 +3947,7 @@ class Player extends Unit {
                     e.hp -= mineDmg;
                     totalDashExpDmg += mineDmg;
                     if (this.freezeEnabled && !e.isBoss()) {
-                        const dur = (e.type === 'meteor') ? 125 : 250;
+                        const dur = (e.type === 'meteor') ? (GAME_CONFIG.UPGRADES.FREEZE_PROJECTILE_DURATION_SEC * 500) : (GAME_CONFIG.UPGRADES.FREEZE_PROJECTILE_DURATION_SEC * 1000);
                         e.freeze(dur, now);
                     }
                     spawnHitParticles(e.x, e.y, '#ffaa00');
@@ -3884,7 +3991,7 @@ class Player extends Unit {
 
         let martyrDamageMult = 1.0;
         if (this.sacrificialAegisEnabled) {
-            martyrDamageMult *= 1.50; // Martyr takes 50% more damage
+            martyrDamageMult *= (1 + GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_SELF_INCREASE_PCT / 100);
         }
         let nearbyMartyrShield = false;
         for (const op of GAME_STATE.players) {
@@ -3899,13 +4006,13 @@ class Player extends Unit {
             }
         }
         if (nearbyMartyrShield) {
-            martyrDamageMult *= 0.75; // Surrounding allies take 25% less damage
+            martyrDamageMult *= (1 - GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT / 100);
         }
 
         this.hp -= amount * GAME_STATE.difficulty.takenMult * this.damageReduction * martyrDamageMult; // difficulty and upgrade scale incoming damage
         this.hitFlashUntil = now + 150;
         if (this.carapaceHealerEnabled) {
-            const healAmt = this.maxHp * 0.0025;
+            const healAmt = this.maxHp * (GAME_CONFIG.UPGRADES.CARAPACE_HEALER_TEAM_HEAL_PCT / 100);
             for (const p of GAME_STATE.players) {
                 if (p.alive) p.heal(healAmt);
             }
@@ -3917,7 +4024,7 @@ class Player extends Unit {
             reflectTarget = source.sourceEnemy;
         }
         if (this.reflectDamageEnabled && reflectTarget && typeof reflectTarget.hp === 'number' && reflectTarget.hp > 0) {
-            const reflectDmg = this.maxHp * 0.25;
+            const reflectDmg = this.maxHp * (GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT / 100);
             reflectTarget.hp -= reflectDmg;
             spawnHitParticles(reflectTarget.x, reflectTarget.y, '#ff3333');
         }
@@ -3975,7 +4082,7 @@ class Player extends Unit {
     triggerFinalBlast(now) {
         const dmg = this.maxHp * this.damageModifier * GAME_STATE.dmgFactor;
         let radius = 250;
-        if (this.mineAoeCount > 0) radius *= Math.pow(1.10, this.mineAoeCount);
+        if (this.mineAoeCount > 0) radius *= Math.pow(1 + GAME_CONFIG.UPGRADES.MARTYRDOM_AOE_BOOST_PCT / 100, this.mineAoeCount);
         for (const e of GAME_STATE.enemies) {
             if (!isDamageable(e)) continue;
             const dx = e.x - this.x;
@@ -5189,7 +5296,7 @@ class Enemy extends Unit {
         let isAuraSlowed = false;
         for (const p of GAME_STATE.players) {
             if (!p.alive && p.martyrdomAuraEnabled) {
-                const auraRadius = p.martyrsPresenceEnabled ? 180 : 120;
+                const auraRadius = 120 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0);
                 const dx = this.x - p.x;
                 const dy = this.y - p.y;
                 if (dx * dx + dy * dy < auraRadius * auraRadius) {
@@ -9211,7 +9318,7 @@ class MagicMissile {
                 this.nextShotAt = now;
                 this.volleyCount++;
                 
-                if (this.player.rocketEnabled && Math.random() < 0.10) {
+                if (this.player.rocketEnabled && Math.random() < (GAME_CONFIG.UPGRADES.ROCKET_PLAYER_CHANCE_PCT / 100)) {
                     const rAngle = Math.random() * Math.PI * 2;
                     const rDmg = 60;
                     const spawnDist = this.player.r * 0.35;
@@ -9227,7 +9334,7 @@ class MagicMissile {
                     };
                 }
 
-                if (this.player.sniperShotEnabled && (this.volleyCount % 4 === 0)) {
+                if (this.player.sniperShotEnabled && (this.volleyCount % GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL === 0)) {
                     let strongest = null;
                     let highestMaxHp = -999999;
                     let minD2 = Infinity;
@@ -9249,7 +9356,7 @@ class MagicMissile {
                     if (strongest) {
                         const angle = Math.atan2(strongest.y - this.player.y, strongest.x - this.player.x);
                         const mmDmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
-                        const mult = this.player.laserSniperEnabled ? 5.0 : 3.0;
+                        const mult = this.player.laserSniperEnabled ? GAME_CONFIG.UPGRADES.LASER_SNIPER_DAMAGE_MULT : GAME_CONFIG.UPGRADES.SNIPER_SHOT_DAMAGE_MULT;
                         const sniperDmg = mmDmg * mult;
                         this.player.sniperCharge = {
                             startTime: now,
@@ -10448,7 +10555,7 @@ class MeleeSweep {
             this.lastSledgeFire = now;
             SoundEngine.meleeSweep(true);
             const dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
-            const sledgeDmg = dmg * 4;
+            const sledgeDmg = dmg * (GAME_CONFIG.UPGRADES.MELEE_SLEDGE_DAMAGE_PCT / 100);
             const radius = 120 * this.player.meleeRangeModifier;
             const coneAngle = Math.PI / 2;
             const angle = this.player.facingAngle;
@@ -10494,7 +10601,7 @@ class MeleeSweep {
 
 function applyExplosionHealing(x, y, radius, totalDmg, causingPlayer) {
     if (!causingPlayer || !causingPlayer.explosionHealEnabled || totalDmg <= 0) return;
-    const healAmt = totalDmg * 0.005;
+    const healAmt = totalDmg * (GAME_CONFIG.UPGRADES.EXPLOSION_HEAL_PCT / 100);
     for (const p of GAME_STATE.players) {
         if (!p.isAlive()) continue;
         const dx = p.x - x;
@@ -10746,7 +10853,7 @@ class PlayerMine {
         this.spawnTime = (typeof now === 'number' && !isNaN(now)) ? now : gameClock;
         this.dead = false;
         this.explosionRadius = 60 * this.player.mineAoeModifier;
-        const attractChance = player.mineAllAttractEnabled ? 0.30 : (player.mineAttractEnabled ? 0.10 : 0);
+        const attractChance = player.mineAllAttractEnabled ? (GAME_CONFIG.UPGRADES.MINE_ALL_ATTRACT_CHANCE_PCT / 100) : (player.mineAttractEnabled ? (GAME_CONFIG.UPGRADES.MINE_ATTRACT_CHANCE_PCT / 100) : 0);
         this.attractsEnemies = Math.random() < attractChance;
         this.triggeredTime = 0;
         this.vx = 0;
@@ -10767,7 +10874,7 @@ class PlayerMine {
         }
 
         if (this.triggeredTime > 0) {
-            if (now - this.triggeredTime >= 2500) {
+            if (now - this.triggeredTime >= GAME_CONFIG.UPGRADES.MINE_ATTRACT_DURATION_SEC * 1000) {
                 let inContact = false;
                 for (const e of GAME_STATE.enemies) {
                     if (!isTargetable(e)) continue;
@@ -10818,8 +10925,8 @@ class PlayerMine {
                 e.hp -= dmg;
                 totalMineDmg += dmg;
                 if (this.player.freezeEnabled && !e.isBoss()) {
-                    let dur = (e.type === 'meteor') ? 500 : 1000;
-                    if (this.player.cryoMineBuffed) dur *= 2.0;
+                    let dur = (e.type === 'meteor') ? (GAME_CONFIG.UPGRADES.FREEZE_MINE_DURATION_SEC * 500) : (GAME_CONFIG.UPGRADES.FREEZE_MINE_DURATION_SEC * 1000);
+                    if (this.player.cryoMineBuffed) dur *= (1 + GAME_CONFIG.UPGRADES.CRYO_MINE_BOOST_PCT / 100);
                     e.freeze(dur, now);
                 }
                 spawnHitParticles(e.x, e.y, '#ffcc00');
@@ -10943,8 +11050,8 @@ class ProximityMine {
                 };
             }
             
-            if (this.player.scatterMinesEnabled && Math.random() < 0.10) {
-                const count = 6 + Math.floor(Math.random() * 2);
+            if (this.player.scatterMinesEnabled && Math.random() < (GAME_CONFIG.UPGRADES.MINE_SCATTER_CHANCE_PCT / 100)) {
+                const count = GAME_CONFIG.UPGRADES.MINE_SCATTER_MIN + Math.floor(Math.random() * (GAME_CONFIG.UPGRADES.MINE_SCATTER_MAX - GAME_CONFIG.UPGRADES.MINE_SCATTER_MIN + 1));
                 for (let i = 0; i < count; i++) {
                     const angle = Math.random() * Math.PI * 2;
                     const speed = 3.0 + Math.random() * 4.0;
@@ -10960,23 +11067,23 @@ class ProximityMine {
 
 class TurretEntity extends Unit {
     constructor(x, y, player, now) {
-        const turretMaxHp = 800 * (player ? player.buildingHealthModifier : 1.0);
+        const turretMaxHp = GAME_CONFIG.TURRET.BASE_HP * (player ? player.buildingHealthModifier : 1.0);
         super(x, y, 12, turretMaxHp, 'turret');
         this.player = player;
         this.spawnTime = now;
-        this.duration = 25000 * (player ? player.buildingDurationModifier : 1.0); // 25s base lifetime
+        this.duration = (GAME_CONFIG.TURRET.LIFETIME_SEC * 1000) * (player ? player.buildingDurationModifier : 1.0);
         this.hitCooldown = new Map();
         this.isFlamethrower = player ? !!player.turretFlamethrowerEnabled : false;
-        this.baseAttackCooldown = 1170; // Normal attack cooldown for all turrets
+        this.baseAttackCooldown = GAME_CONFIG.TURRET.ATTACK_COOLDOWN_MS;
         this.attackCount = 0;
         this.flameAttackCount = 0;
         this.lastFire = now;
         this.angle = 0; // Independent angle for Head 1 (Missiles)
         this.flameAngle = 0; // Independent angle for Head 2 (Flamethrower)
         this.baseSpread = 0.18;
-        this.baseDamage = 4; // Normal turret base damage
-        this.flameDamage = 16; // 4x normal turret damage (4 * 4 = 16)
-        this.projectileSpeed = 11.0; // Quicker than Magic Missile (7.3)
+        this.baseDamage = GAME_CONFIG.TURRET.BASE_DAMAGE;
+        this.flameDamage = GAME_CONFIG.TURRET.BASE_DAMAGE * GAME_CONFIG.TURRET.FLAME_DAMAGE_MULT;
+        this.projectileSpeed = GAME_CONFIG.TURRET.PROJECTILE_SPEED;
         this.connections = []; // Array of connected TurretEntity instances
 
         // Flamethrower sweep animation state
@@ -10988,12 +11095,12 @@ class TurretEntity extends Unit {
         }
     }
     get flameRange() {
-        if (this.player && this.player.turretFullSweepEnabled) return 180;
-        return (this.player && this.player.infernoNozzlesEnabled) ? 150 : 120;
+        if (this.player && this.player.turretFullSweepEnabled) return GAME_CONFIG.TURRET.FLAME_SWEEP_RANGE;
+        return (this.player && this.player.infernoNozzlesEnabled) ? GAME_CONFIG.TURRET.FLAME_LVL2_RANGE : GAME_CONFIG.TURRET.FLAME_BASE_RANGE;
     }
     get flameConeWidth() {
         if (this.player && this.player.turretFullSweepEnabled) return Math.PI * 2;
-        return (this.player && this.player.infernoNozzlesEnabled) ? (135 * Math.PI / 180) : (90 * Math.PI / 180);
+        return (this.player && this.player.infernoNozzlesEnabled) ? (GAME_CONFIG.TURRET.FLAME_LVL2_CONE_DEG * Math.PI / 180) : (GAME_CONFIG.TURRET.FLAME_BASE_CONE_DEG * Math.PI / 180);
     }
 
     linkWalls() {
@@ -11050,7 +11157,7 @@ class TurretEntity extends Unit {
             GAME_STATE.gems.push(hp);
             spawnHitParticles(this.x, this.y, '#ff3366');
         } else if (type === 'xp_cluster') {
-            XPGem.createXPGems(this.x, this.y, 80);
+            XPGem.createXPGems(this.x, this.y, GAME_CONFIG.SUPPLIES.XP_CLUSTER_XP);
             spawnHitParticles(this.x, this.y, '#00ffcc');
         } else {
             const drop = new SupplyDrop(this.x, this.y, type, now);
@@ -11078,7 +11185,7 @@ class TurretEntity extends Unit {
             reflectTarget = source.sourceEnemy;
         }
         if (this.player && this.player.reflectDamageEnabled && reflectTarget && typeof reflectTarget.hp === 'number' && reflectTarget.hp > 0) {
-            const reflectDmg = this.maxHp * 0.025; // 2.5% of turret max HP reflected
+            const reflectDmg = this.maxHp * (GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_TURRET_MAX_HP_PCT / 100);
             reflectTarget.hp -= reflectDmg;
             spawnHitParticles(reflectTarget.x, reflectTarget.y, '#ff3333');
         }
@@ -11111,8 +11218,8 @@ class TurretEntity extends Unit {
         // Sawblade Turrets continuation upgrade: continuous 15 dmg/s to all nearby monsters (50px range * Extended Joints)
         if (this.player && this.player.turretSawEnabled) {
             if (!this.sawHitCooldown) this.sawHitCooldown = new Map();
-            const sawRadius = 50 * (this.player.meleeRangeModifier || 1.0);
-            const dmgPerSec = 15 * this.player.damageModifier * GAME_STATE.dmgFactor;
+            const sawRadius = GAME_CONFIG.TURRET.SAW_RADIUS * (this.player.meleeRangeModifier || 1.0);
+            const dmgPerSec = GAME_CONFIG.TURRET.SAW_DPS * this.player.damageModifier * GAME_STATE.dmgFactor;
             const dmgThisFrame = dmgPerSec * (dt / 1000);
 
             for (const e of GAME_STATE.enemies) {
@@ -11133,7 +11240,7 @@ class TurretEntity extends Unit {
         // Laser Fences continuation upgrade: damaging laser trail on turret fences
         if (this.player && this.player.laserWallsEnabled && this.connections && this.connections.length > 0) {
             if (!this.laserWallHitCooldown) this.laserWallHitCooldown = new Map();
-            const dmgPerSec = 50 * this.player.damageModifier * GAME_STATE.dmgFactor;
+            const dmgPerSec = GAME_CONFIG.TURRET.LASER_WALL_DPS * this.player.damageModifier * GAME_STATE.dmgFactor;
             const dmgThisFrame = dmgPerSec * (dt / 1000);
 
             for (const conn of this.connections) {
@@ -11171,13 +11278,13 @@ class TurretEntity extends Unit {
             }
         }
 
-        // 2% chance every 10s (scaled by buildingCooldownModifier) to dispense supplies if Supply Dispenser is unlocked
+        // Dispenser chance every interval (scaled by buildingCooldownModifier) if Supply Dispenser is unlocked
         if (this.player && this.player.turretDispenserEnabled) {
             if (!this.lastDispenseCheck) this.lastDispenseCheck = now;
-            const dispenserInterval = 10000 * (this.player.buildingCooldownModifier || 1.0);
+            const dispenserInterval = (GAME_CONFIG.TURRET.DISPENSER_INTERVAL_SEC * 1000) * (this.player.buildingCooldownModifier || 1.0);
             if (now - this.lastDispenseCheck >= dispenserInterval) {
                 this.lastDispenseCheck = now;
-                if (Math.random() < 0.02) {
+                if (Math.random() < (GAME_CONFIG.TURRET.DISPENSER_CHANCE_PCT / 100)) {
                     this.dispenseItem(now);
                 }
             }
@@ -11765,7 +11872,7 @@ class TurretWeapon {
     constructor(player) {
         this.id = 'turret';
         this.player = player;
-        this.basePlacementCooldown = 10000; // Fixed 10s placement interval
+        this.basePlacementCooldown = GAME_CONFIG.TURRET.PLACEMENT_INTERVAL_SEC * 1000;
         this.lastPlacement = -99999;
     }
     update(now) {
@@ -12178,7 +12285,7 @@ class DeflectorShields {
     update(now) {
         if (!this.initialized) {
             this.initialized = true;
-            const count = 3;
+            const count = GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_COUNT;
             for (let i = 0; i < count; i++) {
                 const angle = (i / count) * Math.PI * 2;
                 const orb = new DeflectorOrbiter(this.player, angle, this.rotSpeed, this.radius, Infinity, now);
@@ -12596,8 +12703,9 @@ class DeflectorOrbiter {
         this.angle += this.rotSpeed * shieldSpeedScale * dtFactor;
 
         // Dynamic Growth State (growing out on spawn/respawn, contracting on break)
+        const respawnMs = GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_RESPAWN_SEC * 1000;
         if (now < this.inactiveUntil) {
-            const timeSinceBreak = now - (this.inactiveUntil - 3000);
+            const timeSinceBreak = now - (this.inactiveUntil - respawnMs);
             if (timeSinceBreak < 250) {
                 // Retraction phase after destruction
                 this.growth = Math.max(0, 1.0 - (timeSinceBreak / 250));
@@ -12651,7 +12759,7 @@ class DeflectorOrbiter {
             const touch = this.r + (proj.r || 6) + 4;
             if (dist2 < touch * touch) {
                 proj.dead = true;
-                this.inactiveUntil = now + 3000; // Shield destroyed: respawns in 3s
+                this.inactiveUntil = now + respawnMs; // Shield destroyed: respawns in config seconds
                 this.lastBlockTime = now;
                 if (this.player.mitosisBuds) {
                     this.player.mitosisBuds.push({ angle: this.angle, time: now, duration: 260 });
@@ -13127,7 +13235,7 @@ class HealthPack {
             }
             if (d < target.r + this.r) {
                 this.dead = true;
-                const healAmount = 30;
+                const healAmount = GAME_CONFIG.SUPPLIES.HEALTH_PACK_HP;
                 target.heal(healAmount);
                 for (let i = 0; i < 8; i++) {
                     const a = Math.random() * Math.PI * 2, s = 1.0 + Math.random() * 2;
@@ -13205,32 +13313,34 @@ class SupplyDrop {
     onCollect(player, now = gameClock) {
         const curTime = (typeof now === 'number' && !isNaN(now)) ? now : gameClock;
         if (this.type === 'aegis') {
-            player.aegisUntil = Math.max(player.aegisUntil || 0, curTime + 4000); // 4s invulnerability (without speed boost)
+            player.aegisUntil = Math.max(player.aegisUntil || 0, curTime + GAME_CONFIG.SUPPLIES.AEGIS_DURATION_SEC * 1000);
             spawnHitParticles(this.x, this.y, '#00ffff');
         } else if (this.type === 'nitro') {
-            player.nitroUntil = curTime + 6000; // 6s +50% speed
+            player.nitroUntil = curTime + GAME_CONFIG.SUPPLIES.NITRO_DURATION_SEC * 1000;
             spawnHitParticles(this.x, this.y, '#ffaa00');
         } else if (this.type === 'magnet') {
-            // Pull gems in large 450px radius around collecting player
+            // Pull gems in large radius around collecting player
+            const magRad = GAME_CONFIG.SUPPLIES.MAGNET_RADIUS;
             for (const g of GAME_STATE.gems) {
                 if (!g.dead) {
                     const gdx = g.x - player.x, gdy = g.y - player.y;
-                    if (gdx * gdx + gdy * gdy <= 450 * 450) {
+                    if (gdx * gdx + gdy * gdy <= magRad * magRad) {
                         g.attracted = true;
                     }
                 }
             }
             spawnHitParticles(this.x, this.y, '#aa00ff');
         } else if (this.type === 'nuke') {
-            // Large 350px radius shockwave blast centered at player
-            const dmg = 120 * GAME_STATE.dmgFactor;
+            // Shockwave blast centered at player
+            const dmg = GAME_CONFIG.SUPPLIES.NUKE_DAMAGE * GAME_STATE.dmgFactor;
+            const rad = GAME_CONFIG.SUPPLIES.NUKE_RADIUS;
             const px = player.x, py = player.y;
-            GAME_STATE.hazards.push(new NukeExplosion(px, py, 350, curTime));
+            GAME_STATE.hazards.push(new NukeExplosion(px, py, rad, curTime));
             for (const e of GAME_STATE.enemies) {
                 if (e.hp > 0) {
                     const edx = e.x - px, edy = e.y - py;
                     const ed2 = edx * edx + edy * edy;
-                    if (ed2 <= 350 * 350) {
+                    if (ed2 <= rad * rad) {
                         e.hp -= dmg;
                         const dist = Math.sqrt(ed2) || 1;
                         e.x += (edx / dist) * 45;
@@ -13240,21 +13350,23 @@ class SupplyDrop {
             }
             spawnHitParticles(px, py, '#ff3300');
         } else if (this.type === 'freeze') {
-            // Large 350px radius freeze centered at player
+            // Freeze centered at player
             const px = player.x, py = player.y;
-            GAME_STATE.hazards.push(new FreezeBlastVisual(px, py, 350, curTime));
+            const rad = GAME_CONFIG.SUPPLIES.FREEZE_RADIUS;
+            const dur = GAME_CONFIG.SUPPLIES.FREEZE_DURATION_SEC * 1000;
+            GAME_STATE.hazards.push(new FreezeBlastVisual(px, py, rad, curTime));
             for (const e of GAME_STATE.enemies) {
                 if (e.hp > 0 && !e.isBoss()) {
                     const edx = e.x - px, edy = e.y - py;
-                    if (edx * edx + edy * edy <= 350 * 350) {
-                        e.freeze(3000, curTime);
+                    if (edx * edx + edy * edy <= rad * rad) {
+                        e.freeze(dur, curTime);
                     }
                 }
             }
             spawnHitParticles(px, py, '#00ffcc');
         } else if (this.type === 'overclock') {
-            // Double attack speed of all active turrets for 5s
-            GAME_STATE.turretOverclockUntil = curTime + 5000;
+            // Double attack speed of all active turrets
+            GAME_STATE.turretOverclockUntil = curTime + GAME_CONFIG.SUPPLIES.OVERCLOCK_DURATION_SEC * 1000;
             spawnHitParticles(player.x, player.y, '#ffff00');
         }
     }
@@ -13368,62 +13480,62 @@ function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
 
 // ---------------- Upgrades ----------------
 const UPGRADE_POOL = [
-    { id: 'speed', name: 'Agility Boost', desc: 'Increase movement speed by 30%.', oneShot: true, effect: (p) => p.speed *= 1.30 },
-    { id: 'speed_lvl2', name: 'Temporal Drift', desc: 'Increase movement speed by another 30% and leave a damaging laser trail behind you.', oneShot: true, effect: (p) => { p.speed *= 1.30; p.speedLvl2 = true; } },
-    { id: 'damage', name: 'Heavy Impact', desc: 'Increase all weapon damage by 40%, and proximity mines by 60%.', effect: (p) => { p.damageModifier *= 1.40; p.mineDamageModifier *= 1.60; } },
-    { id: 'cooldown', name: 'Hyper-drive', desc: 'Increase attack speed by 50%, and proximity mines by 25%.', effect: (p) => { p.cooldownModifier /= 1.50; p.mineCooldownModifier /= 1.25; p.attackSpeedCount = (p.attackSpeedCount || 0) + 1; } },
+    { id: 'speed', name: 'Agility Boost', desc: `Increase movement speed by ${GAME_CONFIG.UPGRADES.SPEED_BOOST_PCT}%.`, oneShot: true, effect: (p) => p.speed *= (1 + GAME_CONFIG.UPGRADES.SPEED_BOOST_PCT / 100) },
+    { id: 'speed_lvl2', name: 'Temporal Drift', desc: `Increase movement speed by another ${GAME_CONFIG.UPGRADES.SPEED_LVL2_BOOST_PCT}% and leave a damaging laser trail behind you.`, oneShot: true, effect: (p) => { p.speed *= (1 + GAME_CONFIG.UPGRADES.SPEED_LVL2_BOOST_PCT / 100); p.speedLvl2 = true; } },
+    { id: 'damage', name: 'Heavy Impact', desc: `Increase all weapon damage by ${GAME_CONFIG.UPGRADES.DAMAGE_WEAPONS_BOOST_PCT}%, and proximity mines by ${GAME_CONFIG.UPGRADES.DAMAGE_MINES_BOOST_PCT}%.`, effect: (p) => { p.damageModifier *= (1 + GAME_CONFIG.UPGRADES.DAMAGE_WEAPONS_BOOST_PCT / 100); p.mineDamageModifier *= (1 + GAME_CONFIG.UPGRADES.DAMAGE_MINES_BOOST_PCT / 100); } },
+    { id: 'cooldown', name: 'Hyper-drive', desc: `Increase attack speed by ${GAME_CONFIG.UPGRADES.ATTACK_SPEED_BOOST_PCT}%, and proximity mines by ${GAME_CONFIG.UPGRADES.MINE_COOLDOWN_BOOST_PCT}%.`, effect: (p) => { p.cooldownModifier /= (1 + GAME_CONFIG.UPGRADES.ATTACK_SPEED_BOOST_PCT / 100); p.mineCooldownModifier /= (1 + GAME_CONFIG.UPGRADES.MINE_COOLDOWN_BOOST_PCT / 100); p.attackSpeedCount = (p.attackSpeedCount || 0) + 1; } },
     { id: 'accuracy', name: 'Steady Aim', desc: 'Reduce projectile spread to zero.', oneShot: true, effect: (p) => p.accuracyModifier = 0 },
     { id: 'instant_missile_upgrade', name: 'Instant Precision', desc: 'Magic Missile, Laser, and Cluster Shot travel with infinite velocity, hitting monsters instantly without a traveling projectile.', oneShot: true, effect: (p) => p.instantMissileEnabled = true },
-    { id: 'sniper_shot_upgrade', name: 'Sniper Shot', desc: 'Every 3rd Magic Missile volley fires a high-speed piercing sniper shot at the strongest enemy, dealing 3x damage.', oneShot: true, effect: (p) => p.sniperShotEnabled = true },
-    { id: 'laser_sniper_upgrade', name: 'Laser Sniper', desc: 'Increases Sniper Shot damage to 5x Magic Missile and leaves a decaying laser trail along its path.', oneShot: true, effect: (p) => p.laserSniperEnabled = true },
+    { id: 'sniper_shot_upgrade', name: 'Sniper Shot', desc: `Every ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL === 3 ? '3rd' : GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL + 'th'} Magic Missile volley fires a high-speed piercing sniper shot at the strongest enemy, dealing ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_DAMAGE_MULT}x damage.`, oneShot: true, effect: (p) => p.sniperShotEnabled = true },
+    { id: 'laser_sniper_upgrade', name: 'Laser Sniper', desc: `Increases Sniper Shot damage to ${GAME_CONFIG.UPGRADES.LASER_SNIPER_DAMAGE_MULT}x Magic Missile and leaves a decaying laser trail along its path.`, oneShot: true, effect: (p) => p.laserSniperEnabled = true },
     { id: 'multishot', name: 'Split Shot', desc: 'Magic Missile fires at one additional enemy.', effect: (p) => p.multiShot += 1 },
     { id: 'dash', name: 'Phase Dash', desc: 'Double-tap a move key to dash, then burst missiles around you.', oneShot: true, effect: (p) => p.dashEnabled = true },
-    { id: 'dash_lvl2', name: 'Phase Mastery', desc: 'Increases Phase Dash range by 25%, recharge speed by 100%, leaves a burning fire trail when dashing, and grants invulnerability and a shield during the first half of recharge.', oneShot: true, effect: (p) => { p.dashLvl2 = true; p.dashCooldown = PLAYER_DASH_COOLDOWN / 2; } },
+    { id: 'dash_lvl2', name: 'Phase Mastery', desc: `Increases Phase Dash range by ${GAME_CONFIG.DASH.LVL2_RANGE_BOOST_PCT}%, recharge speed by ${((GAME_CONFIG.DASH.LVL2_COOLDOWN_DIVISOR - 1) * 100)}%, leaves a burning fire trail when dashing, and grants invulnerability and a shield during the first half of recharge.`, oneShot: true, effect: (p) => { p.dashLvl2 = true; p.dashCooldown = PLAYER_DASH_COOLDOWN / GAME_CONFIG.DASH.LVL2_COOLDOWN_DIVISOR; } },
     { id: 'phase_detonation_upgrade', name: 'Phase Detonation', desc: 'Phase Dash landing triggers a full mine explosion and releases explosive magic missiles.', oneShot: true, effect: (p) => p.phaseDetonationEnabled = true },
     { id: 'unlock_ring', name: 'Fire Ring', desc: 'Unlock orbiting fire balls around you.', oneShot: true, effect: (p) => p.unlockWeapon('fire_ring') },
     { id: 'unlock_missile', name: 'Magic Missile', desc: 'Unlock the auto-firing Magic Missile weapon.', oneShot: true, effect: (p) => p.unlockWeapon('magic_missile') },
     { id: 'unlock_melee', name: 'Melee Sweep', desc: 'Unlock the close-range melee sweeping attack.', oneShot: true, effect: (p) => p.unlockWeapon('melee_sweep') },
     { id: 'unlock_mine', name: 'Proximity Mine', desc: 'Unlock proximity mines that explode for AoE damage.', oneShot: true, effect: (p) => p.unlockWeapon('proximity_mine') },
-    { id: 'unlock_turret', name: 'Auto-Turret', desc: 'Unlock deployable turrets that drop every 10s and shoot high-speed missiles for 25s.', oneShot: true, effect: (p) => p.unlockWeapon('turret') },
-    { id: 'slow_walls_upgrade', name: 'Slow Walls', desc: 'Turrets create slowing laser fences between them that reduce monster movement speed by 40%.', oneShot: true, effect: (p) => p.slowWallsEnabled = true },
-    { id: 'laser_walls_upgrade', name: 'Laser Fences', desc: 'Turret fences become high-energy laser barriers dealing 50 damage/sec while maintaining 40% slow.', oneShot: true, effect: (p) => { p.laserWallsEnabled = true; p.slowWallsEnabled = true; } },
-    { id: 'building_duration_upgrade', name: 'Fortified Structures', desc: 'Increases the duration of turrets by 40% and turret HP by 50%.', effect: (p) => { p.buildingDurationModifier *= 1.40; p.buildingHealthModifier *= 1.5; p.buildingDurationCount = (p.buildingDurationCount || 0) + 1; } },
-    { id: 'turret_cooldown_upgrade', name: 'Rapid Deployment', desc: 'Reduces turret placement, dispenser, and Autonomous Network expansion timers by 30%.', effect: (p) => { p.buildingCooldownModifier = (p.buildingCooldownModifier || 1.0) * 0.70; p.turretCooldownCount = (p.turretCooldownCount || 0) + 1; } },
-    { id: 'turret_flamethrower_upgrade', name: 'Flamethrower Turret', desc: 'Adds a 2nd firing head to turrets that unleashes a flame cone every 4th attack for 4x damage.', oneShot: true, effect: (p) => p.turretFlamethrowerEnabled = true },
-    { id: 'turret_flamethrower_lvl2_upgrade', name: 'Inferno Nozzles', desc: 'Extends Flamethrower Turret range from 120px to 150px and widens the fire cone to 135°.', oneShot: true, effect: (p) => p.infernoNozzlesEnabled = true },
-    { id: 'turret_inferno_ring_upgrade', name: 'Inferno Nova', desc: 'Flamethrower Turret sweeps a full 360° rotation around the turret and extends attack radius to 180px.', oneShot: true, effect: (p) => p.turretFullSweepEnabled = true },
-    { id: 'turret_network_upgrade', name: 'Autonomous Network', desc: 'Every 60s, turrets with free links spawn a new connected turret pointing away from existing links.', oneShot: true, effect: (p) => p.turretNetworkEnabled = true },
-    { id: 'turret_saw_upgrade', name: 'Sawblade Turrets', desc: 'Equips turrets with rotating sawblades dealing continuous 15 damage/sec to all nearby monsters within 50px.', oneShot: true, effect: (p) => p.turretSawEnabled = true },
-    { id: 'turret_dispenser_upgrade', name: 'Supply Dispenser', desc: 'Each active turret has a 2% chance every 10s to dispense power-up items.', oneShot: true, effect: (p) => p.turretDispenserEnabled = true },
-    { id: 'mine_aoe_upgrade', name: 'Volatile Powder', desc: 'Increase proximity mine explosion radius by 60% and Martyrdom blast radius by 10%.', effect: (p) => { p.mineAoeModifier *= 1.60; p.mineAoeCount = (p.mineAoeCount || 0) + 1; } },
-    { id: 'mine_attract_upgrade', name: 'Magnetic Core', desc: '10% of proximity mines attract enemies for 2.5s before exploding.', oneShot: true, effect: (p) => p.mineAttractEnabled = true },
-    { id: 'mine_all_attract_upgrade', name: 'Singularity Core', desc: '30% of proximity mines attract enemies for 2.5s before exploding.', oneShot: true, effect: (p) => p.mineAllAttractEnabled = true },
-    { id: 'freeze_upgrade', name: 'Cryo Freeze', desc: 'Magic Missiles and Scourge Flail freeze enemies for 0.25s, and mines freeze for 1s.', oneShot: true, effect: (p) => p.freezeEnabled = true },
-    { id: 'cryo_mine_upgrade', name: 'Polar Blast', desc: 'Increase Proximity Mine and Scourge Flail freeze duration by 100%.', oneShot: true, effect: (p) => p.cryoMineBuffed = true },
-    { id: 'mine_scatter_upgrade', name: 'Scatter Charges', desc: '10% chance when dropping a mine to scatter 6-7 extra mines in random directions around you.', oneShot: true, effect: (p) => p.scatterMinesEnabled = true },
+    { id: 'unlock_turret', name: 'Auto-Turret', desc: `Unlock deployable turrets that drop every ${GAME_CONFIG.TURRET.PLACEMENT_INTERVAL_SEC}s and shoot high-speed missiles for ${GAME_CONFIG.TURRET.LIFETIME_SEC}s.`, oneShot: true, effect: (p) => p.unlockWeapon('turret') },
+    { id: 'slow_walls_upgrade', name: 'Slow Walls', desc: `Turrets create slowing laser fences between them that reduce monster movement speed by ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%.`, oneShot: true, effect: (p) => p.slowWallsEnabled = true },
+    { id: 'laser_walls_upgrade', name: 'Laser Fences', desc: `Turret fences become high-energy laser barriers dealing ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage/sec while maintaining ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}% slow.`, oneShot: true, effect: (p) => { p.laserWallsEnabled = true; p.slowWallsEnabled = true; } },
+    { id: 'building_duration_upgrade', name: 'Fortified Structures', desc: `Increases the duration of turrets by ${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% and turret HP by ${GAME_CONFIG.TURRET.FORTIFIED_HP_BOOST_PCT}%.`, effect: (p) => { p.buildingDurationModifier *= (1 + GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT / 100); p.buildingHealthModifier *= (1 + GAME_CONFIG.TURRET.FORTIFIED_HP_BOOST_PCT / 100); p.buildingDurationCount = (p.buildingDurationCount || 0) + 1; } },
+    { id: 'turret_cooldown_upgrade', name: 'Rapid Deployment', desc: `Reduces turret placement, dispenser, and Autonomous Network expansion timers by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}%.`, effect: (p) => { p.buildingCooldownModifier = (p.buildingCooldownModifier || 1.0) * (1 - GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT / 100); p.turretCooldownCount = (p.turretCooldownCount || 0) + 1; } },
+    { id: 'turret_flamethrower_upgrade', name: 'Flamethrower Turret', desc: `Adds a 2nd firing head to turrets that unleashes a flame cone every ${GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS === 4 ? '4th' : GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS + 'th'} attack for ${GAME_CONFIG.TURRET.FLAME_DAMAGE_MULT}x damage.`, oneShot: true, effect: (p) => p.turretFlamethrowerEnabled = true },
+    { id: 'turret_flamethrower_lvl2_upgrade', name: 'Inferno Nozzles', desc: `Extends Flamethrower Turret range from ${GAME_CONFIG.TURRET.FLAME_BASE_RANGE}px to ${GAME_CONFIG.TURRET.FLAME_LVL2_RANGE}px and widens the fire cone to ${GAME_CONFIG.TURRET.FLAME_LVL2_CONE_DEG}°.`, oneShot: true, effect: (p) => p.infernoNozzlesEnabled = true },
+    { id: 'turret_inferno_ring_upgrade', name: 'Inferno Nova', desc: `Flamethrower Turret sweeps a full 360° rotation around the turret and extends attack radius to ${GAME_CONFIG.TURRET.FLAME_SWEEP_RANGE}px.`, oneShot: true, effect: (p) => p.turretFullSweepEnabled = true },
+    { id: 'turret_network_upgrade', name: 'Autonomous Network', desc: `Every ${GAME_CONFIG.TURRET.NETWORK_INTERVAL_SEC}s, turrets with free links spawn a new connected turret pointing away from existing links.`, oneShot: true, effect: (p) => p.turretNetworkEnabled = true },
+    { id: 'turret_saw_upgrade', name: 'Sawblade Turrets', desc: `Equips turrets with rotating sawblades dealing continuous ${GAME_CONFIG.TURRET.SAW_DPS} damage/sec to all nearby monsters within ${GAME_CONFIG.TURRET.SAW_RADIUS}px.`, oneShot: true, effect: (p) => p.turretSawEnabled = true },
+    { id: 'turret_dispenser_upgrade', name: 'Supply Dispenser', desc: `Each active turret has a ${GAME_CONFIG.TURRET.DISPENSER_CHANCE_PCT}% chance every ${GAME_CONFIG.TURRET.DISPENSER_INTERVAL_SEC}s to dispense power-up items.`, oneShot: true, effect: (p) => p.turretDispenserEnabled = true },
+    { id: 'mine_aoe_upgrade', name: 'Volatile Powder', desc: `Increase proximity mine explosion radius by ${GAME_CONFIG.UPGRADES.MINE_AOE_BOOST_PCT}% and Martyrdom blast radius by ${GAME_CONFIG.UPGRADES.MARTYRDOM_AOE_BOOST_PCT}%.`, effect: (p) => { p.mineAoeModifier *= (1 + GAME_CONFIG.UPGRADES.MINE_AOE_BOOST_PCT / 100); p.mineAoeCount = (p.mineAoeCount || 0) + 1; } },
+    { id: 'mine_attract_upgrade', name: 'Magnetic Core', desc: `${GAME_CONFIG.UPGRADES.MINE_ATTRACT_CHANCE_PCT}% of proximity mines attract enemies for ${GAME_CONFIG.UPGRADES.MINE_ATTRACT_DURATION_SEC}s before exploding.`, oneShot: true, effect: (p) => p.mineAttractEnabled = true },
+    { id: 'mine_all_attract_upgrade', name: 'Singularity Core', desc: `${GAME_CONFIG.UPGRADES.MINE_ALL_ATTRACT_CHANCE_PCT}% of proximity mines attract enemies for ${GAME_CONFIG.UPGRADES.MINE_ATTRACT_DURATION_SEC}s before exploding.`, oneShot: true, effect: (p) => p.mineAllAttractEnabled = true },
+    { id: 'freeze_upgrade', name: 'Cryo Freeze', desc: `Magic Missiles and Scourge Flail freeze enemies for ${GAME_CONFIG.UPGRADES.FREEZE_PROJECTILE_DURATION_SEC}s, and mines freeze for ${GAME_CONFIG.UPGRADES.FREEZE_MINE_DURATION_SEC}s.`, oneShot: true, effect: (p) => p.freezeEnabled = true },
+    { id: 'cryo_mine_upgrade', name: 'Polar Blast', desc: `Increase Proximity Mine and Scourge Flail freeze duration by ${GAME_CONFIG.UPGRADES.CRYO_MINE_BOOST_PCT}%.`, oneShot: true, effect: (p) => p.cryoMineBuffed = true },
+    { id: 'mine_scatter_upgrade', name: 'Scatter Charges', desc: `${GAME_CONFIG.UPGRADES.MINE_SCATTER_CHANCE_PCT}% chance when dropping a mine to scatter ${GAME_CONFIG.UPGRADES.MINE_SCATTER_MIN}-${GAME_CONFIG.UPGRADES.MINE_SCATTER_MAX} extra mines in random directions around you.`, oneShot: true, effect: (p) => p.scatterMinesEnabled = true },
     { id: 'mine_launcher_upgrade', name: 'Mine Launcher', desc: 'Throw one mine forward in addition to the normal mine.', oneShot: true, effect: (p) => p.mineThrowEnabled = true },
-    { id: 'explosion_heal_upgrade', name: 'Blast Mending', desc: 'Explosions caused by you heal all players inside their blast radius equal to 0.5% of total damage dealt.', oneShot: true, effect: (p) => p.explosionHealEnabled = true },
+    { id: 'explosion_heal_upgrade', name: 'Blast Mending', desc: `Explosions caused by you heal all players inside their blast radius equal to ${GAME_CONFIG.UPGRADES.EXPLOSION_HEAL_PCT}% of total damage dealt.`, oneShot: true, effect: (p) => p.explosionHealEnabled = true },
     { id: 'mine_ring', name: 'Explosive Ring', desc: 'Replace the fire ring with spinning explosive charges.', oneShot: true, effect: (p) => p.mineRingEnabled = true },
-    { id: 'heal_pack_upgrade', name: 'Siphon Cells', desc: 'Slaying monsters has a chance to drop a health pack that heals 30 HP.', oneShot: true, effect: (p) => { p.healPackEnabled = true; GAME_STATE.siphonCellsOwner = p; } },
-    { id: 'melee_sledge_upgrade', name: 'Sledge Hammer', desc: 'Melee attacks trigger a heavy forward cone slam in your movement direction, dealing 400% damage.', oneShot: true, effect: (p) => p.sledgeEnabled = true },
+    { id: 'heal_pack_upgrade', name: 'Siphon Cells', desc: `Slaying monsters has a chance to drop a health pack that heals ${GAME_CONFIG.UPGRADES.SIPHON_CELLS_HEAL_HP} HP.`, oneShot: true, effect: (p) => { p.healPackEnabled = true; GAME_STATE.siphonCellsOwner = p; } },
+    { id: 'melee_sledge_upgrade', name: 'Sledge Hammer', desc: `Melee attacks trigger a heavy forward cone slam in your movement direction, dealing ${GAME_CONFIG.UPGRADES.MELEE_SLEDGE_DAMAGE_PCT}% damage.`, oneShot: true, effect: (p) => p.sledgeEnabled = true },
     { id: 'melee_chain_upgrade', name: 'Scourge Flail', desc: 'Unlock a heavy melee spiked flail dragged behind you that swings with your movement.', oneShot: true, effect: (p) => p.unlockWeapon('player_flail') },
     { id: 'flail_laser_upgrade', name: 'Laser Flail', desc: 'The Scourge Flail leaves a thin damaging laser trail along its motion path.', oneShot: true, effect: (p) => p.flailLaserEnabled = true },
-    { id: 'melee_shield_upgrade', name: 'Iron Carapace', desc: 'Reduce all incoming damage to you and your turrets by 40%.', oneShot: true, effect: (p) => p.damageReduction = 0.6 },
-    { id: 'melee_reflect_upgrade', name: 'Barbed Carapace', desc: 'Deals 25% of your Max HP back as damage to any monster that damages you, and turrets reflect 2.5% max HP.', oneShot: true, effect: (p) => p.reflectDamageEnabled = true },
-    { id: 'melee_range_upgrade', name: 'Extended Joints', desc: 'Increase the range of all melee attacks by 40%.', oneShot: true, effect: (p) => p.meleeRangeModifier = 1.40 },
-    { id: 'rocket_upgrade', name: 'Seeking Rocket', desc: '10% chance when firing magic missiles to launch a homing rocket that deals AoE damage.', oneShot: true, effect: (p) => p.rocketEnabled = true },
-    { id: 'buckshot_upgrade', name: 'Buckshot Volley', desc: 'Magic missiles spawn 3 smaller forward-spreading shrapnel projectiles upon hit, dealing 1/3 damage.', oneShot: true, effect: (p) => p.buckshotEnabled = true },
+    { id: 'melee_shield_upgrade', name: 'Iron Carapace', desc: `Reduce all incoming damage to you and your turrets by ${GAME_CONFIG.UPGRADES.MELEE_SHIELD_DAMAGE_REDUCTION_PCT}%.`, oneShot: true, effect: (p) => p.damageReduction = (1 - GAME_CONFIG.UPGRADES.MELEE_SHIELD_DAMAGE_REDUCTION_PCT / 100) },
+    { id: 'melee_reflect_upgrade', name: 'Barbed Carapace', desc: `Deals ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT}% of your Max HP back as damage to any monster that damages you, and turrets reflect ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_TURRET_MAX_HP_PCT}% max HP.`, oneShot: true, effect: (p) => p.reflectDamageEnabled = true },
+    { id: 'melee_range_upgrade', name: 'Extended Joints', desc: `Increase the range of all melee attacks by ${GAME_CONFIG.UPGRADES.MELEE_RANGE_BOOST_PCT}%.`, oneShot: true, effect: (p) => p.meleeRangeModifier = (1 + GAME_CONFIG.UPGRADES.MELEE_RANGE_BOOST_PCT / 100) },
+    { id: 'rocket_upgrade', name: 'Seeking Rocket', desc: `${GAME_CONFIG.UPGRADES.ROCKET_PLAYER_CHANCE_PCT}% chance when firing magic missiles to launch a homing rocket that deals AoE damage.`, oneShot: true, effect: (p) => p.rocketEnabled = true },
+    { id: 'buckshot_upgrade', name: 'Buckshot Volley', desc: `Magic missiles spawn ${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} smaller forward-spreading shrapnel projectiles upon hit, dealing 1/${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} damage.`, oneShot: true, effect: (p) => p.buckshotEnabled = true },
     { id: 'cluster_shot_upgrade', name: 'Cluster Shot', desc: 'Magic Missile and Buckshot shrapnel are replaced by explosive projectiles scaling with mine damage and AoE.', oneShot: true, effect: (p) => p.clusterShotEnabled = true },
-    { id: 'projectile_lifedrain_upgrade', name: 'Warlock darts', desc: 'Gain health equal to 0.1% of the damage you deal with projectiles fired by you.', oneShot: true, effect: (p) => p.projectileLifedrainEnabled = true },
-    { id: 'campervan', name: 'Campervan Rampage', desc: 'Transform into an invulnerable campervan for 20 seconds that crushes everything in its path.', oneShot: true, effect: (p) => { p.campervanUntil = gameClock + 20000; SoundEngine.campervan(); } },
+    { id: 'projectile_lifedrain_upgrade', name: 'Warlock darts', desc: `Gain health equal to ${GAME_CONFIG.UPGRADES.PROJECTILE_LIFEDRAIN_PCT}% of the damage you deal with projectiles fired by you.`, oneShot: true, effect: (p) => p.projectileLifedrainEnabled = true },
+    { id: 'campervan', name: 'Campervan Rampage', desc: `Transform into an invulnerable campervan for ${GAME_CONFIG.UPGRADES.CAMPERVAN_DURATION_SEC} seconds that crushes everything in its path.`, oneShot: true, effect: (p) => { p.campervanUntil = gameClock + GAME_CONFIG.UPGRADES.CAMPERVAN_DURATION_SEC * 1000; SoundEngine.campervan(); } },
     { id: 'final_blast', name: 'Martyrdom', desc: 'Explode in a nuclear blast upon death, and permanently halve your respawn time.', oneShot: true, effect: (p) => { p.finalBlastEnabled = true; p.reviveTimeModifier = 0.5; } },
-    { id: 'projectile_shield', name: 'Deflector Orbiters', desc: 'Unlock an orbiting barrier of 3 shields that block enemy projectiles. Absorbing a projectile destroys the shield, respawning after 3s. Scales with Attack Speed.', oneShot: true, effect: (p) => p.unlockWeapon('projectile_shield') },
+    { id: 'projectile_shield', name: 'Deflector Orbiters', desc: `Unlock an orbiting barrier of ${GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_COUNT} shields that block enemy projectiles. Absorbing a projectile destroys the shield, respawning after ${GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_RESPAWN_SEC}s. Scales with Attack Speed.`, oneShot: true, effect: (p) => p.unlockWeapon('projectile_shield') },
     { id: 'heal', name: 'Second Wind', desc: 'Fully restore HP and double your Max HP.', effect: (p) => { p.secondWindCount = (p.secondWindCount || 0) + 1; p.maxHp = Math.round(p.maxHp * 2.0); p.hp = p.maxHp; } },
     { id: 'martyrdom_aura_upgrade', name: "Martyr's Aura", desc: 'Leaves a healing aura when you are dead, damaging and slowing enemies.', oneShot: true, effect: (p) => { p.martyrdomAuraEnabled = true; } },
-    { id: 'martyrs_presence_upgrade', name: "Martyr's Presence", desc: "Enlarges Martyr's Aura by 50%, knocks back surviving enemies on nuclear death, and provokes nearby enemies.", oneShot: true, effect: (p) => { p.martyrsPresenceEnabled = true; } },
-    { id: 'sacrificial_aegis_upgrade', name: 'Sacrificial Aegis', desc: 'Reduces damage taken by nearby allies by 25%, while increasing your damage taken by 50%, and further reduces respawn time by 25%.', oneShot: true, effect: (p) => { p.sacrificialAegisEnabled = true; p.reviveTimeModifier *= 0.75; } },
-    { id: 'carapace_healer_upgrade', name: 'Sympathetic Shell', desc: 'Increases size by 50%, and heals all players 0.25% of your Max HP when taking damage.', oneShot: true, effect: (p) => { p.carapaceHealerEnabled = true; p.r *= 1.5; } },
-    { id: 'ice_trail_upgrade', name: 'Glacial Slide', desc: 'Increase movement speed by another 30%, leave a slowing ice trail, and gain immunity to fire damage while on ice.', oneShot: true, effect: (p) => { p.speed *= 1.30; p.iceTrailEnabled = true; } }
+    { id: 'martyrs_presence_upgrade', name: "Martyr's Presence", desc: `Enlarges Martyr's Aura by ${GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT}%, knocks back surviving enemies on nuclear death, and provokes nearby enemies.`, oneShot: true, effect: (p) => { p.martyrsPresenceEnabled = true; } },
+    { id: 'sacrificial_aegis_upgrade', name: 'Sacrificial Aegis', desc: `Reduces damage taken by nearby allies by ${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT}%, while increasing your damage taken by ${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_SELF_INCREASE_PCT}%, and further reduces respawn time by ${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_REVIVE_REDUCTION_PCT}%.`, oneShot: true, effect: (p) => { p.sacrificialAegisEnabled = true; p.reviveTimeModifier *= (1 - GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_REVIVE_REDUCTION_PCT / 100); } },
+    { id: 'carapace_healer_upgrade', name: 'Sympathetic Shell', desc: `Increases size by ${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_SIZE_BOOST_PCT}%, and heals all players ${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_TEAM_HEAL_PCT}% of your Max HP when taking damage.`, oneShot: true, effect: (p) => { p.carapaceHealerEnabled = true; p.r *= (1 + GAME_CONFIG.UPGRADES.CARAPACE_HEALER_SIZE_BOOST_PCT / 100); } },
+    { id: 'ice_trail_upgrade', name: 'Glacial Slide', desc: `Increase movement speed by another ${GAME_CONFIG.UPGRADES.ICE_TRAIL_SPEED_BOOST_PCT}%, leave a slowing ice trail, and gain immunity to fire damage while on ice.`, oneShot: true, effect: (p) => { p.speed *= (1 + GAME_CONFIG.UPGRADES.ICE_TRAIL_SPEED_BOOST_PCT / 100); p.iceTrailEnabled = true; } }
 ];
 
 function upgradeWeight(u, player) {
@@ -13582,24 +13694,24 @@ const UPGRADE_DEPENDENCIES = {
 // ---------------- Upgrade Details & Synergies ----------------
 const UPGRADE_DETAILS = {
     'speed': {
-        stacking: 'You can only pick this upgrade once during a run. Its +30% movement speed bonus remains active permanently.',
-        how: 'Multiplies your base movement speed by 1.30x. Significantly improves your ability to evade swarms, kite elites, and dodge incoming enemy projectiles.',
+        stacking: `You can only pick this upgrade once during a run. Its +${GAME_CONFIG.UPGRADES.SPEED_BOOST_PCT}% movement speed bonus remains active permanently.`,
+        how: `Multiplies your base movement speed by ${(1 + GAME_CONFIG.UPGRADES.SPEED_BOOST_PCT / 100).toFixed(2)}x. Significantly improves your ability to evade swarms, kite elites, and dodge incoming enemy projectiles.`,
         caveats: 'Stacks multiplicatively with difficulty modifiers and player count speed scaling.'
     },
     'speed_lvl2': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Increases movement speed by another +30% (for ~1.69x baseline speed) and leaves a persistent glowing laser trail in your motion path. Enemies crossing the trail take continuous damage.',
+        how: `Increases movement speed by another +${GAME_CONFIG.UPGRADES.SPEED_LVL2_BOOST_PCT}% (for ~${((1 + GAME_CONFIG.UPGRADES.SPEED_BOOST_PCT / 100) * (1 + GAME_CONFIG.UPGRADES.SPEED_LVL2_BOOST_PCT / 100)).toFixed(2)}x baseline speed) and leaves a persistent glowing laser trail in your motion path. Enemies crossing the trail take continuous damage.`,
         caveats: 'Laser trail damage density increases when moving fast and circling enemies.'
     },
     'damage': {
-        stacking: 'This upgrade can be selected multiple times without limit. Each selection adds another +40% weapon damage (+60% for mines).',
-        how: 'Increases the base damage multiplier of all active weapons (Magic Missiles, Melee Sweeps, Turrets, Flails, Orbiters) by +40% and proximity mines by +60% per stack.',
+        stacking: `This upgrade can be selected multiple times without limit. Each selection adds another +${GAME_CONFIG.UPGRADES.DAMAGE_WEAPONS_BOOST_PCT}% weapon damage (+${GAME_CONFIG.UPGRADES.DAMAGE_MINES_BOOST_PCT}% for mines).`,
+        how: `Increases the base damage multiplier of all active weapons (Magic Missiles, Melee Sweeps, Turrets, Flails, Orbiters) by +${GAME_CONFIG.UPGRADES.DAMAGE_WEAPONS_BOOST_PCT}% and proximity mines by +${GAME_CONFIG.UPGRADES.DAMAGE_MINES_BOOST_PCT}% per stack.`,
         caveats: 'Damage increases multiply with difficulty damage multipliers.'
     },
     'cooldown': {
-        stacking: 'Can be selected up to 6 times. Attack interval divisor increases by 1.50x per stack (mines by 1.25x).',
-        how: 'Reduces the delay between weapon attacks, allowing Magic Missiles, Melee Sweeps, and Turrets to fire 50% faster with each stack.',
-        caveats: 'Has a maximum cap of 6 stacks.'
+        stacking: `Can be selected up to ${GAME_CONFIG.UPGRADES.ATTACK_SPEED_MAX_STACKS} times. Attack interval divisor increases by ${(1 + GAME_CONFIG.UPGRADES.ATTACK_SPEED_BOOST_PCT / 100).toFixed(2)}x per stack (mines by ${(1 + GAME_CONFIG.UPGRADES.MINE_COOLDOWN_BOOST_PCT / 100).toFixed(2)}x).`,
+        how: `Reduces the delay between weapon attacks, allowing Magic Missiles, Melee Sweeps, and Turrets to fire ${GAME_CONFIG.UPGRADES.ATTACK_SPEED_BOOST_PCT}% faster with each stack.`,
+        caveats: `Has a maximum cap of ${GAME_CONFIG.UPGRADES.ATTACK_SPEED_MAX_STACKS} stacks.`
     },
     'accuracy': {
         stacking: 'One-shot permanent unlock.',
@@ -13613,12 +13725,12 @@ const UPGRADE_DETAILS = {
     },
     'sniper_shot_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Every 3rd Magic Missile volley fires a high-velocity piercing beam at the monster with the highest maximum HP within range, dealing 3x damage to everything in its path.',
+        how: `Every ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL === 3 ? '3rd' : GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL + 'th'} Magic Missile volley fires a high-velocity piercing beam at the monster with the highest maximum HP within range, dealing ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_DAMAGE_MULT}x damage to everything in its path.`,
         caveats: 'Prioritizes the highest-HP target rather than the closest target.'
     },
     'laser_sniper_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Amplifies Sniper Shot damage from 3x to 5x Magic Missile damage and leaves an intense laser beam trail along its path that continues to damage enemies for 600ms.',
+        how: `Amplifies Sniper Shot damage from ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_DAMAGE_MULT}x to ${GAME_CONFIG.UPGRADES.LASER_SNIPER_DAMAGE_MULT}x Magic Missile damage and leaves an intense laser beam trail along its path that continues to damage enemies for ${GAME_CONFIG.UPGRADES.LASER_SNIPER_TRAIL_DURATION_MS}ms.`,
         caveats: 'The laser trail is stationary along the beam trajectory.'
     },
     'multishot': {
@@ -13629,12 +13741,12 @@ const UPGRADE_DETAILS = {
     'dash': {
         stacking: 'One-shot permanent unlock.',
         how: 'Enables double-tapping any directional movement key to perform a swift Phase Dash, bursting missiles in a circle around you upon execution.',
-        caveats: 'Has a 3-second base recharge cooldown.'
+        caveats: `Has a ${(GAME_CONFIG.DASH.COOLDOWN_MS / 1000).toFixed(1)}-second base recharge cooldown.`
     },
     'dash_lvl2': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Increases Phase Dash distance by +25%, cuts Phase Dash cooldown in half (from 3.0s to 1.5s), leaves a trail of scorching fire behind your dash path, and grants complete invulnerability and an impenetrable shield for the first half of the recharge duration.',
-        caveats: 'Invulnerability shield lasts for 0.75s after dashing.'
+        how: `Increases Phase Dash distance by +${GAME_CONFIG.DASH.LVL2_RANGE_BOOST_PCT}%, cuts Phase Dash cooldown in half (from ${(GAME_CONFIG.DASH.COOLDOWN_MS / 1000).toFixed(1)}s to ${(GAME_CONFIG.DASH.COOLDOWN_MS / GAME_CONFIG.DASH.LVL2_COOLDOWN_DIVISOR / 1000).toFixed(2)}s), leaves a trail of scorching fire behind your dash path, and grants complete invulnerability and an impenetrable shield for the first half of the recharge duration.`,
+        caveats: `Invulnerability shield lasts for ${(GAME_CONFIG.DASH.COOLDOWN_MS / GAME_CONFIG.DASH.LVL2_COOLDOWN_DIVISOR / 2000).toFixed(2)}s after dashing.`
     },
     'phase_detonation_upgrade': {
         stacking: 'One-shot permanent unlock.',
@@ -13663,95 +13775,95 @@ const UPGRADE_DETAILS = {
     },
     'unlock_turret': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Unlocks deployable automated defense turrets dropped every 10 seconds. Each turret lasts 25 seconds and shoots high-speed missiles at nearby monsters.',
+        how: `Unlocks deployable automated defense turrets dropped every ${GAME_CONFIG.TURRET.PLACEMENT_INTERVAL_SEC} seconds. Each turret lasts ${GAME_CONFIG.TURRET.LIFETIME_SEC} seconds and shoots high-speed missiles at nearby monsters.`,
         caveats: 'Turrets have their own HP and can be damaged or destroyed by enemy attacks.'
     },
     'slow_walls_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Turrets establish energy links between each other that slow passing monsters by 40%.',
+        how: `Turrets establish energy links between each other that slow passing monsters by ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%.`,
         caveats: 'Requires at least 2 active turrets within link range.'
     },
     'laser_walls_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Turret fences become energized laser barriers dealing 50 damage per second to monsters passing through, while maintaining the 40% slow.',
+        how: `Turret fences become energized laser barriers dealing ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage per second to monsters passing through, while maintaining the ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}% slow.`,
         caveats: 'Damage scales continuously as long as monsters remain inside the laser fence.'
     },
     'building_duration_upgrade': {
-        stacking: 'Can be selected multiple times. Each selection adds +40% turret duration and +50% turret HP.',
+        stacking: `Can be selected multiple times. Each selection adds +${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% turret duration and +${GAME_CONFIG.TURRET.FORTIFIED_HP_BOOST_PCT}% turret HP.`,
         how: 'Extends how long turrets stay alive before expiring and increases their maximum health to survive heavy monster swarms.',
         caveats: 'Applies to all currently placed and future turrets.'
     },
     'turret_cooldown_upgrade': {
-        stacking: 'Can be selected multiple times. Reduces cooldowns by 30% per stack.',
-        how: 'Reduces the placement cooldown between dropping turrets, dispenser drop timers, and Autonomous Network expansion intervals by 30% per stack.',
+        stacking: `Can be selected multiple times. Reduces cooldowns by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
+        how: `Reduces the placement cooldown between dropping turrets, dispenser drop timers, and Autonomous Network expansion intervals by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
         caveats: 'Multiplies cooldown modifiers down exponentially.'
     },
     'turret_flamethrower_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Adds a secondary flamethrower head to turrets that unleashes a 90° flame cone (120px reach) dealing 4x damage on every 4th attack, while main missile heads continue firing.',
+        how: `Adds a secondary flamethrower head to turrets that unleashes a ${GAME_CONFIG.TURRET.FLAME_BASE_CONE_DEG}° flame cone (${GAME_CONFIG.TURRET.FLAME_BASE_RANGE}px reach) dealing ${GAME_CONFIG.TURRET.FLAME_DAMAGE_MULT}x damage on every ${GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS === 4 ? '4th' : GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS + 'th'} attack, while main missile heads continue firing.`,
         caveats: 'The flamethrower cone fires independently of missile tracking.'
     },
     'turret_flamethrower_lvl2_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Extends flamethrower turret cone range from 120px to 150px and widens the fire cone arc to 135°.',
+        how: `Extends flamethrower turret cone range from ${GAME_CONFIG.TURRET.FLAME_BASE_RANGE}px to ${GAME_CONFIG.TURRET.FLAME_LVL2_RANGE}px and widens the fire cone arc to ${GAME_CONFIG.TURRET.FLAME_LVL2_CONE_DEG}°.`,
         caveats: 'Applies to all active flamethrower turrets.'
     },
     'turret_inferno_ring_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Flamethrower turrets perform a full 360° sweeping rotation around the turret and extend their attack radius to 180px.',
+        how: `Flamethrower turrets perform a full 360° sweeping rotation around the turret and extend their attack radius to ${GAME_CONFIG.TURRET.FLAME_SWEEP_RANGE}px.`,
         caveats: 'Requires Fire Ring and Flamethrower Turret.'
     },
     'turret_network_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Every 60 seconds (scaled by Rapid Deployment), active turrets with free links automatically construct a new connected turret (50-300px away) pointing outwards.',
+        how: `Every ${GAME_CONFIG.TURRET.NETWORK_INTERVAL_SEC} seconds (scaled by Rapid Deployment), active turrets with free links automatically construct a new connected turret (50-300px away) pointing outwards.`,
         caveats: 'Turrets cap at a maximum connection limit.'
     },
     'turret_saw_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Equips all turrets with spinning circular sawblades dealing 15 damage/sec to all nearby monsters within 50px (reach scales with Extended Joints).',
+        how: `Equips all turrets with spinning circular sawblades dealing ${GAME_CONFIG.TURRET.SAW_DPS} damage/sec to all nearby monsters within ${GAME_CONFIG.TURRET.SAW_RADIUS}px (reach scales with Extended Joints).`,
         caveats: 'Deals continuous damage to any monster entering close range.'
     },
     'turret_dispenser_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Each active turret has a 2% chance every 10 seconds (scaled by Rapid Deployment) to dispense one of 8 distinct supply drops with equal probability:<br><br>' +
-             '• <b>Health Pack</b> (➕): Restores 30 HP immediately.<br>' +
-             '• <b>XP Cluster</b> (💎): Spawns a cluster of gems worth 80 XP.<br>' +
-             '• <b>Aegis</b> (🛡️): Grants 4 seconds of invulnerability.<br>' +
-             '• <b>Nitro</b> (⚡): +50% movement speed for 6 seconds.<br>' +
-             '• <b>Magnet</b> (🧲): Vacuums all XP gems within a 450px radius.<br>' +
-             '• <b>Nuke</b> (💣): Detonates a 350px blast dealing 120 damage with knockback.<br>' +
-             '• <b>Freeze</b> (❄️): Freezes all non-boss monsters in a 350px radius for 3 seconds.<br>' +
-             '• <b>Overclock</b> (⚙️): Doubles the attack speed of all active turrets for 5 seconds.',
+        how: `Each active turret has a ${GAME_CONFIG.TURRET.DISPENSER_CHANCE_PCT}% chance every ${GAME_CONFIG.TURRET.DISPENSER_INTERVAL_SEC} seconds (scaled by Rapid Deployment) to dispense one of 8 distinct supply drops with equal probability:<br><br>` +
+             `• <b>Health Pack</b> (➕): Restores ${GAME_CONFIG.SUPPLIES.HEALTH_PACK_HP} HP immediately.<br>` +
+             `• <b>XP Cluster</b> (💎): Spawns a cluster of gems worth ${GAME_CONFIG.SUPPLIES.XP_CLUSTER_XP} XP.<br>` +
+             `• <b>Aegis</b> (🛡️): Grants ${GAME_CONFIG.SUPPLIES.AEGIS_DURATION_SEC} seconds of invulnerability.<br>` +
+             `• <b>Nitro</b> (⚡): +${GAME_CONFIG.SUPPLIES.NITRO_SPEED_BOOST_PCT}% movement speed for ${GAME_CONFIG.SUPPLIES.NITRO_DURATION_SEC} seconds.<br>` +
+             `• <b>Magnet</b> (🧲): Vacuums all XP gems within a ${GAME_CONFIG.SUPPLIES.MAGNET_RADIUS}px radius.<br>` +
+             `• <b>Nuke</b> (💣): Detonates a ${GAME_CONFIG.SUPPLIES.NUKE_RADIUS}px blast dealing ${GAME_CONFIG.SUPPLIES.NUKE_DAMAGE} damage with knockback.<br>` +
+             `• <b>Freeze</b> (❄️): Freezes all non-boss monsters in a ${GAME_CONFIG.SUPPLIES.FREEZE_RADIUS}px radius for ${GAME_CONFIG.SUPPLIES.FREEZE_DURATION_SEC} seconds.<br>` +
+             `• <b>Overclock</b> (⚙️): Doubles the attack speed of all active turrets for ${GAME_CONFIG.SUPPLIES.OVERCLOCK_DURATION_SEC} seconds.`,
         caveats: 'More active turrets on the field provide more dispensing opportunities.'
     },
     'mine_aoe_upgrade': {
-        stacking: 'Can be selected up to 3 times (+60% mine blast radius and +10% Martyrdom radius per stack).',
-        how: 'Expands proximity mine explosion blast radius by +60% per stack, allowing single mines to wipe out massive clusters of enemies.',
-        caveats: 'Capped at a maximum of 3 stacks.'
+        stacking: `Can be selected up to ${GAME_CONFIG.UPGRADES.MINE_AOE_MAX_STACKS} times (+${GAME_CONFIG.UPGRADES.MINE_AOE_BOOST_PCT}% mine blast radius and +${GAME_CONFIG.UPGRADES.MARTYRDOM_AOE_BOOST_PCT}% Martyrdom radius per stack).`,
+        how: `Expands proximity mine explosion blast radius by +${GAME_CONFIG.UPGRADES.MINE_AOE_BOOST_PCT}% per stack, allowing single mines to wipe out massive clusters of enemies.`,
+        caveats: `Capped at a maximum of ${GAME_CONFIG.UPGRADES.MINE_AOE_MAX_STACKS} stacks.`
     },
     'mine_attract_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: '10% of dropped proximity mines become magnetic singularities, pulling nearby enemies inward for 2.5 seconds before exploding.',
+        how: `${GAME_CONFIG.UPGRADES.MINE_ATTRACT_CHANCE_PCT}% of dropped proximity mines become magnetic singularities, pulling nearby enemies inward for ${GAME_CONFIG.UPGRADES.MINE_ATTRACT_DURATION_SEC} seconds before exploding.`,
         caveats: 'Attracted enemies are pulled towards the center of the mine.'
     },
     'mine_all_attract_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: '30% of dropped proximity mines become magnetic singularities that pull nearby enemies inward before detonating.',
-        caveats: 'Increases the magnetic singularity chance from 10% to 30%.'
+        how: `${GAME_CONFIG.UPGRADES.MINE_ALL_ATTRACT_CHANCE_PCT}% of dropped proximity mines become magnetic singularities that pull nearby enemies inward before detonating.`,
+        caveats: `Increases the magnetic singularity chance from ${GAME_CONFIG.UPGRADES.MINE_ATTRACT_CHANCE_PCT}% to ${GAME_CONFIG.UPGRADES.MINE_ALL_ATTRACT_CHANCE_PCT}%.`
     },
     'freeze_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Infuses Magic Missiles and Scourge Flail with cryo energy, freezing hit enemies for 0.25 seconds (mines freeze for 1.0 second). Frozen enemies cannot move or attack.',
+        how: `Infuses Magic Missiles and Scourge Flail with cryo energy, freezing hit enemies for ${GAME_CONFIG.UPGRADES.FREEZE_PROJECTILE_DURATION_SEC} seconds (mines freeze for ${GAME_CONFIG.UPGRADES.FREEZE_MINE_DURATION_SEC.toFixed(1)} second). Frozen enemies cannot move or attack.`,
         caveats: 'Bosses are immune to freeze, but all standard and elite enemies are affected.'
     },
     'cryo_mine_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Doubles (+100%) the freeze duration of Proximity Mines and Scourge Flail attacks.',
-        caveats: 'Mines freeze enemies for 2.0s; Flail freezes enemies for 0.5s.'
+        how: `Doubles (+${GAME_CONFIG.UPGRADES.CRYO_MINE_BOOST_PCT}%) the freeze duration of Proximity Mines and Scourge Flail attacks.`,
+        caveats: `Mines freeze enemies for ${(GAME_CONFIG.UPGRADES.FREEZE_MINE_DURATION_SEC * (1 + GAME_CONFIG.UPGRADES.CRYO_MINE_BOOST_PCT / 100)).toFixed(1)}s; Flail freezes enemies for ${(GAME_CONFIG.UPGRADES.FREEZE_PROJECTILE_DURATION_SEC * (1 + GAME_CONFIG.UPGRADES.CRYO_MINE_BOOST_PCT / 100)).toFixed(1)}s.`
     },
     'mine_scatter_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: '10% chance when dropping a mine to scatter 6 to 7 additional bonus mines in random directions around you.',
+        how: `${GAME_CONFIG.UPGRADES.MINE_SCATTER_CHANCE_PCT}% chance when dropping a mine to scatter ${GAME_CONFIG.UPGRADES.MINE_SCATTER_MIN} to ${GAME_CONFIG.UPGRADES.MINE_SCATTER_MAX} additional bonus mines in random directions around you.`,
         caveats: 'Scattered mines arm and detonate with identical stats to normal mines.'
     },
     'mine_launcher_upgrade': {
@@ -13761,7 +13873,7 @@ const UPGRADE_DETAILS = {
     },
     'explosion_heal_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Calculates the total damage dealt by every player explosion (mines, cluster shots, seeking rockets, explosive rings, phase detonations). All players within the explosion blast radius heal for 0.5% of that total damage.',
+        how: `Calculates the total damage dealt by every player explosion (mines, cluster shots, seeking rockets, explosive rings, phase detonations). All players within the explosion blast radius heal for ${GAME_CONFIG.UPGRADES.EXPLOSION_HEAL_PCT}% of that total damage.`,
         caveats: 'Only heals players who are physically inside the explosion radius when it detonates.'
     },
     'mine_ring': {
@@ -13771,12 +13883,12 @@ const UPGRADE_DETAILS = {
     },
     'heal_pack_upgrade': {
         stacking: 'One-shot permanent unlock (one player per match).',
-        how: 'Enemies slain by any player have a chance to drop pickup health packs (drop chance scales higher on beefier monsters). Collecting a pack restores 30 HP.',
+        how: `Enemies slain by any player have a chance to drop pickup health packs (drop chance scales higher on beefier monsters). Collecting a pack restores ${GAME_CONFIG.UPGRADES.SIPHON_CELLS_HEAL_HP} HP.`,
         caveats: 'Available starting at Minute 3; only one player in a co-op match can take this upgrade.'
     },
     'melee_sledge_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Melee attacks trigger a heavy forward cone slam in your movement direction, dealing 400% damage and knocking enemies back.',
+        how: `Melee attacks trigger a heavy forward cone slam in your movement direction, dealing ${GAME_CONFIG.UPGRADES.MELEE_SLEDGE_DAMAGE_PCT}% damage and knocking enemies back.`,
         caveats: 'Slam direction aligns with your active movement vector.'
     },
     'melee_chain_upgrade': {
@@ -13791,27 +13903,27 @@ const UPGRADE_DETAILS = {
     },
     'melee_shield_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Grants 40% damage reduction against all incoming damage to you and your deployable turrets (damage taken multiplier set to 0.60x).',
+        how: `Grants ${GAME_CONFIG.UPGRADES.MELEE_SHIELD_DAMAGE_REDUCTION_PCT}% damage reduction against all incoming damage to you and your deployable turrets (damage taken multiplier set to ${(1 - GAME_CONFIG.UPGRADES.MELEE_SHIELD_DAMAGE_REDUCTION_PCT / 100).toFixed(2)}x).`,
         caveats: 'Multiplies with other defensive modifiers.'
     },
     'melee_reflect_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Whenever an enemy damages you, immediately reflects 25% of your Max HP back to the attacker as unavoidable damage (turrets reflect 2.5% max HP).',
+        how: `Whenever an enemy damages you, immediately reflects ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT}% of your Max HP back to the attacker as unavoidable damage (turrets reflect ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_TURRET_MAX_HP_PCT}% max HP).`,
         caveats: 'Scales with your Maximum HP (synergizes with Second Wind).'
     },
     'melee_range_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Increases the reach and hitbox radius of all melee attacks and turret sawblades by +40%.',
+        how: `Increases the reach and hitbox radius of all melee attacks and turret sawblades by +${GAME_CONFIG.UPGRADES.MELEE_RANGE_BOOST_PCT}%.`,
         caveats: 'Affects Melee Sweep, Sledge Hammer, Scourge Flail, and Sawblade Turrets.'
     },
     'rocket_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Magic Missile volleys have a 10% chance to launch a homing explosive rocket that tracks enemies and detonates in an AoE blast (turrets also gain a 5% rocket chance).',
+        how: `Magic Missile volleys have a ${GAME_CONFIG.UPGRADES.ROCKET_PLAYER_CHANCE_PCT}% chance to launch a homing explosive rocket that tracks enemies and detonates in an AoE blast (turrets also gain a ${GAME_CONFIG.UPGRADES.ROCKET_TURRET_CHANCE_PCT}% rocket chance).`,
         caveats: 'Rocket explosion radius scales with Volatile Powder.'
     },
     'buckshot_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'When Magic Missiles hit an enemy, they burst into 3 forward-spreading shrapnel projectiles that pierce through nearby enemies for 1/3 damage.',
+        how: `When Magic Missiles hit an enemy, they burst into ${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} forward-spreading shrapnel projectiles that pierce through nearby enemies for 1/${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} damage.`,
         caveats: 'Shrapnel spreads in a forward cone from the impact point.'
     },
     'cluster_shot_upgrade': {
@@ -13821,12 +13933,12 @@ const UPGRADE_DETAILS = {
     },
     'projectile_lifedrain_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Direct projectile hits and explosions fired by you restore health equal to 0.1% of damage dealt.',
+        how: `Direct projectile hits and explosions fired by you restore health equal to ${GAME_CONFIG.UPGRADES.PROJECTILE_LIFEDRAIN_PCT}% of damage dealt.`,
         caveats: 'Only applies to projectile damage originating from the player.'
     },
     'campervan': {
         stacking: 'One-shot emergency power-up.',
-        how: 'Transforms you into an invincible campervan for 20 seconds, crushing through all enemies and bosses on contact.',
+        how: `Transforms you into an invincible campervan for ${GAME_CONFIG.UPGRADES.CAMPERVAN_DURATION_SEC} seconds, crushing through all enemies and bosses on contact.`,
         caveats: 'Only offered in critical situations when HP is below 50% and 200+ enemies are on screen.'
     },
     'final_blast': {
@@ -13836,8 +13948,8 @@ const UPGRADE_DETAILS = {
     },
     'projectile_shield': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Spawns 3 orbiting deflector shields around you that rotate counter-clockwise and destroy incoming enemy projectiles (Shooter bolts, Spikes, and Marauder missiles) on contact. When a shield blocks a projectile, that shield is destroyed and respawns after 3 seconds. Rotation speed scales directly with your Attack Speed.',
-        caveats: 'Each individual shield has a 3-second respawn cooldown after blocking a projectile.'
+        how: `Spawns ${GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_COUNT} orbiting deflector shields around you that rotate counter-clockwise and destroy incoming enemy projectiles (Shooter bolts, Spikes, and Marauder missiles) on contact. When a shield blocks a projectile, that shield is destroyed and respawns after ${GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_RESPAWN_SEC} seconds. Rotation speed scales directly with your Attack Speed.`,
+        caveats: `Each individual shield has a ${GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_RESPAWN_SEC}-second respawn cooldown after blocking a projectile.`
     },
     'heal': {
         stacking: 'This upgrade can be selected multiple times without limit.',
@@ -13851,22 +13963,22 @@ const UPGRADE_DETAILS = {
     },
     'martyrs_presence_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Enlarges Martyr\'s Aura radius by +50%, adds a knockback blast upon death, and constantly provokes monsters within proximity mine radius to target you.',
+        how: `Enlarges Martyr's Aura radius by +${GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT}%, adds a knockback blast upon death, and constantly provokes monsters within proximity mine radius to target you.`,
         caveats: 'Provokes monsters away from allies towards you.'
     },
     'sacrificial_aegis_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Reduces damage taken by nearby allies by 25%, while increasing your damage taken by 50%. Further cuts respawn time by 25%.',
-        caveats: 'You take 1.5x damage, but nearby allies take 0.75x damage.'
+        how: `Reduces damage taken by nearby allies by ${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT}%, while increasing your damage taken by ${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_SELF_INCREASE_PCT}%. Further cuts respawn time by ${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_REVIVE_REDUCTION_PCT}%.`,
+        caveats: `You take ${(1 + GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_SELF_INCREASE_PCT / 100).toFixed(1)}x damage, but nearby allies take ${(1 - GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT / 100).toFixed(2)}x damage.`
     },
     'carapace_healer_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Increases player size by +50%, and whenever taking damage, instantly heals all players for 0.25% of your Max HP.',
+        how: `Increases player size by +${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_SIZE_BOOST_PCT}%, and whenever taking damage, instantly heals all players for ${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_TEAM_HEAL_PCT}% of your Max HP.`,
         caveats: 'Larger hitbox makes dodging harder, but triggers frequent team healing upon taking damage.'
     },
     'ice_trail_upgrade': {
         stacking: 'One-shot permanent unlock.',
-        how: 'Increases movement speed by another +30%, leaves a persistent ice trail that slows enemy movement by 50%, boosts Laser Trail damage, and grants complete immunity to fire damage while walking on ice.',
+        how: `Increases movement speed by another +${GAME_CONFIG.UPGRADES.ICE_TRAIL_SPEED_BOOST_PCT}%, leaves a persistent ice trail that slows enemy movement by ${GAME_CONFIG.UPGRADES.ICE_TRAIL_SLOW_PCT}%, boosts Laser Trail damage, and grants complete immunity to fire damage while walking on ice.`,
         caveats: 'Ice trail persists for several seconds behind your movement path.'
     }
 };
@@ -14243,7 +14355,9 @@ function startCountdown() {
             el.style.display = 'none';
             GAME_STATE.countdownTimer = null;
             GAME_STATE.current = STATES.GAMEPLAY;
-            SoundEngine.startMusic();
+            if (SoundEngine.musicMode !== 'gameplay' || !SoundEngine.isMusicPlaying) {
+                SoundEngine.startMusic(true);
+            }
             SoundEngine.setMuffled(false, 0.1);
             if (isMobile && typeof joystickZone !== 'undefined' && joystickZone) {
                 joystickZone.style.display = 'block';
@@ -15766,15 +15880,15 @@ const TREE_BRANCHES = [
             { id: "unlock_missile", name: "Magic Missile", desc: "Unlock magic missiles" },
             { id: "accuracy", name: "Accurate Shot", desc: "Magic Missile tracks with precision and penetrates 1 extra target" },
             { id: "instant_missile_upgrade", name: "Instant Precision", desc: "Missiles, Lasers and Cluster Shots hit instantly (also Turrets)" },
-            { id: "sniper_shot_upgrade", name: "Sniper Shot", desc: "Every 3rd volley fires a piercing beam at the strongest enemy" },
-            { id: "laser_sniper_upgrade", name: "Laser Sniper", desc: "Sniper Shot deals 5x damage and leaves a laser trail" },
+            { id: "sniper_shot_upgrade", name: "Sniper Shot", desc: `Every ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL === 3 ? '3rd' : GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL + 'th'} volley fires a piercing beam at the strongest enemy` },
+            { id: "laser_sniper_upgrade", name: "Laser Sniper", desc: `Sniper Shot deals ${GAME_CONFIG.UPGRADES.LASER_SNIPER_DAMAGE_MULT}x damage and leaves a laser trail` },
             { id: "multishot", name: "Multishot", desc: "+1 Magic Missile per volley" },
-            { id: "buckshot_upgrade", name: "Buckshot Volley", desc: "Spawns 3 forward shrapnel on hit dealing 1/3 damage" },
+            { id: "buckshot_upgrade", name: "Buckshot Volley", desc: `Spawns ${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} forward shrapnel on hit dealing 1/${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} damage` },
             { id: "cluster_shot_upgrade", name: "Cluster Shot", desc: "Magic Missile and Buckshot shrapnel explode on hit" },
-            { id: "projectile_lifedrain_upgrade", name: "Warlock darts", desc: "Gain 0.1% of projectile damage" },
-            { id: "rocket_upgrade", name: "Seeking Rocket", desc: "10% chance to launch homing rocket" },
+            { id: "projectile_lifedrain_upgrade", name: "Warlock darts", desc: `Gain ${GAME_CONFIG.UPGRADES.PROJECTILE_LIFEDRAIN_PCT}% of projectile damage` },
+            { id: "rocket_upgrade", name: "Seeking Rocket", desc: `${GAME_CONFIG.UPGRADES.ROCKET_PLAYER_CHANCE_PCT}% chance to launch homing rocket` },
             { id: "dash", name: "Phase Dash", desc: "Double tap to dash & fire missiles" },
-            { id: "dash_lvl2", name: "Phase Mastery", desc: "+25% dash range, reduce CD & gain fire trail" },
+            { id: "dash_lvl2", name: "Phase Mastery", desc: `+${GAME_CONFIG.DASH.LVL2_RANGE_BOOST_PCT}% dash range, reduce CD & gain fire trail` },
             { id: "phase_detonation_upgrade", name: "Phase Detonation", desc: "Phase Dash landing explodes and releases explosive missiles" },
         ]
     },
@@ -15782,20 +15896,20 @@ const TREE_BRANCHES = [
         title: "Explosives",
         nodes: [
             { id: "unlock_mine", name: "Proximity Mine", desc: "Unlock proximity mines" },
-            { id: "mine_aoe_upgrade", name: "Volatile Powder", desc: "Increase mine radius (stacks, max 3)" },
-            { id: "mine_attract_upgrade", name: "Magnetic Core", desc: "10% of mines attract enemies" },
-            { id: "mine_all_attract_upgrade", name: "Singularity Core", desc: "30% of mines attract enemies" },
-            { id: "mine_scatter_upgrade", name: "Scatter Charges", desc: "10% chance to drop 6-7 extra mines" },
+            { id: "mine_aoe_upgrade", name: "Volatile Powder", desc: `Increase mine radius (stacks, max ${GAME_CONFIG.UPGRADES.MINE_AOE_MAX_STACKS})` },
+            { id: "mine_attract_upgrade", name: "Magnetic Core", desc: `${GAME_CONFIG.UPGRADES.MINE_ATTRACT_CHANCE_PCT}% of mines attract enemies` },
+            { id: "mine_all_attract_upgrade", name: "Singularity Core", desc: `${GAME_CONFIG.UPGRADES.MINE_ALL_ATTRACT_CHANCE_PCT}% of mines attract enemies` },
+            { id: "mine_scatter_upgrade", name: "Scatter Charges", desc: `${GAME_CONFIG.UPGRADES.MINE_SCATTER_CHANCE_PCT}% chance to drop ${GAME_CONFIG.UPGRADES.MINE_SCATTER_MIN}-${GAME_CONFIG.UPGRADES.MINE_SCATTER_MAX} extra mines` },
             { id: "mine_launcher_upgrade", name: "Mine Launcher", desc: "Throw one mine forward in addition to the normal mine" },
-            { id: "explosion_heal_upgrade", name: "Blast Mending", desc: "Explosions heal players in blast radius for 0.5% of damage dealt" },
+            { id: "explosion_heal_upgrade", name: "Blast Mending", desc: `Explosions heal players in blast radius for ${GAME_CONFIG.UPGRADES.EXPLOSION_HEAL_PCT}% of damage dealt` },
             { id: "mine_ring", name: "Explosive Ring", desc: "Replace the fire ring with spinning explosive charges" },
             { id: "phase_detonation_upgrade", name: "Phase Detonation", desc: "Phase Dash landing explodes and releases explosive missiles" },
             { id: "cluster_shot_upgrade", name: "Cluster Shot", desc: "Magic Missile and Buckshot shrapnel explode on hit" },
-            { id: "rocket_upgrade", name: "Seeking Rocket", desc: "10% chance to launch homing rocket" },
+            { id: "rocket_upgrade", name: "Seeking Rocket", desc: `${GAME_CONFIG.UPGRADES.ROCKET_PLAYER_CHANCE_PCT}% chance to launch homing rocket` },
             { id: "final_blast", name: "Martyrdom", desc: "Nuclear blast upon death" },
             { id: "martyrdom_aura_upgrade", name: "Martyr's Aura", desc: "Healing/damaging/slowing aura when dead" },
             { id: "martyrs_presence_upgrade", name: "Martyr's Presence", desc: "Larger aura, knockback explosion & provokes nearby enemies" },
-            { id: "sacrificial_aegis_upgrade", name: "Sacrificial Aegis", desc: "Protect allies (-25% dmg taken), increase self dmg (+50%), reduce respawn time" },
+            { id: "sacrificial_aegis_upgrade", name: "Sacrificial Aegis", desc: `Protect allies (-${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT}% dmg taken), increase self dmg (+${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_SELF_INCREASE_PCT}%), reduce respawn time` },
             { id: "cryo_mine_upgrade", name: "Polar Blast", desc: "Double mine freeze duration" }
         ]
     },
@@ -15806,39 +15920,39 @@ const TREE_BRANCHES = [
             { id: "melee_sledge_upgrade", name: "Sledge Hammer", desc: "Heavy hammer slam in movement direction" },
             { id: "melee_chain_upgrade", name: "Scourge Flail", desc: "Heavy spiked flail dragged behind you" },
             { id: "flail_laser_upgrade", name: "Laser Flail", desc: "Scourge Flail leaves a laser trail" },
-            { id: "melee_shield_upgrade", name: "Iron Carapace", desc: "Reduce all incoming damage by 40%" },
-            { id: "melee_reflect_upgrade", name: "Barbed Carapace", desc: "Reflect 25% max HP damage when hit" },
-            { id: "carapace_healer_upgrade", name: "Sympathetic Shell", desc: "Grow size 50%, heal all 0.25% when hit" },
-            { id: "melee_range_upgrade", name: "Extended Joints", desc: "Increase melee attack range by 40%" }
+            { id: "melee_shield_upgrade", name: "Iron Carapace", desc: `Reduce all incoming damage by ${GAME_CONFIG.UPGRADES.MELEE_SHIELD_DAMAGE_REDUCTION_PCT}%` },
+            { id: "melee_reflect_upgrade", name: "Barbed Carapace", desc: `Reflect ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT}% max HP damage when hit` },
+            { id: "carapace_healer_upgrade", name: "Sympathetic Shell", desc: `Grow size ${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_SIZE_BOOST_PCT}%, heal all ${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_TEAM_HEAL_PCT}% when hit` },
+            { id: "melee_range_upgrade", name: "Extended Joints", desc: `Increase melee attack range by ${GAME_CONFIG.UPGRADES.MELEE_RANGE_BOOST_PCT}%` }
         ]
     },
     {
         title: "Turrets",
         nodes: [
             { id: "unlock_turret", name: "Auto-Turret", desc: "Unlock deployable turrets" },
-            { id: "slow_walls_upgrade", name: "Slow Walls", desc: "Turrets form laser fences between them that slow monsters by 40%" },
-            { id: "laser_walls_upgrade", name: "Laser Fences", desc: "Turret laser fences deal 50 damage/sec to monsters passing through, while slowing them 40%" },
-            { id: "building_duration_upgrade", name: "Fortified Structures", desc: "Increases the duration of all turrets by 40% (stacks)" },
-            { id: "turret_cooldown_upgrade", name: "Rapid Deployment", desc: "Reduces turret placement, dispenser & expansion timers by 30% (stacks)" },
-            { id: "turret_dispenser_upgrade", name: "Supply Dispenser", desc: "Turrets have 2% chance every 10s to dispense supplies with equal probability" },
-            { id: "turret_flamethrower_upgrade", name: "Flamethrower Turret", desc: "Adds 2nd head firing a 120px 90° 4x damage flame cone every 4th attack" },
-            { id: "turret_flamethrower_lvl2_upgrade", name: "Inferno Nozzles", desc: "Extends flamethrower range to 150px and widens cone to 135°" },
-            { id: "turret_inferno_ring_upgrade", name: "Inferno Nova", desc: "Flamethrower Turret sweeps full 360° with 180px radius" },
-            { id: "turret_saw_upgrade", name: "Sawblade Turrets", desc: "Turrets gain rotating sawblades dealing continuous 15 dmg/s to monsters within 50px (scales with Extended Joints)" },
-            { id: "turret_network_upgrade", name: "Autonomous Network", desc: "Every 60s, turrets with free links spawn a connected turret (50-300px away)" }
+            { id: "slow_walls_upgrade", name: "Slow Walls", desc: `Turrets form laser fences between them that slow monsters by ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%` },
+            { id: "laser_walls_upgrade", name: "Laser Fences", desc: `Turret laser fences deal ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage/sec to monsters passing through, while slowing them ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%` },
+            { id: "building_duration_upgrade", name: "Fortified Structures", desc: `Increases the duration of all turrets by ${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% (stacks)` },
+            { id: "turret_cooldown_upgrade", name: "Rapid Deployment", desc: `Reduces turret placement, dispenser & expansion timers by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% (stacks)` },
+            { id: "turret_dispenser_upgrade", name: "Supply Dispenser", desc: `Turrets have ${GAME_CONFIG.TURRET.DISPENSER_CHANCE_PCT}% chance every ${GAME_CONFIG.TURRET.DISPENSER_INTERVAL_SEC}s to dispense supplies with equal probability` },
+            { id: "turret_flamethrower_upgrade", name: "Flamethrower Turret", desc: `Adds 2nd head firing a ${GAME_CONFIG.TURRET.FLAME_BASE_RANGE}px ${GAME_CONFIG.TURRET.FLAME_BASE_CONE_DEG}° ${GAME_CONFIG.TURRET.FLAME_DAMAGE_MULT}x damage flame cone every ${GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS === 4 ? '4th' : GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS + 'th'} attack` },
+            { id: "turret_flamethrower_lvl2_upgrade", name: "Inferno Nozzles", desc: `Extends flamethrower range to ${GAME_CONFIG.TURRET.FLAME_LVL2_RANGE}px and widens cone to ${GAME_CONFIG.TURRET.FLAME_LVL2_CONE_DEG}°` },
+            { id: "turret_inferno_ring_upgrade", name: "Inferno Nova", desc: `Flamethrower Turret sweeps full 360° with ${GAME_CONFIG.TURRET.FLAME_SWEEP_RANGE}px radius` },
+            { id: "turret_saw_upgrade", name: "Sawblade Turrets", desc: `Turrets gain rotating sawblades dealing continuous ${GAME_CONFIG.TURRET.SAW_DPS} dmg/s to monsters within ${GAME_CONFIG.TURRET.SAW_RADIUS}px (scales with Extended Joints)` },
+            { id: "turret_network_upgrade", name: "Autonomous Network", desc: `Every ${GAME_CONFIG.TURRET.NETWORK_INTERVAL_SEC}s, turrets with free links spawn a connected turret (50-300px away)` }
         ]
     },
     {
         title: "Utility & Stats",
         nodes: [
-            { id: "speed", name: "Agility Boost", desc: "Increase movement speed by 30%" },
+            { id: "speed", name: "Agility Boost", desc: `Increase movement speed by ${GAME_CONFIG.UPGRADES.SPEED_BOOST_PCT}%` },
             { id: "speed_lvl2", name: "Temporal Drift", desc: "Leave damaging speed laser trail" },
-            { id: "ice_trail_upgrade", name: "Glacial Slide", desc: "Ice trail slows enemies, +30% speed, fire immunity on ice" },
+            { id: "ice_trail_upgrade", name: "Glacial Slide", desc: `Ice trail slows enemies, +${GAME_CONFIG.UPGRADES.ICE_TRAIL_SPEED_BOOST_PCT}% speed, fire immunity on ice` },
             { id: "unlock_ring", name: "Fire Ring", desc: "Orbiting fireballs barrier" },
-            { id: "projectile_shield", name: "Deflector Orbiters", desc: "Orbiting shields block projectiles (3s respawn, scales with Attack Speed)" },
+            { id: "projectile_shield", name: "Deflector Orbiters", desc: `Orbiting shields block projectiles (${GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_RESPAWN_SEC}s respawn, scales with Attack Speed)` },
             { id: "freeze_upgrade", name: "Cryo Freeze", desc: "Freeze enemies on hit" },
-            { id: "damage", name: "Heavy Impact", desc: "Increase damage by 40% (mines 60%) (stacks)" },
-            { id: "cooldown", name: "Hyper-drive", desc: "Increase attack speed (stacks, max 6)" },
+            { id: "damage", name: "Heavy Impact", desc: `Increase damage by ${GAME_CONFIG.UPGRADES.DAMAGE_WEAPONS_BOOST_PCT}% (mines ${GAME_CONFIG.UPGRADES.DAMAGE_MINES_BOOST_PCT}%) (stacks)` },
+            { id: "cooldown", name: "Hyper-drive", desc: `Increase attack speed (stacks, max ${GAME_CONFIG.UPGRADES.ATTACK_SPEED_MAX_STACKS})` },
             { id: "heal", name: "Second Wind", desc: "Full heal and double max HP" },
             { id: "heal_pack_upgrade", name: "Siphon Cells", desc: "Slain enemies drop health pack" },
             { id: "campervan", name: "Campervan Rampage", desc: "Campervan form when <50% HP" }
@@ -16472,7 +16586,7 @@ function update(dt, dtFactor, now) {
     // Process Martyrdom Auras (healing and damage)
     for (const p of GAME_STATE.players) {
         if (!p.alive && p.martyrdomAuraEnabled) {
-            const auraRadius = p.martyrsPresenceEnabled ? 180 : 120;
+            const auraRadius = 120 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0);
             // 1. Heal other alive players standing in it (10% max HP per second)
             for (const op of GAME_STATE.players) {
                 if (op.alive && op !== p) {
@@ -16643,7 +16757,7 @@ function draw(now) {
     for (const p of GAME_STATE.players) {
         if (!p.alive && p.martyrdomAuraEnabled) {
             ctx.save();
-            const baseRadius = p.martyrsPresenceEnabled ? 180 : 120;
+            const baseRadius = 120 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0);
             const pulse = 1 + Math.sin(now * 0.005) * 0.06;
             const radius = baseRadius * pulse;
             const grad = ctx.createRadialGradient(p.x, p.y, 5, p.x, p.y, radius);
