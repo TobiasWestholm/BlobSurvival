@@ -1053,6 +1053,7 @@ const GAME_CONFIG = {
         MINE_ATTRACT_CHANCE_PCT: 10,
         MINE_ALL_ATTRACT_CHANCE_PCT: 30,
         MINE_ATTRACT_DURATION_SEC: 2.5,
+        MAX_ACTIVE_MINES: 300,
         FREEZE_PROJECTILE_DURATION_SEC: 0.25,
         FREEZE_MINE_DURATION_SEC: 1.0,
         CRYO_MINE_BOOST_PCT: 100,
@@ -1167,8 +1168,10 @@ const SoundEngine = {
     musicFilter: null,
     musicReverbConvolverStart: null,
     musicReverbConvolverEnd: null,
+    musicReverbConvolverVictory: null,
     musicWetGainStart: null,
     musicWetGainEnd: null,
+    musicWetGainVictory: null,
     musicDryGain: null,
     uiBus: null,
     compressor: null,
@@ -1187,11 +1190,36 @@ const SoundEngine = {
     // Background Soundtrack Synth Preset & Sequence (Opus-style progressive sawtooth)
     SYNTH_SOUND_PRESET: [, 0, 110, 0.01, 0.33, 0.4, 2, , , , , , , 0.2, , , , , , 0.18],
     
-    // Soundtrack Engine State & Progression (accelerates over 1 minute)
+    // Soundtrack Engine State & Progression Milestones:
+    // Speed reaches max (135 BPM) at minute 16; Filter sweeps 400 Hz -> 20 kHz from minute 0 to 24 (p^2.2 power curve)
+    SPEED_MAX_MS: 16 * 60 * 1000,       // Minute 16 (960,000 ms)
+    FILTER_DURATION_MS: 24 * 60 * 1000, // Minute 24 (1,440,000 ms)
+    REVERB_DURATION_MS: 24 * 60 * 1000, // Minute 24 (1,440,000 ms)
+
+    getSpeedProgress() {
+        return Math.max(0.0, Math.min(1.0, (this.musicElapsedMs || 0) / this.SPEED_MAX_MS));
+    },
+    getFilterProgress() {
+        return Math.max(0.0, Math.min(1.0, (this.musicElapsedMs || 0) / this.FILTER_DURATION_MS));
+    },
+    getFilterCutoff() {
+        const fp = this.getFilterProgress();
+        const shapedProgress = Math.pow(fp, 2.1); // k = 2.1 stays warm early and accelerates towards late game
+        return Math.min(20000, 400 * Math.pow(20000 / 400, shapedProgress));
+    },
+    getReverbProgress() {
+        return Math.max(0.0, Math.min(1.0, (this.musicElapsedMs || 0) / this.REVERB_DURATION_MS));
+    },
+
     isMusicMuted: false,
     isMusicPlaying: false,
     isMusicPaused: false,
     isMuffled: false,
+    isVictoryRamping: false,
+    victoryStartTime: 0,
+    victoryDuration: 3000,
+    victoryStartBpm: 10,
+    victoryStartWet: 0.68,
     musicMode: 'menu', // 'menu' | 'gameplay'
     tempoFactor: 1.0,
     targetTempoFactor: 1.0,
@@ -1736,18 +1764,24 @@ const SoundEngine = {
             this.reverbDryGain = this.ctx.createGain();
             this.reverbDryGain.gain.setValueAtTime(1.0, this.ctx.currentTime); // 100% crisp direct dry path
 
-            // Melody Dynamic Reverb Bus (Starts spacious: 4.5s decay 2.2 -> Ends rich & sustained: 1.6s decay 1.7)
+            // Melody Dynamic Reverb Bus (Starts spacious: 4.5s decay 2.2 -> Ends rich & sustained: 1.6s decay 1.7 -> Victory 9.0s ambient decay 1.8)
             this.musicReverbConvolverStart = this.ctx.createConvolver();
             this.musicReverbConvolverStart.buffer = this.buildImpulseResponse(4.5, 2.2);
 
             this.musicReverbConvolverEnd = this.ctx.createConvolver();
             this.musicReverbConvolverEnd.buffer = this.buildImpulseResponse(1.6, 1.7);
 
+            this.musicReverbConvolverVictory = this.ctx.createConvolver();
+            this.musicReverbConvolverVictory.buffer = this.buildImpulseResponse(9.0, 1.8);
+
             this.musicWetGainStart = this.ctx.createGain();
             this.musicWetGainStart.gain.setValueAtTime(0.68, this.ctx.currentTime);
 
             this.musicWetGainEnd = this.ctx.createGain();
             this.musicWetGainEnd.gain.setValueAtTime(0.0, this.ctx.currentTime);
+
+            this.musicWetGainVictory = this.ctx.createGain();
+            this.musicWetGainVictory.gain.setValueAtTime(0.0, this.ctx.currentTime);
 
             this.musicDryGain = this.ctx.createGain();
             this.musicDryGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
@@ -1758,6 +1792,7 @@ const SoundEngine = {
             // musicBus -> musicMidEq -> musicHighEq -> musicFilter -> musicDryGain -> duckingGain
             // musicFilter -> musicReverbConvolverStart -> musicWetGainStart -> duckingGain
             // musicFilter -> musicReverbConvolverEnd -> musicWetGainEnd -> duckingGain
+            // musicFilter -> musicReverbConvolverVictory -> musicWetGainVictory -> duckingGain
             // duckingGain -> compressor -> masterGain -> destination
             // uiBus -> masterGain -> destination
             this.sfxBus.connect(this.reverbDryGain);
@@ -1774,13 +1809,16 @@ const SoundEngine = {
             this.musicFilter.connect(this.musicDryGain);
             this.musicFilter.connect(this.musicReverbConvolverStart);
             this.musicFilter.connect(this.musicReverbConvolverEnd);
+            this.musicFilter.connect(this.musicReverbConvolverVictory);
 
             this.musicReverbConvolverStart.connect(this.musicWetGainStart);
             this.musicReverbConvolverEnd.connect(this.musicWetGainEnd);
+            this.musicReverbConvolverVictory.connect(this.musicWetGainVictory);
 
             this.musicDryGain.connect(this.duckingGain);
             this.musicWetGainStart.connect(this.duckingGain);
             this.musicWetGainEnd.connect(this.duckingGain);
+            this.musicWetGainVictory.connect(this.duckingGain);
 
             this.duckingGain.connect(this.compressor);
             this.compressor.connect(this.masterGain);
@@ -1918,8 +1956,7 @@ const SoundEngine = {
 
         if (!this.ctx || !this.musicFilter) return;
         const now = this.ctx.currentTime;
-        const progress = Math.max(0.0, Math.min(1.0, (this.musicElapsedMs || 0) / 60000));
-        const progressCutoff = Math.min(20000, 400 * Math.pow(20000 / 400, progress));
+        const progressCutoff = this.getFilterCutoff();
         const targetFreq = muffled ? Math.min(300, progressCutoff) : progressCutoff;
         this.musicFilter.frequency.cancelScheduledValues(now);
         this.musicFilter.frequency.setValueAtTime(Math.max(100, this.musicFilter.frequency.value || (muffled ? progressCutoff : 400)), now);
@@ -1928,6 +1965,7 @@ const SoundEngine = {
 
     startMenuMusic() {
         this.init();
+        this.isVictoryRamping = false;
         this.musicMode = 'menu';
         this.isMusicPlaying = true;
         this.isMusicPaused = false;
@@ -1952,11 +1990,16 @@ const SoundEngine = {
                 this.musicWetGainEnd.gain.cancelScheduledValues(this.ctx.currentTime);
                 this.musicWetGainEnd.gain.setValueAtTime(0.0, this.ctx.currentTime);
             }
+            if (this.musicWetGainVictory) {
+                this.musicWetGainVictory.gain.cancelScheduledValues(this.ctx.currentTime);
+                this.musicWetGainVictory.gain.setValueAtTime(0.0, this.ctx.currentTime);
+            }
         }
     },
 
-    startMusic(forceReset = true) {
+    startMusic(forceReset = true, startElapsedMs = 0) {
         this.init();
+        this.isVictoryRamping = false;
         if (!forceReset && this.musicMode === 'gameplay' && this.isMusicPlaying) {
             this.resumeMusic();
             return;
@@ -1968,22 +2011,29 @@ const SoundEngine = {
         this.tempoFactor = 1.0;
         this.targetTempoFactor = 1.0;
         this.tempoTransitionDuration = 0;
-        this.musicElapsedMs = 0;
+        this.musicElapsedMs = startElapsedMs || 0;
         this.musicStep = 0;
         this.musicLastTickTime = performance.now();
         if (this.ctx) {
             this.musicNextNoteTime = this.ctx.currentTime + 0.05;
+            const progressCutoff = this.getFilterCutoff();
+            const revProg = this.getReverbProgress();
+            const invRevProg = Math.max(0.0, Math.min(1.0, 1.0 - revProg));
             if (this.musicFilter) {
                 this.musicFilter.frequency.cancelScheduledValues(this.ctx.currentTime);
-                this.musicFilter.frequency.setValueAtTime(400, this.ctx.currentTime);
+                this.musicFilter.frequency.setValueAtTime(progressCutoff, this.ctx.currentTime);
             }
             if (this.musicWetGainStart) {
                 this.musicWetGainStart.gain.cancelScheduledValues(this.ctx.currentTime);
-                this.musicWetGainStart.gain.setValueAtTime(0.68, this.ctx.currentTime);
+                this.musicWetGainStart.gain.setValueAtTime(0.68 * Math.pow(invRevProg, 1.2), this.ctx.currentTime);
             }
             if (this.musicWetGainEnd) {
                 this.musicWetGainEnd.gain.cancelScheduledValues(this.ctx.currentTime);
-                this.musicWetGainEnd.gain.setValueAtTime(0.0, this.ctx.currentTime);
+                this.musicWetGainEnd.gain.setValueAtTime(0.68 * Math.pow(revProg, 0.8), this.ctx.currentTime);
+            }
+            if (this.musicWetGainVictory) {
+                this.musicWetGainVictory.gain.cancelScheduledValues(this.ctx.currentTime);
+                this.musicWetGainVictory.gain.setValueAtTime(0.0, this.ctx.currentTime);
             }
         }
     },
@@ -1992,11 +2042,22 @@ const SoundEngine = {
         this.isMusicPlaying = false;
         this.isMusicPaused = false;
         this.isMuffled = false;
+        this.isVictoryRamping = false;
         this.tempoFactor = 1.0;
         this.targetTempoFactor = 1.0;
         this.tempoTransitionDuration = 0;
         this.musicElapsedMs = 0;
         this.musicStep = 0;
+    },
+
+    triggerVictoryRamp(durationSeconds = 3.0) {
+        if (!this.ctx || !this.isMusicPlaying) return;
+        this.isVictoryRamping = true;
+        this.victoryStartTime = performance.now();
+        this.victoryDuration = durationSeconds * 1000;
+        const currentSpeedProg = this.getSpeedProgress();
+        this.victoryStartBpm = (10 + (135 - 10) * currentSpeedProg) * (this.tempoFactor || 1.0);
+        this.victoryStartWet = (this.musicWetGainEnd && Number.isFinite(this.musicWetGainEnd.gain.value)) ? this.musicWetGainEnd.gain.value : 0.68;
     },
 
     pauseMusic() {
@@ -2025,7 +2086,7 @@ const SoundEngine = {
         const bpm = 10 + (135 - 10) * progress;
         const stepDuration = 60 / (bpm * 4);
 
-        // Long attack in beginning (~0.35s) smoothly tapering to 8ms at 1 minute
+        // Long attack in beginning (~0.35s) smoothly tapering to 8ms over 24 minutes
         const rawAttack = 0.35 * Math.pow(1 - progress, 1.5) + 0.008;
         const attack = Math.min(rawAttack, stepDuration * 0.6);
         const sustain = 0.35 * Math.pow(1 - progress, 1.4) + 0.02;
@@ -2035,9 +2096,9 @@ const SoundEngine = {
             1.0,            // volume scale
             0,              // randomness = 0 (perfect melodic pitch)
             freq,           // frequency
-            attack,         // attack duration (long at start, tight at 1 minute)
-            sustain,        // sustain duration (shortens over 1 minute)
-            decay,          // decay duration (shortens over 1 minute)
+            attack,         // attack duration (long at start, tight over 24 minutes)
+            sustain,        // sustain duration (shortens over 24 minutes)
+            decay,          // decay duration (shortens over 24 minutes)
             2,              // shape (2 = Sawtooth)
             1,              // shapeCurve
             0,              // slide
@@ -2121,14 +2182,77 @@ const SoundEngine = {
             return;
         }
 
-        // Gameplay Mode:
-        // Progress advances only during active gameplay (frozen while muffled/in menus)
-        if (!this.isMuffled && GAME_STATE.current === STATES.GAMEPLAY) {
-            this.musicElapsedMs += dt;
+        // Victory Mode: Ramp down tempo to 10 BPM and transition to 9.0s ambient reverb over 3s
+        if (this.isVictoryRamping) {
+            const elapsed = now - this.victoryStartTime;
+            const t = Math.min(1.0, Math.max(0.0, elapsed / this.victoryDuration));
+
+            // Morph reverb from 1.6s tail into 9.0s ambient tail over 3 seconds
+            if (this.musicWetGainEnd && this.musicWetGainVictory && this.ctx) {
+                const endGain = this.victoryStartWet * (1.0 - t);
+                const victoryGain = 0.85 * t;
+                this.musicWetGainEnd.gain.setTargetAtTime(endGain, this.ctx.currentTime, 0.05);
+                this.musicWetGainVictory.gain.setTargetAtTime(victoryGain, this.ctx.currentTime, 0.05);
+                if (this.musicWetGainStart) {
+                    this.musicWetGainStart.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.05);
+                }
+            }
+
+            if (elapsed >= this.victoryDuration) {
+                // 3 seconds elapsed: stop scheduling new notes, allowing the 9s reverb tail to cling out naturally
+                this.isVictoryRamping = false;
+                this.isMusicPlaying = false;
+                return;
+            }
+
+            // Smoothly decrease tempo down to 10 BPM over 3 seconds
+            const currentBpm = this.victoryStartBpm + (10 - this.victoryStartBpm) * t;
+            const stepDuration = 60 / (currentBpm * 4);
+
+            if (this.ctx.state === 'suspended') {
+                this.ctx.resume().catch(() => {});
+            }
+
+            if (this.musicNextNoteTime < this.ctx.currentTime) {
+                this.musicNextNoteTime = this.ctx.currentTime + 0.02;
+            }
+
+            const lookahead = 0.15;
+            while (this.musicNextNoteTime < this.ctx.currentTime + lookahead) {
+                const playTime = Math.max(this.ctx.currentTime, this.musicNextNoteTime);
+                const noteName = this.MELODY_SEQUENCE[this.musicStep % this.MELODY_SEQUENCE.length];
+                if (noteName && noteName !== '-') {
+                    const speedProg = Math.max(0, 1.0 - t);
+                    const buffer = this.getSynthNoteBuffer(noteName, speedProg);
+                    if (buffer) {
+                        const source = this.ctx.createBufferSource();
+                        source.buffer = buffer;
+                        source.connect(this.musicBus || this.masterGain);
+                        source.start(playTime);
+                        source.stop(playTime + buffer.duration + 0.02);
+                    }
+                }
+
+                this.musicNextNoteTime += stepDuration;
+                this.musicStep++;
+            }
+            return;
         }
 
-        const progress = Math.max(0.0, Math.min(1.0, (this.musicElapsedMs || 0) / 60000));
-        const invProgress = Math.max(0.0, Math.min(1.0, 1.0 - progress));
+        // Gameplay Mode:
+        // Progress advances continuously during active gameplay (frozen while muffled/in menus)
+        if (!this.isMuffled && GAME_STATE.current === STATES.GAMEPLAY) {
+            if (typeof GAME_STATE.elapsed === 'number' && GAME_STATE.elapsed >= 0) {
+                this.musicElapsedMs = GAME_STATE.elapsed;
+            } else {
+                this.musicElapsedMs = (this.musicElapsedMs || 0) + dt;
+            }
+        }
+
+        const speedProg = this.getSpeedProgress();
+        const progressCutoff = this.getFilterCutoff();
+        const revProg = this.getReverbProgress();
+        const invRevProg = Math.max(0.0, Math.min(1.0, 1.0 - revProg));
 
         // Smooth tempo transition (80% in menus, transitioning over durationSeconds)
         if (this.tempoTransitionDuration > 0) {
@@ -2139,18 +2263,17 @@ const SoundEngine = {
             this.tempoFactor = this.isMuffled ? 0.8 : 1.0;
         }
 
-        // Continuous 1-minute lowpass filter sweep: 400 Hz -> 20 kHz during gameplay
+        // Lowpass filter sweep: 400 Hz -> 20 kHz from minute 0 to 24 (p^2.2 power curve)
         if (this.musicFilter && !this.isMuffled && GAME_STATE.current === STATES.GAMEPLAY) {
-            const progressCutoff = Math.min(20000, 400 * Math.pow(20000 / 400, progress));
             if (Number.isFinite(progressCutoff) && Number.isFinite(this.ctx.currentTime)) {
                 this.musicFilter.frequency.setTargetAtTime(progressCutoff, this.ctx.currentTime, 0.05);
             }
         }
 
-        // Dynamic melody reverb morphing: long 4.5s ambient decay -> rich 1.6s decay
+        // Dynamic melody reverb morphing over 24 minutes: long 4.5s ambient decay -> rich 1.6s decay
         if (this.musicWetGainStart && this.musicWetGainEnd && this.ctx && !this.isMuffled && GAME_STATE.current === STATES.GAMEPLAY) {
-            const startWet = 0.68 * Math.pow(invProgress, 1.2);
-            const endWet = 0.68 * Math.pow(progress, 0.8);
+            const startWet = 0.68 * Math.pow(invRevProg, 1.2);
+            const endWet = 0.68 * Math.pow(revProg, 0.8);
             if (Number.isFinite(startWet) && Number.isFinite(this.ctx.currentTime)) {
                 this.musicWetGainStart.gain.setTargetAtTime(startWet, this.ctx.currentTime, 0.05);
             }
@@ -2171,13 +2294,13 @@ const SoundEngine = {
         const lookahead = 0.15;
         while (this.musicNextNoteTime < this.ctx.currentTime + lookahead) {
             const playTime = Math.max(this.ctx.currentTime, this.musicNextNoteTime);
-            const baseBpm = 10 + (135 - 10) * progress;
+            const baseBpm = 10 + (135 - 10) * speedProg;
             const bpm = baseBpm * this.tempoFactor;
             const stepDuration = 60 / (bpm * 4);
 
             const noteName = this.MELODY_SEQUENCE[this.musicStep % this.MELODY_SEQUENCE.length];
             if (noteName && noteName !== '-') {
-                const buffer = this.getSynthNoteBuffer(noteName, progress);
+                const buffer = this.getSynthNoteBuffer(noteName, speedProg);
                 if (buffer) {
                     const source = this.ctx.createBufferSource();
                     source.buffer = buffer;
@@ -4961,9 +5084,9 @@ class Enemy extends Unit {
         if (type === 'brute') {
             this.hp = 40; this.speed = 0.8; this.damage = 15; this.color = '#cc2222'; this.r = 18, this.xpValue = 4;
         } else if (type === 'mega_brute') {
-            this.hp = 150; this.speed = 0.6; this.damage = 30; this.color = '#aa1111'; this.r = 28, this.xpValue = 6;
+            this.hp = 150; this.speed = 0.6; this.damage = 30; this.color = '#990606'; this.r = 28, this.xpValue = 6;
         } else if (type === 'brute_lord') {
-            this.hp = 600; this.speed = 0.5; this.damage = 60; this.color = '#880000'; this.r = 38, this.xpValue = 8;
+            this.hp = 600; this.speed = 0.5; this.damage = 60; this.color = '#770000'; this.r = 38, this.xpValue = 8;
         } else if (type === 'speeder') {
             this.hp = 112; this.speed = 1.42; this.damage = 15; this.color = '#ff7700'; this.r = 11, this.xpValue = 8;
         } else if (type === 'meteor') {
@@ -9567,81 +9690,116 @@ class InstantMuzzleFlash {
     }
 }
 
-function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
-    let closestIntersection = null;
-    let minT = Infinity;
+function testShieldArcHit(prevX, prevY, nextX, nextY, projR, cx, cy, arcRadius, facingAngle, halfArc = Math.PI * 0.5) {
+    const sR = arcRadius || 100;
+    const facing = facingAngle || 0;
+    const sArc = halfArc;
 
-    for (const e of GAME_STATE.enemies) {
-        if (e.type !== 'shield_bearer' || e.hp <= 0) continue;
-        const cx = e.x, cy = e.y;
-        const sR = e.shieldRadius || 100;
-        const facing = e.facingAngle || 0;
-        const sArc = e.shieldHalfArc || Math.PI * 0.5;
+    // 1. Raycast line segment crossing the circular arc boundary (R = arcRadius)
+    const dx = nextX - prevX;
+    const dy = nextY - prevY;
+    const fx = prevX - cx;
+    const fy = prevY - cy;
 
-        // Line segment from (x1, y1) to (x2, y2)
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const fx = x1 - cx;
-        const fy = y1 - cy;
-
-        const a = dx * dx + dy * dy;
-        if (a < 0.0001) continue;
+    const a = dx * dx + dy * dy;
+    if (a > 0.0001) {
         const b = 2 * (fx * dx + fy * dy);
         const c = fx * fx + fy * fy - sR * sR;
-
         const disc = b * b - 4 * a * c;
-        if (disc < 0) continue;
+        if (disc >= 0) {
+            const sqrtDisc = Math.sqrt(disc);
+            const tValues = [(-b - sqrtDisc) / (2 * a), (-b + sqrtDisc) / (2 * a)];
+            for (const t of tValues) {
+                if (t >= -0.05 && t <= 1.05) {
+                    const ix = prevX + t * dx;
+                    const iy = prevY + t * dy;
+                    const theta = Math.atan2(iy - cy, ix - cx);
+                    let angleDiff = Math.abs(theta - facing);
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    angleDiff = Math.abs(angleDiff);
 
-        const sqrtDisc = Math.sqrt(disc);
-        const tValues = [(-b - sqrtDisc) / (2 * a), (-b + sqrtDisc) / (2 * a)];
-
-        for (const t of tValues) {
-            // Must be along the segment from shooter to target (with small margin)
-            if (t >= -0.05 && t <= 1.05) {
-                const ix = x1 + t * dx;
-                const iy = y1 + t * dy;
-                const theta = Math.atan2(iy - cy, ix - cx);
-                let angleDiff = Math.abs(theta - facing);
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                angleDiff = Math.abs(angleDiff);
-
-                if (angleDiff <= sArc) {
-                    if (t < minT) {
-                        minT = t;
-                        closestIntersection = {
-                            blocked: true,
-                            hitX: ix,
-                            hitY: iy,
-                            shieldBearer: e,
-                            t: t
-                        };
+                    if (angleDiff <= sArc) {
+                        return { hit: true, hitX: ix, hitY: iy, t: t };
                     }
                 }
             }
         }
     }
 
-    // Special check if target is the shield bearer itself
-    if (targetEnemy && targetEnemy.type === 'shield_bearer' && targetEnemy.hp > 0) {
-        const cx = targetEnemy.x, cy = targetEnemy.y;
-        const facing = targetEnemy.facingAngle || 0;
-        const sArc = targetEnemy.shieldHalfArc || Math.PI * 0.5;
-        const angleToShooter = Math.atan2(y1 - cy, x1 - cx);
-        let angleDiff = Math.abs(angleToShooter - facing);
+    // 2. Proximity check on the curved wall boundary at next position
+    const dx2 = nextX - cx, dy2 = nextY - cy;
+    const dist2 = Math.hypot(dx2, dy2);
+    const wallThick = 4 + (projR || 2);
+    if (Math.abs(dist2 - sR) <= wallThick) {
+        const theta = Math.atan2(dy2, dx2);
+        let angleDiff = Math.abs(theta - facing);
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         angleDiff = Math.abs(angleDiff);
-
         if (angleDiff <= sArc) {
-            const sR = targetEnemy.shieldRadius || 100;
-            const hitX = cx + Math.cos(angleToShooter) * sR;
-            const hitY = cy + Math.sin(angleToShooter) * sR;
-            if (!closestIntersection || closestIntersection.t > 0) {
-                return {
+            return { hit: true, hitX: nextX, hitY: nextY, t: 1.0 };
+        }
+    }
+
+    // 3. Tip endpoints collision (matching resolvePlayerArcWallCollision tip radius 7)
+    const tipMinDist = 7 + (projR || 2);
+    for (const side of [-1, 1]) {
+        const tipAngle = facing + side * sArc;
+        const tx = cx + Math.cos(tipAngle) * sR;
+        const ty = cy + Math.sin(tipAngle) * sR;
+        const tdx = nextX - tx, tdy = nextY - ty;
+        if (tdx * tdx + tdy * tdy <= tipMinDist * tipMinDist) {
+            return { hit: true, hitX: nextX, hitY: nextY, t: 1.0 };
+        }
+    }
+
+    return { hit: false };
+}
+
+function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
+    let closestIntersection = null;
+    let minT = Infinity;
+
+    // Collect all shield sources (alive shield bearers + dropped shield terrains)
+    const shields = [];
+    for (const e of GAME_STATE.enemies) {
+        if (e.type === 'shield_bearer' && e.hp > 0) {
+            shields.push({
+                x: e.x,
+                y: e.y,
+                r: e.shieldRadius || 100,
+                facingAngle: e.facingAngle || 0,
+                shieldHalfArc: e.shieldHalfArc || Math.PI * 0.5,
+                source: e
+            });
+        }
+    }
+    if (GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
+        for (const t of GAME_STATE.terrains) {
+            if ((t instanceof ShieldTerrain || (!t.isWallObstacle && typeof t.shieldHalfArc === 'number')) && !(t.isExpired && t.isExpired(gameClock))) {
+                shields.push({
+                    x: t.x,
+                    y: t.y,
+                    r: t.r || 100,
+                    facingAngle: t.facingAngle || 0,
+                    shieldHalfArc: t.shieldHalfArc || Math.PI * 0.5,
+                    source: t
+                });
+            }
+        }
+    }
+
+    for (const s of shields) {
+        const test = testShieldArcHit(x1, y1, x2, y2, 2, s.x, s.y, s.r, s.facingAngle, s.shieldHalfArc);
+        if (test.hit) {
+            const t = (typeof test.t === 'number') ? test.t : 0.5;
+            if (t < minT) {
+                minT = t;
+                closestIntersection = {
                     blocked: true,
-                    hitX: hitX,
-                    hitY: hitY,
-                    shieldBearer: targetEnemy,
-                    t: 0.5
+                    hitX: test.hitX,
+                    hitY: test.hitY,
+                    shieldBearer: s.source,
+                    t: t
                 };
             }
         }
@@ -10182,20 +10340,28 @@ class SniperProjectile {
             return;
         }
 
-        // 2. Point/proximity check against Shield Bearer shields at next position
+        // 2. Point/proximity check against Shield Bearer shields & dropped shield terrains at next position
         for (const e of GAME_STATE.enemies) {
             if (e.type !== 'shield_bearer' || e.hp <= 0) continue;
-            const dx = e.x - nextX, dy = e.y - nextY;
-            const sR = (e.shieldRadius || 100) + this.r;
-            if (dx * dx + dy * dy <= sR * sR) {
-                const angleToProj = Math.atan2(nextY - e.y, nextX - e.x);
-                let angleDiff = Math.abs(angleToProj - (e.facingAngle || 0));
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                angleDiff = Math.abs(angleDiff);
-                if (angleDiff <= (e.shieldHalfArc || Math.PI * 0.5)) {
-                    // Blocked at shield boundary
-                    this.x = e.x + Math.cos(angleToProj) * (e.shieldRadius || 100);
-                    this.y = e.y + Math.sin(angleToProj) * (e.shieldRadius || 100);
+            const hit = testShieldArcHit(prevX, prevY, nextX, nextY, this.r, e.x, e.y, e.shieldRadius || 100, e.facingAngle || 0, e.shieldHalfArc || Math.PI * 0.5);
+            if (hit.hit) {
+                this.x = hit.hitX;
+                this.y = hit.hitY;
+                if (this.player && this.player.laserSniperEnabled) {
+                    GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
+                }
+                this.dead = true;
+                spawnHitParticles(this.x, this.y, '#00e5ff');
+                return;
+            }
+        }
+        if (GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
+            for (const t of GAME_STATE.terrains) {
+                if ((!(t instanceof ShieldTerrain) && t.isWallObstacle) || (t.isExpired && t.isExpired(now))) continue;
+                const hit = testShieldArcHit(prevX, prevY, nextX, nextY, this.r, t.x, t.y, t.r || 100, t.facingAngle || 0, t.shieldHalfArc || Math.PI * 0.5);
+                if (hit.hit) {
+                    this.x = hit.hitX;
+                    this.y = hit.hitY;
                     if (this.player && this.player.laserSniperEnabled) {
                         GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
                     }
@@ -10862,6 +11028,30 @@ class PlayerMine {
         if (this.attractsEnemies) {
             GAME_STATE.magneticMines.push(this);
         }
+        PlayerMine.enforceCap();
+    }
+    static enforceCap() {
+        const maxMines = (GAME_CONFIG.UPGRADES && GAME_CONFIG.UPGRADES.MAX_ACTIVE_MINES) || 300;
+        if (!GAME_STATE.hazards) return;
+        const activeMines = [];
+        for (const h of GAME_STATE.hazards) {
+            if (h instanceof PlayerMine && !h.dead) {
+                activeMines.push(h);
+            }
+        }
+        const excess = activeMines.length - (maxMines - 1);
+        if (excess > 0) {
+            activeMines.sort((a, b) => a.spawnTime - b.spawnTime);
+            for (let i = 0; i < excess; i++) {
+                activeMines[i].despawn();
+            }
+        }
+    }
+    despawn() {
+        this.dead = true;
+        if (this.attractsEnemies) {
+            GAME_STATE.magneticMines = GAME_STATE.magneticMines.filter(m => m !== this);
+        }
     }
     update(dt, now = gameClock) {
         if (Math.abs(this.vx) > 0.01 || Math.abs(this.vy) > 0.01) {
@@ -10911,10 +11101,7 @@ class PlayerMine {
         }
     }
     explode(now = gameClock) {
-        this.dead = true;
-        if (this.attractsEnemies) {
-            GAME_STATE.magneticMines = GAME_STATE.magneticMines.filter(m => m !== this);
-        }
+        this.despawn();
         const dmg = this.damage * this.player.mineDamageModifier * GAME_STATE.dmgFactor;
         let totalMineDmg = 0;
         for (const e of GAME_STATE.enemies) {
@@ -11960,37 +12147,60 @@ class Projectile {
     update(dt, dtFactor = 1.0, now) {
         this.x += this.vx * dtFactor;
         this.y += this.vy * dtFactor;
+        const prevX = this.x;
+        const prevY = this.y;
+        this.x += this.vx * dtFactor;
+        this.y += this.vy * dtFactor;
         this.life -= dt;
         if (this.life <= 0) this.dead = true;
         if (this.x < -50 || this.y < -50 || this.x > W + 50 || this.y > H + 50) this.dead = true;
         
-        // Pre-check: shield bearer arc interception (shield extends beyond body radius)
+        // Pre-check: shield bearer arc interception & dropped shield terrains (curved arc wall & tips)
         // Cluster shots explode on shield arc contact; others (non-rocket) are destroyed.
         const isPureRocket = this.isRocket || this.kind === 'rocket';
         if (!isPureRocket) {
             for (const e of GAME_STATE.enemies) {
                 if (e.type !== 'shield_bearer' || e.hp <= 0) continue;
-                const sR = e.shieldRadius || 100;
-                const dx = e.x - this.x, dy = e.y - this.y;
-                const dist2 = dx * dx + dy * dy;
-                // Check if projectile is within the shield arc radius
-                if (dist2 >= (sR + this.r) * (sR + this.r)) continue;
-                const angleToProj = Math.atan2(this.y - e.y, this.x - e.x);
-                let angleDiff = Math.abs(angleToProj - (e.facingAngle || 0));
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                angleDiff = Math.abs(angleDiff);
-                const shieldHalfArc = e.shieldHalfArc || Math.PI * 0.5;
-                if (angleDiff <= shieldHalfArc) {
+                const hit = testShieldArcHit(prevX, prevY, this.x, this.y, this.r, e.x, e.y, e.shieldRadius || 100, e.facingAngle || 0, e.shieldHalfArc || Math.PI * 0.5);
+                if (hit.hit) {
+                    this.x = hit.hitX;
+                    this.y = hit.hitY;
                     if (this.isExplosive) {
-                        this.explode(now, null);
+                        this.explode(now, null, e);
                     } else {
                         this.dead = true;
+                        if (this.player && this.player.buckshotEnabled && (this.kind === 'missile' || this.kind === 'laser')) {
+                            this.spawnBuckshot({ x: this.x, y: this.y, r: 0 }, now, e);
+                        }
                         spawnHitParticles(this.x, this.y, '#00e5ff');
                     }
                     break;
                 }
             }
             if (this.dead) return;
+
+            // Dropped shield terrains lying on the battlefield
+            if (GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
+                for (const t of GAME_STATE.terrains) {
+                    if ((!(t instanceof ShieldTerrain) && t.isWallObstacle) || (t.isExpired && t.isExpired(now))) continue;
+                    const hit = testShieldArcHit(prevX, prevY, this.x, this.y, this.r, t.x, t.y, t.r || 100, t.facingAngle || 0, t.shieldHalfArc || Math.PI * 0.5);
+                    if (hit.hit) {
+                        this.x = hit.hitX;
+                        this.y = hit.hitY;
+                        if (this.isExplosive) {
+                            this.explode(now, null, t);
+                        } else {
+                            this.dead = true;
+                            if (this.player && this.player.buckshotEnabled && (this.kind === 'missile' || this.kind === 'laser')) {
+                                this.spawnBuckshot({ x: this.x, y: this.y, r: 0 }, now, t);
+                            }
+                            spawnHitParticles(this.x, this.y, '#00e5ff');
+                        }
+                        break;
+                    }
+                }
+                if (this.dead) return;
+            }
         }
 
         // Collide with enemies (shrapnel passes through unless explosive, others are single-target)
@@ -12042,7 +12252,7 @@ class Projectile {
             }
         }
     }
-    explode(now, hitTarget = null) {
+    explode(now, hitTarget = null, hitShield = null) {
         this.dead = true;
         const radius = this.aoeRadius || (20 * (this.player ? this.player.mineAoeModifier : 1));
         
@@ -12052,6 +12262,15 @@ class Projectile {
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= (radius + e.r) * (radius + e.r)) {
+                // If this explosion occurred on a shield, verify if enemy was shielded
+                if (hitShield) {
+                    const sX = hitShield.x, sY = hitShield.y;
+                    const sR = hitShield.shieldRadius || hitShield.r || 100;
+                    const sFacing = hitShield.facingAngle || 0;
+                    const sHalfArc = hitShield.shieldHalfArc || Math.PI * 0.5;
+                    const hitCheck = testShieldArcHit(this.x, this.y, e.x, e.y, e.r, sX, sY, sR, sFacing, sHalfArc);
+                    if (hitCheck.hit) continue; // Shield blocks blast from penetrating to protected side
+                }
                 e.hp -= this.damage;
                 totalProjExpDmg += this.damage;
                 if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
@@ -12068,12 +12287,12 @@ class Projectile {
         applyExplosionHealing(this.x, this.y, radius, totalProjExpDmg, this.player);
         
         if (this.player && this.player.buckshotEnabled && (this.kind === 'missile' || this.kind === 'laser')) {
-            this.spawnBuckshot(hitTarget || { x: this.x, y: this.y, r: 0 }, now);
+            this.spawnBuckshot(hitTarget || { x: this.x, y: this.y, r: 0 }, now, hitShield);
         }
         
         GAME_STATE.hazards.push(new MineExplosion(this.x, this.y, radius, now, this.player));
     }
-    spawnBuckshot(e, now) {
+    spawnBuckshot(e, now, hitShield = null) {
         const angle = Math.atan2(this.vy, this.vx);
         const speed = Math.hypot(this.vx, this.vy);
         const spreadLimit = 0.35; // about 20 degrees spread
@@ -12092,17 +12311,31 @@ class Projectile {
         
         for (let i = 0; i < 3; i++) {
             const a = angle + (Math.random() * 2 - 1) * spreadLimit;
-            // Spawn just slightly forward in the direction of travel to look like it bursts out of the back
-            const sx = e.x + Math.cos(a) * (e.r + 2);
-            const sy = e.y + Math.sin(a) * (e.r + 2);
-            const vx = Math.cos(a) * speed;
-            const vy = Math.sin(a) * speed;
-            const proj = new Projectile(sx, sy, vx, vy, dmg, 'shrapnel', this.player, e, this.sourceUnitType);
-            if (isExplosive) {
-                proj.isExplosive = true;
-                proj.aoeRadius = aoeRadius;
+            if (hitShield) {
+                // When hitting a shield, buckshot / cluster fragments impact the shield barrier directly
+                if (isExplosive) {
+                    // Cluster shot fragments detonate directly on the shield surface
+                    const fragX = this.x + (Math.random() * 8 - 4);
+                    const fragY = this.y + (Math.random() * 8 - 4);
+                    const expRadius = aoeRadius || (20 * (this.player ? this.player.mineAoeModifier : 1));
+                    GAME_STATE.hazards.push(new MineExplosion(fragX, fragY, expRadius, now, this.player));
+                    spawnHitParticles(fragX, fragY, '#00e5ff');
+                } else {
+                    // Standard buckshot shrapnel is blocked and absorbed by the shield
+                    spawnHitParticles(this.x + Math.cos(a) * 4, this.y + Math.sin(a) * 4, '#00e5ff');
+                }
+            } else {
+                const sx = e.x + Math.cos(a) * (e.r + 2);
+                const sy = e.y + Math.sin(a) * (e.r + 2);
+                const vx = Math.cos(a) * speed;
+                const vy = Math.sin(a) * speed;
+                const proj = new Projectile(sx, sy, vx, vy, dmg, 'shrapnel', this.player, e, this.sourceUnitType);
+                if (isExplosive) {
+                    proj.isExplosive = true;
+                    proj.aoeRadius = aoeRadius;
+                }
+                GAME_STATE.projectiles.push(proj);
             }
-            GAME_STATE.projectiles.push(proj);
         }
     }
     draw(now = performance.now()) {
@@ -14211,7 +14444,7 @@ function onStartingWeaponChose(panel, player) {
     // Everyone has chosen, transition to gameplay via countdown
     document.getElementById('levelUpLayer').classList.remove('show');
     tip.style.display = 'none';
-    startCountdown();
+    startCountdown(true);
 }
 
 // Each pending level = one round in which every player picks their own upgrade.
@@ -14329,11 +14562,11 @@ function onPlayerChose(panel, player) {
     document.getElementById('levelUpLayer').classList.remove('show');
     GAME_STATE.pendingLevels--;
     if (GAME_STATE.pendingLevels > 0) beginSelectionRound();
-    else startCountdown();
+    else startCountdown(false);
 }
 
-function startCountdown() {
-    if (SoundEngine.musicMode === 'menu') {
+function startCountdown(isNewGame = false) {
+    if (isNewGame || SoundEngine.musicMode === 'menu') {
         SoundEngine.stopMusic();
     } else {
         SoundEngine.setMuffled(false, 3.0);
@@ -14355,8 +14588,9 @@ function startCountdown() {
             el.style.display = 'none';
             GAME_STATE.countdownTimer = null;
             GAME_STATE.current = STATES.GAMEPLAY;
-            if (SoundEngine.musicMode !== 'gameplay' || !SoundEngine.isMusicPlaying) {
-                SoundEngine.startMusic(true);
+            if (isNewGame || SoundEngine.musicMode !== 'gameplay' || !SoundEngine.isMusicPlaying) {
+                const startElapsed = (GAME_STATE.testingMode && GAME_STATE.elapsed) ? GAME_STATE.elapsed : 0;
+                SoundEngine.startMusic(true, startElapsed);
             }
             SoundEngine.setMuffled(false, 0.1);
             if (isMobile && typeof joystickZone !== 'undefined' && joystickZone) {
@@ -15611,7 +15845,7 @@ function startGame(playerCount, difficultyKey) {
     lastFrameTime = performance.now();
     
     if (GAME_STATE.testingMode) {
-        startCountdown();
+        startCountdown(true);
     } else {
         startWeaponSelectFlow();
     }
@@ -15639,7 +15873,7 @@ function gameOver() {
 
 function showVictory() {
     GAME_STATE.current = STATES.GAME_OVER;
-    SoundEngine.stopMusic();
+    SoundEngine.triggerVictoryRamp(3.0);
     if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
     
     if (GAME_STATE.countdownTimer) { 
@@ -17065,6 +17299,7 @@ function loop(now) {
     } else if (GAME_STATE.current === STATES.START_MENU) {
         SoundEngine.updateMusic(now);
     } else if (GAME_STATE.current === STATES.GAME_OVER) {
+        SoundEngine.updateMusic(now);
         draw(gameClock);
     }
     requestAnimationFrame(loop);
