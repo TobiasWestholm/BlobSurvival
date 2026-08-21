@@ -15241,7 +15241,12 @@ class XPGem {
         const popSpeed = 1.5 + Math.random() * 2.0 * spreadFactor;
         const vx = Math.cos(ang) * popSpeed;
         const vy = Math.sin(ang) * popSpeed;
-        GAME_STATE.gems.push(new XPGem(x, y, gemValue, vx, vy));
+        const gem = new XPGem(x, y, gemValue, vx, vy);
+        GAME_STATE.gems.push(gem);
+        // Tag the very first gem of the game for the XP tutorial arrow (only once per game)
+        if (!GAME_STATE.xpArrowDone && !GAME_STATE.firstXpGem) {
+            GAME_STATE.firstXpGem = gem;
+        }
     }
     update(dtFactor = 1.0) {
         if (this.vx || this.vy) {
@@ -16454,7 +16459,7 @@ function startCountdown(isNewGame = false) {
     if (isNewGame || SoundEngine.musicMode === 'menu') {
         SoundEngine.stopMusic();
     } else {
-        SoundEngine.setMuffled(false, 3.0);
+        SoundEngine.setMuffled(false, 1.8);
     }
     document.getElementById('levelUpLayer').classList.remove('show');
     const uiLayer = document.querySelector('.ui-layer');
@@ -16464,11 +16469,18 @@ function startCountdown(isNewGame = false) {
     let n = 3;
     el.textContent = n;
     el.style.display = 'block';
+
+    // Show joystick immediately on mobile so it's visible during the countdown
+    if (isMobile && typeof joystickZone !== 'undefined' && joystickZone) {
+        joystickZone.style.display = 'block';
+    }
+
+    const TICK_MS = 600;
     const tick = () => {
         n--;
         if (n >= 1) {
             el.textContent = n;
-            GAME_STATE.countdownTimer = setTimeout(tick, 1000);
+            GAME_STATE.countdownTimer = setTimeout(tick, TICK_MS);
         } else {
             el.style.display = 'none';
             GAME_STATE.countdownTimer = null;
@@ -16478,9 +16490,6 @@ function startCountdown(isNewGame = false) {
                 SoundEngine.startMusic(true, startElapsed);
             }
             SoundEngine.setMuffled(false, 0.1);
-            if (isMobile && typeof joystickZone !== 'undefined' && joystickZone) {
-                joystickZone.style.display = 'block';
-            }
             lastFrameTime = performance.now();
             if (GAME_STATE.players && GAME_STATE.players.some(p => p.campervanSoundPending)) {
                 SoundEngine.campervan();
@@ -16490,7 +16499,7 @@ function startCountdown(isNewGame = false) {
             }
         }
     };
-    GAME_STATE.countdownTimer = setTimeout(tick, 1000);
+    GAME_STATE.countdownTimer = setTimeout(tick, TICK_MS);
 }
 
 function fetchTip(){
@@ -17686,6 +17695,8 @@ function startGame(playerCount, difficultyKey) {
     GAME_STATE.magneticMines = [];
     GAME_STATE.turrets = [];
     GAME_STATE.gems = [];
+    GAME_STATE.firstXpGem = null; // Track first gem for tutorial arrow
+    GAME_STATE.xpArrowDone = false;
     GAME_STATE.particles = [];
     gameClock = GAME_STATE.testingMode ? (GAME_STATE.testStartMinute * 60000) : 0;
     GAME_STATE.elapsed = GAME_STATE.testingMode ? (GAME_STATE.testStartMinute * 60000) : 0;
@@ -17993,9 +18004,8 @@ function togglePause() {
         document.getElementById('pauseModal').classList.add('show');
     } else if (GAME_STATE.current === STATES.PAUSED) {
         document.getElementById('pauseModal').classList.remove('show');
-        GAME_STATE.current = STATES.GAMEPLAY;
-        SoundEngine.setMuffled(false, 0.5);
-        lastFrameTime = performance.now();
+        // Run the countdown before resuming (same as after upgrade selection)
+        startCountdown(false);
     }
 }
 document.getElementById('backToPlayers').onclick = () => showStartStep('players');
@@ -19104,6 +19114,60 @@ function draw(now) {
     for (const t of GAME_STATE.turrets) t.draw(now);
     for (const hz of GAME_STATE.hazards) hz.draw(now);
     for (const g of GAME_STATE.gems) g.draw();
+
+    // XP Tutorial arrow: point at the very first gem until it is picked up
+    if (GAME_STATE.firstXpGem && !GAME_STATE.firstXpGem.dead) {
+        const gem = GAME_STATE.firstXpGem;
+        // Find closest living player to base the arrow origin on
+        let playerX = W / 2, playerY = H / 2;
+        for (const p of GAME_STATE.players) {
+            if (p.alive) { playerX = p.x; playerY = p.y; break; }
+        }
+        const adx = gem.x - playerX;
+        const ady = gem.y - playerY;
+        const aDist = Math.sqrt(adx * adx + ady * ady);
+        // Only show arrow when gem is more than 40px away (not already overlapping)
+        if (aDist > 40) {
+            const ax = Math.cos(Math.atan2(ady, adx));
+            const ay = Math.sin(Math.atan2(ady, adx));
+            // Place the arrowhead offset just beyond the gem's edge
+            const arrowTipX = gem.x + ax * (gem.r + 16);
+            const arrowTipY = gem.y + ay * (gem.r + 16);
+            const arrowLen = 26;
+            const arrowSpread = 0.46; // ~26 deg half-angle
+            const tailX = arrowTipX + ax * arrowLen;
+            const tailY = arrowTipY + ay * arrowLen;
+
+            ctx.save();
+            ctx.globalAlpha = 0.82 + 0.18 * Math.sin(now / 280);
+            ctx.strokeStyle = '#e2e060';
+            ctx.fillStyle = '#e2e060';
+            ctx.lineWidth = 2;
+
+            // Arrow triangle head
+            ctx.beginPath();
+            ctx.moveTo(arrowTipX, arrowTipY);
+            ctx.lineTo(tailX + Math.cos(Math.atan2(ady, adx) + Math.PI - arrowSpread) * 16,
+                       tailY + Math.sin(Math.atan2(ady, adx) + Math.PI - arrowSpread) * 16);
+            ctx.lineTo(tailX + Math.cos(Math.atan2(ady, adx) + Math.PI + arrowSpread) * 16,
+                       tailY + Math.sin(Math.atan2(ady, adx) + Math.PI + arrowSpread) * 16);
+            ctx.closePath();
+            ctx.fill();
+
+            // "XP" label just behind the tail
+            const labelX = tailX + ax * 18;
+            const labelY = tailY + ay * 18;
+            ctx.font = 'bold 14px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#e2e060';
+            ctx.fillText('XP', labelX, labelY);
+            ctx.restore();
+        }
+    } else if (GAME_STATE.firstXpGem && GAME_STATE.firstXpGem.dead) {
+        GAME_STATE.firstXpGem = null;
+        GAME_STATE.xpArrowDone = true; // Never show the arrow again this game
+    }
     for (const pa of GAME_STATE.particles) pa.draw();
     for (const e of GAME_STATE.enemies) e.draw(now);
     for (const p of GAME_STATE.projectiles) p.draw(now);
