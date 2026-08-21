@@ -1191,13 +1191,15 @@ const SoundEngine = {
     SYNTH_SOUND_PRESET: [, 0, 110, 0.01, 0.33, 0.4, 2, , , , , , , 0.2, , , , , , 0.18],
     
     // Soundtrack Engine State & Progression Milestones:
-    // Speed reaches max (135 BPM) at minute 16; Filter sweeps 400 Hz -> 20 kHz from minute 0 to 24 (p^2.2 power curve)
-    SPEED_MAX_MS: 16 * 60 * 1000,       // Minute 16 (960,000 ms)
+    // Speed ramps 10 BPM -> 140 BPM across 24 min (1 - (1-p)^3 cubic curve, staying at 140 BPM for t > 24m)
+    // Filter sweeps 400 Hz -> 20 kHz from minute 0 to 24 (p^2.2 power curve)
+    SPEED_MAX_MS: 24 * 60 * 1000,       // Minute 24 (1,440,000 ms)
     FILTER_DURATION_MS: 24 * 60 * 1000, // Minute 24 (1,440,000 ms)
     REVERB_DURATION_MS: 24 * 60 * 1000, // Minute 24 (1,440,000 ms)
 
     getSpeedProgress() {
-        return Math.max(0.0, Math.min(1.0, (this.musicElapsedMs || 0) / this.SPEED_MAX_MS));
+        const p = Math.max(0.0, Math.min(1.0, (this.musicElapsedMs || 0) / this.SPEED_MAX_MS));
+        return 1 - Math.pow(1 - p, 3);
     },
     getFilterProgress() {
         return Math.max(0.0, Math.min(1.0, (this.musicElapsedMs || 0) / this.FILTER_DURATION_MS));
@@ -2056,7 +2058,7 @@ const SoundEngine = {
         this.victoryStartTime = performance.now();
         this.victoryDuration = durationSeconds * 1000;
         const currentSpeedProg = this.getSpeedProgress();
-        this.victoryStartBpm = (10 + (135 - 10) * currentSpeedProg) * (this.tempoFactor || 1.0);
+        this.victoryStartBpm = (10 + (140 - 10) * currentSpeedProg) * (this.tempoFactor || 1.0);
         this.victoryStartWet = (this.musicWetGainEnd && Number.isFinite(this.musicWetGainEnd.gain.value)) ? this.musicWetGainEnd.gain.value : 0.68;
     },
 
@@ -2083,7 +2085,7 @@ const SoundEngine = {
         }
 
         const freq = this.MELODY_NOTES[noteName] || 110;
-        const bpm = 10 + (135 - 10) * progress;
+        const bpm = 10 + (140 - 10) * progress;
         const stepDuration = 60 / (bpm * 4);
 
         // Long attack in beginning (~0.35s) smoothly tapering to 8ms over 24 minutes
@@ -2139,7 +2141,7 @@ const SoundEngine = {
             // Loading / Menu Screen Melody: Fixed 95 BPM, 400 Hz lowpass filter, 3.5s early reverb
             const bpm = 95 * this.tempoFactor;
             const stepDuration = 60 / (bpm * 4);
-            const progress95 = (95 - 10) / (135 - 10); // Synth settings at 95 BPM
+            const progress95 = (95 - 10) / (140 - 10); // Synth settings at 95 BPM
 
             if (this.musicFilter && !this.isMuffled) {
                 if (Number.isFinite(this.ctx.currentTime)) {
@@ -2294,7 +2296,7 @@ const SoundEngine = {
         const lookahead = 0.15;
         while (this.musicNextNoteTime < this.ctx.currentTime + lookahead) {
             const playTime = Math.max(this.ctx.currentTime, this.musicNextNoteTime);
-            const baseBpm = 10 + (135 - 10) * speedProg;
+            const baseBpm = 10 + (140 - 10) * speedProg;
             const bpm = baseBpm * this.tempoFactor;
             const stepDuration = 60 / (bpm * 4);
 
@@ -5130,9 +5132,10 @@ class Enemy extends Unit {
             this.hp = 1100; this.speed = 0.6; this.damage = 50; this.color = '#ff1100'; this.r = 54, this.xpValue = 14;
         } else if (type === 'baneling') {
             // SC2 Baneling: fast Zerg rolling acid sac unit that detonates on contact or death
-            this.hp = 1000; this.speed = 1.65; this.damage = 45; this.color = '#76ff03'; this.r = 13, this.xpValue = 16;
+            this.hp = 1000; this.speed = 1.65; this.damage = 45; this.color = '#4d7c0f'; this.r = 13, this.xpValue = 16;
             this.banelingDetonated = false;
             this.burrowed = false;
+            this.burrowTriggerRadius = 42; // Radius matching the dark subterranean encircling trigger area
         } else if (type === 'marauder') {
             // SC2 Marauder: heavy armored Terran grenade launcher unit with Concussive Shells
             this.hp = 1500; this.speed = 1.25; this.damage = 40; this.color = '#37474f'; this.r = 16, this.xpValue = 18;
@@ -5146,15 +5149,15 @@ class Enemy extends Unit {
             this.shotSpeed = 8.5; // Fast undodgeable concussive missile
         } else if (type === 'zergling') {
             // SC2 Zergling: tiny, fragile, extremely fast melee unit spawned by dying Spine Crawlers
-            this.hp = 300; this.speed = 2.8; this.damage = 20; this.color = '#8bc34a'; this.r = 7, this.xpValue = 0;
+            this.hp = 300; this.speed = 2.8; this.damage = 20; this.color = '#556b2f'; this.r = 7, this.xpValue = 0;
         } else if (type === 'spine_crawler') {
             // SC2 Spine Crawler: a lumbering uprooted Zerg structure. Slow, huge, tanky.
             // On death it bursts open and releases 4 Zerglings.
-            this.hp = 2500; this.speed = 0.5; this.damage = 55; this.color = '#4a148c'; this.r = 24, this.xpValue = 22;
+            this.hp = 2500; this.speed = 0.5; this.damage = 55; this.color = '#4e342e'; this.r = 24, this.xpValue = 22;
             this.spawnedZerglings = false;
         } else if (type === 'stalker') {
             // SC2 Blink Stalker: walks in, blinks past fire ring to melee range, then attacks on contact.
-            this.hp = 1000; this.speed = 1.4; this.damage = 25; this.color = '#5c6bc0'; this.r = 14, this.xpValue = 20;
+            this.hp = 1000; this.speed = 1.4; this.damage = 25; this.color = '#7e22ce'; this.r = 14, this.xpValue = 20;
             this.blinkRange = 260;          // trigger blink when within marauder firing range
             this.blinkLandDist = 45;        // land inside fire ring (70px orbit) but outside contact (28px)
             this.blinked = false;
@@ -5175,13 +5178,13 @@ class Enemy extends Unit {
         } else if (type === 'sentry') {
             // SC2 Protoss Sentry: slow support unit projecting a Guardian Shield
             // that halves damage taken by all allies within its large aura.
-            this.hp = 1000; this.speed = 0.5; this.damage = 30; this.color = '#00acc1'; this.r = 15, this.xpValue = 22;
+            this.hp = 1000; this.speed = 0.5; this.damage = 30; this.color = '#94a3b8'; this.r = 15, this.xpValue = 22;
             this.shieldRadius = 160; // large protective aura
             this.shieldAngle = 0;   // for rotating ring visual
         } else if (type === 'medivac') {
-            // SC2 Medivac: healing dropship that restores HP of damaged allies.
+            // Bio-Restoration Blob: living monster healer blob that restores HP of damaged allies.
             // Does not attack players; ignores them entirely.
-            this.hp = 2000; this.speed = 0; this.damage = 0; this.color = '#eceff1'; this.r = 18, this.xpValue = 24;
+            this.hp = 2000; this.speed = 0; this.damage = 0; this.color = '#b02b1d'; this.r = 18, this.xpValue = 24;
             this.vx = 0; this.vy = 0;
             this.maxSpd    = 3.8;
             this.accel     = 0.20;
@@ -5199,7 +5202,7 @@ class Enemy extends Unit {
             this.invisible = true;
         } else if (type === 'hellion') {
             // SC2 Hellion: quick flame unit, keeps safe distance, fires 180px line of fire (70 dmg, 1500 HP)
-            this.hp = 1500; this.speed = 2.2; this.damage = 70; this.color = '#ff5722'; this.r = 16, this.xpValue = 24;
+            this.hp = 1500; this.speed = 2.2; this.damage = 70; this.color = '#c2410c'; this.r = 16, this.xpValue = 24;
             this.targetCoord = null;
             this.nextDecisionTime = 0;
             this.action = 'move'; // 'flee', 'fire', 'move'
@@ -5215,7 +5218,7 @@ class Enemy extends Unit {
             // Solid half-circle arc barrier blocking players and non-rocket projectiles.
             // Players can move and stand inside the half circle. Monsters pass through.
             // On death: drops the identical half-circle shield as physical terrain for 10 seconds.
-            this.hp = 4500; this.speed = 0.70; this.damage = 45; this.color = '#00bcd4'; this.r = 28; this.xpValue = 40;
+            this.hp = 4500; this.speed = 0.70; this.damage = 45; this.color = '#92400e'; this.r = 28; this.xpValue = 40;
             this.facingAngle = 0;
             this.shieldRadius = 100;
             this.shieldHalfArc = Math.PI * 0.5; // exact half circle (180 degrees / +/- 90 degrees)
@@ -5226,7 +5229,7 @@ class Enemy extends Unit {
             // 3. Shoots abduct frog tongue at the player (releasing the monster attraction).
             // 4. If it grabs the player, drags them in and stays in place as long as that player is held.
             // 5. If it misses, resumes following the player for a random duration again (max 3s).
-            this.hp = 3800; this.speed = 0.85; this.damage = 15; this.color = '#7b1fa2'; this.r = 32; this.xpValue = 50;
+            this.hp = 3800; this.speed = 0.85; this.damage = 15; this.color = '#dc2626'; this.r = 32; this.xpValue = 50;
             this.vx = 0; this.vy = 0;
             this.accel = 0.22;
             this.maxSpd = 2.2;
@@ -5242,6 +5245,10 @@ class Enemy extends Unit {
             this.tongueTipX = this.x;
             this.tongueTipY = this.y;
             this.tongueTargetX = 0;
+            this.tongueAimAngle = 0;
+            this.tongueAimWarning = false;
+            this.tongueAimTargetX = 0;
+            this.tongueAimTargetY = 0;
         } else if (type === 'behemoth') {
             // SC2 Ultralisk / Hive Behemoth: Colossal armored apex final boss (Minute 24:00).
             // Features: Nydus Worm Emergence, Seismic Kaiser Cleave, Bile Mortar Barrage, Burrow & Subterranean Eruption, and Trample Charge.
@@ -5328,13 +5335,13 @@ class Enemy extends Unit {
         for (let i = 0; i < 32; i++) {
             const a = Math.random() * Math.PI * 2;
             const s = 2.0 + Math.random() * 5.0;
-            GAME_STATE.particles.push(new Particle(this.x, this.y, Math.cos(a) * s, Math.sin(a) * s, '#76ff03', 550));
+            GAME_STATE.particles.push(new Particle(this.x, this.y, Math.cos(a) * s, Math.sin(a) * s, '#65a30d', 550));
         }
-        // Inner bright flash particles
+        // Inner toxic flash particles
         for (let i = 0; i < 10; i++) {
             const a = Math.random() * Math.PI * 2;
             const s = 0.5 + Math.random() * 2.0;
-            GAME_STATE.particles.push(new Particle(this.x, this.y, Math.cos(a) * s, Math.sin(a) * s, '#ccff00', 300));
+            GAME_STATE.particles.push(new Particle(this.x, this.y, Math.cos(a) * s, Math.sin(a) * s, '#84cc16', 300));
         }
     }
     burrowBaneling(now, chance) {
@@ -5565,13 +5572,37 @@ class Enemy extends Unit {
         if (this.type === 'viper')    { this.updateViper(dtFactor, now, target, d, dx, dy); return; }
         if (this.type === 'hellion')  { this.updateHellion(dtFactor, now, target, d, dx, dy); return; }
         if (this.type === 'shield_bearer') { this.updateShieldBearer(dtFactor, now, target, d, dx, dy); return; }
-        if (this.type === 'baneling') {this.burrowBaneling(now,0.001);}
+        if (this.type === 'baneling') {
+            this.burrowBaneling(now, 0.001);
+            if (this.burrowed) {
+                const triggerR = this.burrowTriggerRadius || 42;
+                // Check if any alive player steps into the dark encircling trigger zone
+                for (const p of GAME_STATE.players) {
+                    if (!p.alive) continue;
+                    const pd = Math.hypot(p.x - this.x, p.y - this.y);
+                    if (pd <= triggerR + p.r) {
+                        this.detonateBaneling(now);
+                        return;
+                    }
+                }
+                // Check if any turret is within trigger zone
+                for (const t of GAME_STATE.turrets) {
+                    if (!t.alive) continue;
+                    const td = Math.hypot(t.x - this.x, t.y - this.y);
+                    if (td <= triggerR + t.r) {
+                        this.detonateBaneling(now);
+                        return;
+                    }
+                }
+                return; // Burrowed baneling remains completely still beneath the ground
+            }
+        }
         if (d > 0.001) {
             const currentSpeed = this.getSpeed(now);
             this.x += (dx / d) * currentSpeed * dtFactor;
             this.y += (dy / d) * currentSpeed * dtFactor;
         }
-        if (!targetIsMine && typeof target.takeDamage === 'function' && (d < target.r + this.r || (this.burrowed && d < target.r + 2*this.r))) {
+        if (!targetIsMine && typeof target.takeDamage === 'function' && d < target.r + this.r) {
             if (this.type === 'baneling') {
                 this.detonateBaneling(now);
                 return;
@@ -5957,8 +5988,8 @@ class Enemy extends Unit {
                 this.viperState = 'stopped_attracting';
                 this.vx = 0;
                 this.vy = 0;
-                // Wait for 1.8 - 3.2 seconds while attracting monsters before shooting tongue
-                this.shootTongueAt = now + 1800 + Math.random() * 1400;
+                // Wait for a shorter 0.9 - 1.5 seconds while attracting monsters before shooting tongue
+                this.shootTongueAt = now + 900 + Math.random() * 600;
             }
             return;
         }
@@ -5973,9 +6004,33 @@ class Enemy extends Unit {
             this.x = Math.max(30, Math.min(W - 30, this.x));
             this.y = Math.max(30, Math.min(H - 30, this.y));
 
+            const warnDuration = 600; // Warning line appears 600ms before tongue launch
+            if (this.shootTongueAt && now >= this.shootTongueAt - warnDuration) {
+                // Find closest alive player in range (or target player)
+                let bestPlayer = null, bestDist = Infinity;
+                for (const p of GAME_STATE.players) {
+                    if (!p.alive) continue;
+                    const pd = Math.hypot(p.x - this.x, p.y - this.y);
+                    if (pd < bestDist) {
+                        bestDist = pd;
+                        bestPlayer = p;
+                    }
+                }
+                if (bestPlayer) {
+                    this.tongueAimAngle = Math.atan2(bestPlayer.y - this.y, bestPlayer.x - this.x);
+                    this.tongueAimTargetX = bestPlayer.x;
+                    this.tongueAimTargetY = bestPlayer.y;
+                    this.tongueAimWarning = true;
+                } else {
+                    this.tongueAimWarning = false;
+                }
+            } else {
+                this.tongueAimWarning = false;
+            }
+
             // When timer triggers, shoot tongue at player!
             if (now >= this.shootTongueAt) {
-                // Find closest alive player in range (or target player)
+                this.tongueAimWarning = false;
                 let bestPlayer = null, bestDist = Infinity;
                 for (const p of GAME_STATE.players) {
                     if (!p.alive) continue;
@@ -5992,7 +6047,7 @@ class Enemy extends Unit {
                     this.tongueActive = true;
                     this.tongueTipX = this.x;
                     this.tongueTipY = this.y;
-                    const angle = Math.atan2(bestPlayer.y - this.y, bestPlayer.x - this.x);
+                    const angle = (typeof this.tongueAimAngle === 'number') ? this.tongueAimAngle : Math.atan2(bestPlayer.y - this.y, bestPlayer.x - this.x);
                     this.tongueTargetX = this.x + Math.cos(angle) * (this.tongueRange + 30);
                     this.tongueTargetY = this.y + Math.sin(angle) * (this.tongueRange + 30);
                 } else {
@@ -7760,41 +7815,176 @@ class Enemy extends Unit {
 
         ctx.restore();
 
-        // --- 5. Titan Viper Tongue Warning Line Telegraph ---
-        if (this.behemothState === 'tongue_windup') {
+        // --- 5. Titan Viper Tongue & Wall Drag Warning Area Telegraph ---
+        if (this.behemothState === 'tongue_windup' || this.behemothState === 'tongue_firing' || this.behemothState === 'tongue_dragging_wall') {
             ctx.save();
-            const elapsed = 500 - (this.stateTimer - now);
-            const frac = Math.max(0, Math.min(1, elapsed / 500));
-            const mx = this.x + Math.cos(this.facingAngle) * (this.r * 0.6);
-            const my = this.y + Math.sin(this.facingAngle) * (this.r * 0.6);
-            const tx = this.tongueTargetX, ty = this.tongueTargetY;
 
-            // Outer glowing magenta telegraph beam
-            ctx.strokeStyle = `rgba(236, 72, 153, ${0.4 + 0.6 * frac})`;
-            ctx.shadowColor = '#d946ef';
-            ctx.shadowBlur = 10 + 10 * frac;
-            ctx.lineWidth = 3 + 4 * frac;
-            ctx.setLineDash([12, 8]);
-            ctx.beginPath();
-            ctx.moveTo(mx, my);
-            ctx.lineTo(tx, ty);
-            ctx.stroke();
+            // Calculate border impact point where the tongue strikes the perimeter wall
+            const aimAngle = (typeof this.tongueAimAngle === 'number') ? this.tongueAimAngle : this.facingAngle;
+            const cosA = Math.cos(aimAngle);
+            const sinA = Math.sin(aimAngle);
+            const minBorder = 6;
+            const maxBorderX = W - 6;
+            const maxBorderY = H - 6;
 
-            // Inner intense green laser guide line
-            ctx.shadowBlur = 0;
-            ctx.strokeStyle = `rgba(118, 255, 3, ${0.7 + 0.3 * frac})`;
-            ctx.lineWidth = 2;
-            ctx.setLineDash([]);
-            ctx.beginPath();
-            ctx.moveTo(mx, my);
-            ctx.lineTo(tx, ty);
-            ctx.stroke();
+            let tBorder = Infinity;
+            if (cosA > 0.0001) {
+                const t = (maxBorderX - this.x) / cosA;
+                if (t > 0 && t < tBorder) tBorder = t;
+            } else if (cosA < -0.0001) {
+                const t = (minBorder - this.x) / cosA;
+                if (t > 0 && t < tBorder) tBorder = t;
+            }
+            if (sinA > 0.0001) {
+                const t = (maxBorderY - this.y) / sinA;
+                if (t > 0 && t < tBorder) tBorder = t;
+            } else if (sinA < -0.0001) {
+                const t = (minBorder - this.y) / sinA;
+                if (t > 0 && t < tBorder) tBorder = t;
+            }
+            if (!Number.isFinite(tBorder)) tBorder = this.tongueRange || 1500;
 
-            // Warning targeting crosshair at destination
-            ctx.fillStyle = '#ff1744';
+            const borderX = Math.max(minBorder, Math.min(maxBorderX, this.x + cosA * tBorder));
+            const borderY = Math.max(minBorder, Math.min(maxBorderY, this.y + sinA * tBorder));
+
+            // Origin of drag path for current state
+            const startDragX = (this.behemothState === 'tongue_dragging_wall' && typeof this.wallPieceX === 'number') ? this.wallPieceX : borderX;
+            const startDragY = (this.behemothState === 'tongue_dragging_wall' && typeof this.wallPieceY === 'number') ? this.wallPieceY : borderY;
+
+            // Destination resting point near the Titan
+            const targetDist = this.r + 42;
+            const destAngle = Math.atan2(startDragY - this.y, startDragX - this.x);
+            const destX = this.x + Math.cos(destAngle) * targetDist;
+            const destY = this.y + Math.sin(destAngle) * targetDist;
+
+            // Perpendicular direction for the 190px (2 * 95px) wide wall piece
+            const wallAngle = Math.atan2(this.y - startDragY, this.x - startDragX) + Math.PI / 2;
+            const perpX = Math.cos(wallAngle);
+            const perpY = Math.sin(wallAngle);
+            const halfW = 95;
+            const halfH = 22;
+
+            // 4 corners of the full sweeping danger corridor
+            const p1x = startDragX + perpX * halfW, p1y = startDragY + perpY * halfW;
+            const p2x = startDragX - perpX * halfW, p2y = startDragY - perpY * halfW;
+            const p3x = destX - perpX * halfW, p3y = destY - perpY * halfW;
+            const p4x = destX + perpX * halfW, p4y = destY + perpY * halfW;
+
+            const pulse = 0.5 + 0.5 * Math.sin(now / 70);
+
+            // 1. Swept danger corridor shaded fill
+            ctx.fillStyle = `rgba(239, 68, 68, ${0.08 + 0.08 * pulse})`;
             ctx.beginPath();
-            ctx.arc(tx, ty, 6 + 3 * (1 - frac), 0, Math.PI * 2);
+            ctx.moveTo(p1x, p1y);
+            ctx.lineTo(p2x, p2y);
+            ctx.lineTo(p3x, p3y);
+            ctx.lineTo(p4x, p4y);
+            ctx.closePath();
             ctx.fill();
+
+            // 2. Danger corridor side boundary lines (dashed glowing hazard lines)
+            ctx.strokeStyle = `rgba(245, 158, 11, ${0.55 + 0.35 * pulse})`;
+            ctx.shadowColor = '#ef4444';
+            ctx.shadowBlur = 10;
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([14, 10]);
+            ctx.lineDashOffset = -(now / 20);
+
+            // Left track
+            ctx.beginPath();
+            ctx.moveTo(p1x, p1y);
+            ctx.lineTo(p4x, p4y);
+            ctx.stroke();
+
+            // Right track
+            ctx.beginPath();
+            ctx.moveTo(p2x, p2y);
+            ctx.lineTo(p3x, p3y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.shadowBlur = 0;
+
+            // 3. Directional animated chevrons along the center line pointing toward the Titan
+            const dragDist = Math.hypot(destX - startDragX, destY - startDragY);
+            if (dragDist > 60) {
+                const chevronCount = Math.floor(dragDist / 70);
+                const inwardAngle = Math.atan2(this.y - startDragY, this.x - startDragX);
+                const animOffset = ((now / 25) % 70) / dragDist;
+
+                ctx.strokeStyle = `rgba(255, 234, 0, ${0.4 + 0.4 * pulse})`;
+                ctx.lineWidth = 2.5;
+                ctx.lineCap = 'round';
+                for (let i = 0; i <= chevronCount; i++) {
+                    const frac = (i / chevronCount + animOffset) % 1.0;
+                    const cx = startDragX + (destX - startDragX) * frac;
+                    const cy = startDragY + (destY - startDragY) * frac;
+
+                    // Draw chevron arrow pointing toward Titan
+                    const wingLen = 22;
+                    const wingAng1 = inwardAngle + Math.PI * 0.75;
+                    const wingAng2 = inwardAngle - Math.PI * 0.75;
+                    ctx.beginPath();
+                    ctx.moveTo(cx + Math.cos(wingAng1) * wingLen, cy + Math.sin(wingAng1) * wingLen);
+                    ctx.lineTo(cx, cy);
+                    ctx.lineTo(cx + Math.cos(wingAng2) * wingLen, cy + Math.sin(wingAng2) * wingLen);
+                    ctx.stroke();
+                }
+            }
+
+            // 4. Ghosted outline of the wall piece at the border tear zone
+            ctx.save();
+            ctx.translate(borderX, borderY);
+            ctx.rotate(wallAngle);
+            ctx.strokeStyle = `rgba(239, 68, 68, ${0.7 + 0.3 * pulse})`;
+            ctx.shadowColor = '#f59e0b';
+            ctx.shadowBlur = 8;
+            ctx.lineWidth = 2.0;
+            ctx.setLineDash([8, 6]);
+            ctx.strokeRect(-halfW, -halfH, halfW * 2, halfH * 2);
+            ctx.fillStyle = `rgba(239, 68, 68, ${0.15 + 0.1 * pulse})`;
+            ctx.fillRect(-halfW, -halfH, halfW * 2, halfH * 2);
+            ctx.restore();
+
+            // 5. Ghosted outline of the final resting obstacle spot near the Titan
+            ctx.save();
+            ctx.translate(destX, destY);
+            ctx.rotate(wallAngle);
+            ctx.strokeStyle = `rgba(245, 158, 11, ${0.6 + 0.3 * pulse})`;
+            ctx.shadowColor = '#76ff03';
+            ctx.shadowBlur = 6;
+            ctx.lineWidth = 2.0;
+            ctx.setLineDash([6, 6]);
+            ctx.strokeRect(-halfW, -halfH, halfW * 2, halfH * 2);
+            ctx.fillStyle = `rgba(245, 158, 11, 0.10)`;
+            ctx.fillRect(-halfW, -halfH, halfW * 2, halfH * 2);
+            ctx.restore();
+
+            // 6. Tongue aiming beam from Titan's mouth to the border during windup
+            if (this.behemothState === 'tongue_windup') {
+                const elapsed = 500 - (this.stateTimer - now);
+                const frac = Math.max(0, Math.min(1, elapsed / 500));
+                const mx = this.x + Math.cos(this.facingAngle) * (this.r * 0.6);
+                const my = this.y + Math.sin(this.facingAngle) * (this.r * 0.6);
+
+                ctx.strokeStyle = `rgba(220, 38, 38, ${0.4 + 0.6 * frac})`;
+                ctx.shadowColor = '#ef4444';
+                ctx.shadowBlur = 10 + 10 * frac;
+                ctx.lineWidth = 3 + 4 * frac;
+                ctx.setLineDash([12, 8]);
+                ctx.beginPath();
+                ctx.moveTo(mx, my);
+                ctx.lineTo(borderX, borderY);
+                ctx.stroke();
+
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = `rgba(254, 202, 202, ${0.7 + 0.3 * frac})`;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(mx, my);
+                ctx.lineTo(borderX, borderY);
+                ctx.stroke();
+            }
 
             ctx.restore();
         }
@@ -7806,9 +7996,9 @@ class Enemy extends Unit {
             const my = this.y + Math.sin(this.facingAngle) * (this.r * 0.6);
             const tx = this.tongueTipX, ty = this.tongueTipY;
 
-            // Fleshy abduct tongue cord
-            ctx.strokeStyle = '#ec4899';
-            ctx.shadowColor = '#76ff03';
+            // Fleshy abduct tongue cord (crimson blood red)
+            ctx.strokeStyle = '#dc2626';
+            ctx.shadowColor = '#ef4444';
             ctx.shadowBlur = 12;
             ctx.lineWidth = 8;
             ctx.beginPath();
@@ -7816,20 +8006,20 @@ class Enemy extends Unit {
             ctx.lineTo(tx, ty);
             ctx.stroke();
 
-            // Inner glowing bio-plasma vein core
+            // Inner glowing pale vein core
             ctx.shadowBlur = 0;
-            ctx.strokeStyle = '#76ff03';
+            ctx.strokeStyle = '#fee2e2';
             ctx.lineWidth = 3.5;
             ctx.beginPath();
             ctx.moveTo(mx, my);
             ctx.lineTo(tx, ty);
             ctx.stroke();
 
-            // Organic pulsating nodes along the tongue
+            // Organic pulsating nodes along the tongue (deep dark red)
             const cordDist = Math.hypot(tx - mx, ty - my);
             const segCount = Math.max(3, Math.floor(cordDist / 38));
-            ctx.fillStyle = '#a855f7';
-            ctx.strokeStyle = '#76ff03';
+            ctx.fillStyle = '#991b1b';
+            ctx.strokeStyle = '#ef4444';
             ctx.lineWidth = 1.5;
             for (let i = 1; i < segCount; i++) {
                 const frac = i / segCount;
@@ -7843,8 +8033,8 @@ class Enemy extends Unit {
             }
 
             // Massive Barbed Tongue Tip / Claws
-            ctx.fillStyle = '#f43f5e';
-            ctx.strokeStyle = '#76ff03';
+            ctx.fillStyle = '#ef4444';
+            ctx.strokeStyle = '#7f1d1d';
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.arc(tx, ty, 10, 0, Math.PI * 2);
@@ -8041,26 +8231,26 @@ class Enemy extends Unit {
                 const pulse = 1.0 + 0.08 * Math.sin(now / 90);
                 const radius = this.r * pulse;
 
-                // Acidic aura glow
+                // Acidic aura glow (toned down luminosity)
                 ctx.save();
-                ctx.fillStyle = '#76ff03';
-                ctx.globalAlpha = 0.35;
+                ctx.fillStyle = '#65a30d';
+                ctx.globalAlpha = 0.18;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, radius + 5, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, radius + 4, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.restore();
 
-                // Acidic body core
-                ctx.fillStyle = '#64dd17';
-                ctx.strokeStyle = '#aeea00';
-                ctx.lineWidth = 3;
+                // Acidic body core (rich organic toxic green)
+                ctx.fillStyle = '#4d7c0f';
+                ctx.strokeStyle = '#65a30d';
+                ctx.lineWidth = 2.4;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
 
-                // Glowing acid sac swell on top
-                ctx.fillStyle = '#ccff00';
+                // Acid sac swell on top (subdued toxic yellow-green)
+                ctx.fillStyle = '#84cc16';
                 ctx.beginPath();
                 ctx.arc(this.x - 2, this.y - 3, radius * 0.55, 0, Math.PI * 2);
                 ctx.fill();
@@ -8070,46 +8260,65 @@ class Enemy extends Unit {
                 return;
             } else {
                 ctx.save();
-                const radius = this.r;
+                const triggerRadius = this.burrowTriggerRadius || 42;
 
-                // Acidic aura glow
-                ctx.save();
-                ctx.fillStyle = '#111111';
-                ctx.globalAlpha = 0.2;
+                // 1. Dark Subterranean Encircling (matches exact trigger radius)
+                const groundGrad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, triggerRadius);
+                groundGrad.addColorStop(0, 'rgba(0, 0, 0, 0.78)');
+                groundGrad.addColorStop(0.60, 'rgba(10, 18, 5, 0.65)');
+                groundGrad.addColorStop(0.85, 'rgba(20, 32, 10, 0.45)');
+                groundGrad.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+                ctx.fillStyle = groundGrad;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, radius*2, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, triggerRadius, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.restore();
-                ctx.save();
-                ctx.globalCompositeOperation = 'multiply';
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Adjust 0.5 to make it more or less dark
-                ctx.fill();
-                ctx.restore();
 
-                // Acidic body core
-                ctx.fillStyle = '#64dd17';
-                ctx.strokeStyle = '#aeea00';
-                ctx.lineWidth = 3;
+                // Faint dark perimeter boundary ring showing exact trigger perimeter
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.60)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, triggerRadius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Subterranean soil fissures radiating from center
+                ctx.strokeStyle = '#142005';
+                ctx.lineWidth = 1.2;
+                for (let i = 0; i < 5; i++) {
+                    const crackAngle = (i / 5) * Math.PI * 2 + 0.25;
+                    const cx1 = this.x + Math.cos(crackAngle) * (this.r * 0.4);
+                    const cy1 = this.y + Math.sin(crackAngle) * (this.r * 0.4);
+                    const cx2 = this.x + Math.cos(crackAngle + 0.18) * (triggerRadius * 0.88);
+                    const cy2 = this.y + Math.sin(crackAngle + 0.18) * (triggerRadius * 0.88);
+                    ctx.beginPath();
+                    ctx.moveTo(cx1, cy1);
+                    ctx.lineTo(cx2, cy2);
+                    ctx.stroke();
+                }
+
+                // 2. Dark Burrowed Baneling Body (submerged dormant organism)
+                const radius = this.r * 0.85;
+
+                // Dark earthy submerged crust
+                ctx.fillStyle = '#142603';
+                ctx.strokeStyle = '#050a01';
+                ctx.lineWidth = 2.4;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
-                ctx.save();
-                ctx.globalCompositeOperation = 'multiply';
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Adjust 0.5 to make it more or less dark
-                ctx.fill();
-                ctx.restore();
 
-                // Glowing acid sac swell on top
-                ctx.fillStyle = '#ccff00';
+                // Dormant dark toxic acid sac swell (subdued murky olive)
+                ctx.fillStyle = '#2d4a0a';
                 ctx.beginPath();
-                ctx.arc(this.x - 2, this.y - 3, radius * 0.55, 0, Math.PI * 2);
+                ctx.arc(this.x - 1, this.y - 1, radius * 0.55, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.save();
-                ctx.globalCompositeOperation = 'multiply';
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Adjust 0.5 to make it more or less dark
+
+                // Faint subterranean toxic spore pulse in the center
+                const dormantPulse = 0.22 + 0.12 * Math.abs(Math.sin(now / 380));
+                ctx.fillStyle = `rgba(77, 124, 15, ${dormantPulse})`;
+                ctx.beginPath();
+                ctx.arc(this.x - 1, this.y - 1, radius * 0.32, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.restore();
 
                 ctx.restore();
                 this.drawCryoOverlay(now);
@@ -8195,91 +8404,217 @@ class Enemy extends Unit {
         if (this.type === 'medivac') {
             ctx.save();
 
-            // Healing beams to up to 2 targets (drawn first so body renders on top)
-            if (this.healTargets && this.healTargets.length > 0) {
+            // 1. Biological Latching Tentacles & Rejuvenating Liquid Pumping (Glowing Vermilion Nectar)
+            const isHealing = this.healTargets && this.healTargets.length > 0;
+            if (isHealing) {
                 for (let bi = 0; bi < this.healTargets.length; bi++) {
                     const ht = this.healTargets[bi];
                     if (!ht || ht.hp <= 0 || ht.hp >= ht.maxHp) continue;
                     const tx = ht.x, ty = ht.y;
-                    // Each beam has a slightly different dash phase so they look distinct
-                    ctx.strokeStyle = '#69f0ae';
-                    ctx.lineWidth = 3 - bi * 0.8; // second beam slightly thinner
-                    ctx.globalAlpha = 0.75 + 0.25 * Math.abs(Math.sin(now / 120 + bi * 1.2));
-                    ctx.setLineDash([10, 6]);
-                    ctx.lineDashOffset = -(now / 25 + bi * 8) % 16;
+                    const startX = this.x;
+                    const startY = this.y + this.r * 0.4;
+
+                    // Dynamic organic tentacle curve reaching down to target
+                    const dx = tx - startX;
+                    const dy = ty - startY;
+                    const dist = Math.hypot(dx, dy);
+                    const normX = dist > 0.001 ? dx / dist : 0;
+                    const normY = dist > 0.001 ? dy / dist : 1;
+                    const perpX = -normY;
+                    const perpY = normX;
+                    const sway = Math.sin(now / 110 + bi * 1.5) * Math.min(18, dist * 0.15);
+                    const cpX = (startX + tx) / 2 + perpX * sway;
+                    const cpY = (startY + ty) / 2 + perpY * sway;
+
+                    // Thick muscular tentacle outer sheath (Deep Dark Visceral Sinew)
+                    ctx.strokeStyle = '#2e0906';
+                    ctx.lineWidth = 4.4;
                     ctx.beginPath();
-                    ctx.moveTo(this.x, this.y);
-                    ctx.lineTo(tx, ty);
+                    ctx.moveTo(startX, startY);
+                    ctx.quadraticCurveTo(cpX, cpY, tx, ty);
                     ctx.stroke();
-                    ctx.setLineDash([]);
-                    ctx.globalAlpha = 1;
 
-                    // Pulse at heal target
-                    ctx.globalAlpha = 0.35 + 0.3 * Math.abs(Math.sin(now / 150 + bi));
-                    ctx.fillStyle = '#b9f6ca';
+                    // Inner translucent bio-fluid conduit (Darkened Vermilion Sinew)
+                    ctx.strokeStyle = '#66150a';
+                    ctx.lineWidth = 2.4;
                     ctx.beginPath();
-                    ctx.arc(tx, ty, ht.r + 6, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.globalAlpha = 1;
+                    ctx.moveTo(startX, startY);
+                    ctx.quadraticCurveTo(cpX, cpY, tx, ty);
+                    ctx.stroke();
 
-                    // Healing particles
+                    // Pumping Boluses of Rejuvenating Liquid travelling rapidly down the tentacle
+                    const numBoluses = 4;
+                    for (let b = 0; b < numBoluses; b++) {
+                        const prog = ((now / 320) + (b / numBoluses) + bi * 0.25) % 1.0;
+                        const t = prog;
+                        const it = 1 - t;
+                        const bx = it * it * startX + 2 * it * t * cpX + t * t * tx;
+                        const by = it * it * startY + 2 * it * t * cpY + t * t * ty;
+                        const bolusRadius = 2.8 + 1.2 * Math.sin(prog * Math.PI);
+
+                        // Liquid bolus glow & core (Darkened Blood-Vermilion)
+                        ctx.fillStyle = '#b02b1d';
+                        ctx.strokeStyle = '#c2410c';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.arc(bx, by, bolusRadius, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+
+                    // Latching Suction Collar & Gripping Claws on Target Body
+                    ctx.fillStyle = '#220604';
+                    ctx.strokeStyle = '#360b07';
+                    ctx.lineWidth = 1.8;
+                    ctx.beginPath();
+                    ctx.arc(tx, ty, ht.r * 0.45 + 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Injection point at center of latch
+                    ctx.fillStyle = '#b02b1d';
+                    ctx.beginPath();
+                    ctx.arc(tx, ty, ht.r * 0.25, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Restorative mist & splash ripples around latch site
+                    const rippleRad = (ht.r + 4) * (0.6 + 0.4 * Math.sin(now / 140 + bi));
+                    ctx.strokeStyle = '#b02b1d';
+                    ctx.lineWidth = 1.2;
+                    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(now / 120 + bi);
+                    ctx.beginPath();
+                    ctx.arc(tx, ty, rippleRad, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.globalAlpha = 1.0;
+
+                    // Upward floating rejuvenation motes
                     if (Math.random() < 0.4) {
                         const a = Math.random() * Math.PI * 2;
                         GAME_STATE.particles.push(new Particle(
-                            tx + Math.cos(a) * ht.r * 0.6,
-                            ty + Math.sin(a) * ht.r * 0.6,
-                            Math.cos(a) * 0.4, Math.sin(a) * 0.4 - 0.6,
-                            '#69f0ae', 350 + Math.random() * 200
+                            tx + Math.cos(a) * ht.r * 0.5,
+                            ty + Math.sin(a) * ht.r * 0.5,
+                            Math.cos(a) * 0.3, -0.7 - Math.random() * 0.5,
+                            '#b02b1d', 350 + Math.random() * 150
                         ));
                     }
                 }
             }
 
-            // Outer thrust glow (white-blue hover)
-            ctx.globalAlpha = 0.18;
-            ctx.fillStyle = '#e1f5fe';
+            // 2. Meaty Blood-Russet Multi-Lobed Body & Visceral Sinew
+            // Underlying deep organic sinew bed
+            ctx.fillStyle = '#270d0b';
             ctx.beginPath();
-            ctx.arc(this.x, this.y, this.r + 10, 0, Math.PI * 2);
+            ctx.arc(this.x, this.y, this.r * 0.95, 0, Math.PI * 2);
             ctx.fill();
-            ctx.globalAlpha = 1;
 
-            // Dropship body — rounded rect
-            const bw = this.r * 2.2, bh = this.r * 1.3;
-            ctx.fillStyle = '#cfd8dc';
-            ctx.strokeStyle = '#78909c';
-            ctx.lineWidth = 2;
+            // 6 Interconnected Pulsating Fleshy Muscle Lobes
+            const numLobes = 6;
+            for (let i = 0; i < numLobes; i++) {
+                const la = (i / numLobes) * Math.PI * 2 + now / 500;
+                const lPulse = Math.sin(now / 130 + i * 1.4) * 1.8;
+                const lx = this.x + Math.cos(la) * (this.r * 0.44 + lPulse);
+                const ly = this.y + Math.sin(la) * (this.r * 0.38 + lPulse);
+                const lr = this.r * 0.46 + Math.sin(now / 160 + i * 2.1) * 1.0;
+
+                // Fleshy blood-russet muscle dome
+                ctx.fillStyle = '#882519';
+                ctx.strokeStyle = '#3d0e0b';
+                ctx.lineWidth = 2.0;
+                ctx.beginPath();
+                ctx.arc(lx, ly, lr, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Fleshy dorsal muscle highlight (flame-russet)
+                ctx.fillStyle = '#b02b1d';
+                ctx.beginPath();
+                ctx.arc(lx - Math.cos(la) * 1.8, ly - Math.sin(la) * 1.8, lr * 0.42, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Central Translucent Rejuvenating Liquid Reservoir Belly
+            const liquidPulse = isHealing ? 65 : 180;
+            const liquidScale = 0.55 + 0.12 * Math.abs(Math.sin(now / liquidPulse));
+            const liquidYOffset = this.y + this.r * 0.10;
+
+            ctx.fillStyle = isHealing ? 'rgba(236, 78, 40, 0.79)' : 'rgba(207, 51, 25, 0.58)';
+            ctx.strokeStyle = '#882519';
+            ctx.lineWidth = 1.6;
             ctx.beginPath();
-            ctx.roundRect(this.x - bw / 2, this.y - bh / 2, bw, bh, 6);
+            ctx.ellipse(this.x, liquidYOffset, this.r * liquidScale * 1.1, this.r * liquidScale * 0.85, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            // Cockpit window (dark front)
-            ctx.fillStyle = '#37474f';
-            ctx.beginPath();
-            ctx.roundRect(this.x + bw * 0.22, this.y - bh * 0.35, bw * 0.22, bh * 0.7, 3);
-            ctx.fill();
-
-            // Red cross medical marking
-            ctx.fillStyle = '#f44336';
-            const cx2 = this.x - bw * 0.1, cy2 = this.y;
-            const arm = 5, thick = 3.5;
-            ctx.fillRect(cx2 - arm, cy2 - thick / 2, arm * 2, thick); // horizontal
-            ctx.fillRect(cx2 - thick / 2, cy2 - arm, thick, arm * 2); // vertical
-
-            // Engine nacelles (small circles underneath body corners)
-            ctx.fillStyle = '#90a4ae';
-            for (const sx of [-1, 1]) {
+            // Swirling internal restorative liquid vesicles / bubbles (vermilion droplets)
+            for (let k = 0; k < 4; k++) {
+                const va = (now / (isHealing ? 140 : 260)) + k * (Math.PI * 2 / 4);
+                const vDistX = this.r * 0.36 * (0.8 + 0.2 * Math.sin(now / 200 + k));
+                const vDistY = this.r * 0.28 * (0.8 + 0.2 * Math.cos(now / 200 + k));
+                const vx = this.x + Math.cos(va) * vDistX;
+                const vy = liquidYOffset + Math.sin(va) * vDistY;
+                ctx.fillStyle = '#fcaf8c';
                 ctx.beginPath();
-                ctx.ellipse(this.x + sx * bw * 0.3, this.y + bh * 0.55, 6, 4, 0, 0, Math.PI * 2);
+                ctx.arc(vx, vy, 2.0, 0, Math.PI * 2);
                 ctx.fill();
-                // Thruster glow
-                ctx.globalAlpha = 0.4 + 0.3 * Math.abs(Math.sin(now / 200 + sx));
-                ctx.fillStyle = '#80d8ff';
+            }
+
+            // Visceral Meaty Sinew Strands crossing across lobes
+            ctx.strokeStyle = '#5b1e18';
+            ctx.lineWidth = 1.4;
+            for (let s = 0; s < 3; s++) {
+                const sa = (s / 3) * Math.PI + now / 600;
                 ctx.beginPath();
-                ctx.ellipse(this.x + sx * bw * 0.3, this.y + bh * 0.65, 4, 3, 0, 0, Math.PI * 2);
+                ctx.moveTo(this.x + Math.cos(sa) * (this.r * 0.7), this.y + Math.sin(sa) * (this.r * 0.7));
+                ctx.quadraticCurveTo(this.x, this.y, this.x - Math.cos(sa) * (this.r * 0.7), this.y - Math.sin(sa) * (this.r * 0.7));
+                ctx.stroke();
+            }
+
+            // 3. Sensory Amoebic Eyes embedded in fleshy orbital folds
+            let eyeLookAngle = Math.PI / 2;
+            if (isHealing && this.healTargets[0]) {
+                eyeLookAngle = Math.atan2(this.healTargets[0].y - this.y, this.healTargets[0].x - this.x);
+            } else if (Math.hypot(this.vx, this.vy) > 0.1) {
+                eyeLookAngle = Math.atan2(this.vy, this.vx);
+            }
+
+            const eyeY = this.y - this.r * 0.22;
+            for (const side of [-1, 1]) {
+                const ex = this.x + side * (this.r * 0.44);
+                // Deep fleshy orbital socket
+                ctx.fillStyle = '#270d0b';
+                ctx.beginPath();
+                ctx.ellipse(ex, eyeY, 3.8, 4.2, 0, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.globalAlpha = 1;
-                ctx.fillStyle = '#90a4ae';
+
+                // Warm vermilion sensory cornea
+                const pupilX = ex + Math.cos(eyeLookAngle) * 1.5;
+                const pupilY = eyeY + Math.sin(eyeLookAngle) * 1.5;
+                ctx.fillStyle = '#f45b2d';
+                ctx.beginPath();
+                ctx.arc(pupilX, pupilY, 2.0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Glint highlight
+                ctx.fillStyle = '#fedccd';
+                ctx.beginPath();
+                ctx.arc(pupilX - 0.6, pupilY - 0.6, 0.7, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Fleshy blood-russet pseudopod ripples when idling (tucked in when healing)
+            if (!isHealing) {
+                for (let k = 0; k < 3; k++) {
+                    const px = this.x + (k - 1) * (this.r * 0.45);
+                    const py = this.y + this.r * 0.85;
+                    const pWave = Math.sin(now / 140 + k * 1.4) * 3;
+                    ctx.fillStyle = '#882519';
+                    ctx.strokeStyle = '#3d0e0b';
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.arc(px + pWave * 0.5, py + 2, 2.8, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                }
             }
 
             ctx.restore();
@@ -8289,56 +8624,67 @@ class Enemy extends Unit {
         if (this.type === 'sentry') {
             ctx.save();
 
-            // Guardian Shield aura — large translucent teal dome visible on the ground
-            ctx.globalAlpha = 0.03 + 0.02 * Math.abs(Math.sin(now / 800));
-            ctx.fillStyle = '#00e5ff';
+            // Guardian Shield aura — soft, subtle matte platinum dome visible on the ground
+            ctx.globalAlpha = 0.020 + 0.008 * Math.abs(Math.sin(now / 800));
+            ctx.fillStyle = '#64748b';
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.shieldRadius, 0, Math.PI * 2);
             ctx.fill();
-            ctx.globalAlpha = 0.09 + 0.06 * Math.abs(Math.sin(now / 800));
-            ctx.strokeStyle = '#00e5ff';
-            ctx.lineWidth = 2;
+
+            ctx.globalAlpha = 0.06 + 0.02 * Math.abs(Math.sin(now / 800));
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 1.0;
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.shieldRadius, 0, Math.PI * 2);
             ctx.stroke();
-            ctx.globalAlpha = 1;
 
-            // Outer glow
-            ctx.globalAlpha = 0.22;
-            ctx.fillStyle = '#00acc1';
+            // Faint high-tech dashed outer boundary
+            ctx.globalAlpha = 0.05;
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([6, 8]);
+            ctx.lineDashOffset = -(now / 60);
             ctx.beginPath();
-            ctx.arc(this.x, this.y, this.r + 8, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalAlpha = 1;
+            ctx.arc(this.x, this.y, this.shieldRadius - 2, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 1.0;
 
-            // Main body — dark teal Protoss casing
-            ctx.fillStyle = '#006064';
-            ctx.strokeStyle = '#00363a';
-            ctx.lineWidth = 2.5;
+            // Main body — matte brushed steel chrome casing
+            ctx.fillStyle = '#cbd5e1';
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 2.2;
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            // Psionic core (bright cyan)
-            const corePulse = 0.65 + 0.35 * Math.abs(Math.sin(now / 250));
-            ctx.globalAlpha = corePulse;
-            ctx.fillStyle = '#00e5ff';
+            // Inner graphite armor trim ring
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r * 0.72, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Platinum Crystal Core (matte, non-luminous beryl crystal)
+            ctx.fillStyle = '#94a3b8';
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.r * 0.38, 0, Math.PI * 2);
             ctx.fill();
-            ctx.globalAlpha = 1;
 
-            // 6 rotating orbiting shield nodes
+            // 6 rotating orbiting matte steel prisms
             const nodeCount = 6;
             for (let i = 0; i < nodeCount; i++) {
                 const a = this.shieldAngle + (i / nodeCount) * Math.PI * 2;
                 const nx = this.x + Math.cos(a) * (this.r + 7);
                 const ny = this.y + Math.sin(a) * (this.r + 7);
-                ctx.fillStyle = '#b2ebf2';
+                ctx.fillStyle = '#cbd5e1';
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.arc(nx, ny, 3, 0, Math.PI * 2);
+                ctx.arc(nx, ny, 3.0, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.stroke();
             }
 
             ctx.restore();
@@ -8356,16 +8702,16 @@ class Enemy extends Unit {
 
                 // Soft translucent red/orange threat beam telegraph
                 const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 70));
-                ctx.strokeStyle = `rgba(255, 87, 34, ${pulse * 0.40})`;
-                ctx.lineWidth = 18;
+                ctx.strokeStyle = `rgba(194, 65, 12, ${pulse * 0.30})`;
+                ctx.lineWidth = 16;
                 ctx.beginPath();
                 ctx.moveTo(this.x, this.y);
                 ctx.lineTo(ax, ay);
                 ctx.stroke();
 
-                ctx.globalAlpha = 0.5;
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = 1.5;
+                ctx.globalAlpha = 0.4;
+                ctx.strokeStyle = '#fdba74';
+                ctx.lineWidth = 1.2;
                 ctx.setLineDash([8, 6]);
                 ctx.beginPath();
                 ctx.moveTo(this.x, this.y);
@@ -8375,33 +8721,33 @@ class Enemy extends Unit {
                 ctx.globalAlpha = 1.0;
             }
 
-            // Firing flame beam visual (more transparent)
+            // Firing flame beam visual (subdued, less luminous)
             if (this.flameBeamUntil && now < this.flameBeamUntil && this.flameLine) {
                 const frac = (this.flameBeamUntil - now) / 300;
                 const fl = this.flameLine;
 
                 // Outer flame aura
-                ctx.globalAlpha = frac * 0.40;
-                ctx.strokeStyle = '#ff3d00';
-                ctx.lineWidth = 32;
+                ctx.globalAlpha = frac * 0.30;
+                ctx.strokeStyle = '#c2410c';
+                ctx.lineWidth = 30;
                 ctx.beginPath();
                 ctx.moveTo(fl.x1, fl.y1);
                 ctx.lineTo(fl.x2, fl.y2);
                 ctx.stroke();
 
                 // Core flame
-                ctx.globalAlpha = frac * 0.55;
-                ctx.strokeStyle = '#ffc107';
-                ctx.lineWidth = 16;
+                ctx.globalAlpha = frac * 0.45;
+                ctx.strokeStyle = '#ea580c';
+                ctx.lineWidth = 14;
                 ctx.beginPath();
                 ctx.moveTo(fl.x1, fl.y1);
                 ctx.lineTo(fl.x2, fl.y2);
                 ctx.stroke();
 
                 // Center line
-                ctx.globalAlpha = frac * 0.65;
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = 4;
+                ctx.globalAlpha = frac * 0.50;
+                ctx.strokeStyle = '#fed7aa';
+                ctx.lineWidth = 3;
                 ctx.beginPath();
                 ctx.moveTo(fl.x1, fl.y1);
                 ctx.lineTo(fl.x2, fl.y2);
@@ -8410,23 +8756,23 @@ class Enemy extends Unit {
                 ctx.globalAlpha = 1.0;
             }
 
-            // Ring-shaped monster body (like every other monster)
+            // Ring-shaped monster body
             ctx.save();
             ctx.translate(this.x, this.y);
 
-            // Outer ring border & filled body
-            ctx.fillStyle = '#ff5722';
-            ctx.strokeStyle = '#bf360c';
-            ctx.lineWidth = 3;
+            // Outer ring border & filled body (rich burnt ember terracotta)
+            ctx.fillStyle = '#c2410c';
+            ctx.strokeStyle = '#7c2d12';
+            ctx.lineWidth = 2.6;
             ctx.beginPath();
             ctx.arc(0, 0, this.r, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            // Inner glowing flame core
-            const corePulse = 0.7 + 0.3 * Math.abs(Math.sin(now / 180));
+            // Inner flame core (warm amber rather than glaring yellow)
+            const corePulse = 0.50 + 0.25 * Math.abs(Math.sin(now / 180));
             ctx.globalAlpha = corePulse;
-            ctx.fillStyle = '#ffeb3b';
+            ctx.fillStyle = '#f59e0b';
             ctx.beginPath();
             ctx.arc(0, 0, this.r * 0.45, 0, Math.PI * 2);
             ctx.fill();
@@ -8435,9 +8781,9 @@ class Enemy extends Unit {
             // Directional nozzle indicator on ring
             const facingAngle = this.aiming ? this.aimAngle : (this.targetCoord ? Math.atan2(this.targetCoord.y - this.y, this.targetCoord.x - this.x) : 0);
             ctx.rotate(facingAngle);
-            ctx.fillStyle = '#d84315';
+            ctx.fillStyle = '#7c2d12';
             ctx.beginPath();
-            ctx.arc(this.r * 0.75, 0, 4, 0, Math.PI * 2);
+            ctx.arc(this.r * 0.75, 0, 3.5, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.restore();
@@ -8721,59 +9067,58 @@ class Enemy extends Unit {
             const sR = this.shieldRadius || 100;
             const sArc = this.shieldHalfArc || Math.PI * 0.5;
 
-            // 1. Heavy Armored Body (normal monster size r = 28)
-            ctx.fillStyle = '#212121';
-            ctx.strokeStyle = '#00bcd4';
+            // 1. Heavy Armored Body (dark tungsten/iron armor)
+            ctx.fillStyle = '#171717';
+            ctx.strokeStyle = '#78350f';
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            // Inner core reactor
-            ctx.fillStyle = '#00e5ff';
-            ctx.shadowColor = '#00e5ff';
-            ctx.shadowBlur = 8;
+            // Inner core reactor (dark amber bronze)
+            ctx.fillStyle = '#92400e';
             ctx.beginPath();
             ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
             ctx.fill();
-            ctx.shadowBlur = 0;
 
-            // 2. Half-Circle Frontal Energy Shield Field (translucent energy web)
-            ctx.fillStyle = 'rgba(0, 229, 255, 0.08)';
+            // 2. Half-Circle Frontal Energy Shield Field (dark translucent amber-bronze barrier)
+            ctx.fillStyle = 'rgba(120, 53, 15, 0.045)';
             ctx.beginPath();
             ctx.arc(this.x, this.y, sR, facing - sArc, facing + sArc);
             ctx.lineTo(this.x, this.y);
             ctx.closePath();
             ctx.fill();
 
-            // 3. Half-Circle Curved Shield Arc (outer glowing barrier)
-            ctx.strokeStyle = '#00e5ff';
-            ctx.shadowColor = '#00e5ff';
-            ctx.shadowBlur = 18;
-            ctx.lineWidth = 8;
+            // 3. Half-Circle Curved Shield Arc (dark matte burnt-amber barrier)
+            ctx.strokeStyle = '#92400e';
+            ctx.shadowColor = '#78350f';
+            ctx.shadowBlur = 4;
+            ctx.lineWidth = 4.5;
             ctx.beginPath();
             ctx.arc(this.x, this.y, sR, facing - sArc, facing + sArc);
             ctx.stroke();
 
-            // Inner bright plasma stripe
+            // Inner subtle bronze accent stripe
             ctx.shadowBlur = 0;
-            ctx.strokeStyle = '#e0f7fa';
-            ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.5;
+            ctx.strokeStyle = '#d97706';
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(this.x, this.y, sR, facing - sArc * 0.96, facing + sArc * 0.96);
             ctx.stroke();
+            ctx.globalAlpha = 1.0;
 
             // Heavy metallic emitter brackets at the shield tips
-            ctx.fillStyle = '#37474f';
-            ctx.strokeStyle = '#00bcd4';
+            ctx.fillStyle = '#1c1917';
+            ctx.strokeStyle = '#78350f';
             ctx.lineWidth = 1.5;
             for (const side of [-1, 1]) {
                 const tipAngle = facing + side * sArc;
                 const tx = this.x + Math.cos(tipAngle) * sR;
                 const ty = this.y + Math.sin(tipAngle) * sR;
                 ctx.beginPath();
-                ctx.arc(tx, ty, 7, 0, Math.PI * 2);
+                ctx.arc(tx, ty, 6, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
             }
@@ -8790,9 +9135,9 @@ class Enemy extends Unit {
                 ctx.save();
                 const px = this.heldPlayer.x, py = this.heldPlayer.y;
 
-                // Fleshy abduct frog tongue cord
-                ctx.strokeStyle = '#ec4899';
-                ctx.shadowColor = '#d946ef';
+                // Fleshy abduct frog tongue cord (crimson blood red)
+                ctx.strokeStyle = '#dc2626';
+                ctx.shadowColor = '#ef4444';
                 ctx.shadowBlur = 10;
                 ctx.lineWidth = 5;
                 ctx.beginPath();
@@ -8800,18 +9145,18 @@ class Enemy extends Unit {
                 ctx.lineTo(px, py);
                 ctx.stroke();
 
-                // Inner bright pink/white tendon core
+                // Inner pale tendon core
                 ctx.shadowBlur = 0;
-                ctx.strokeStyle = '#fbcfe8';
+                ctx.strokeStyle = '#fee2e2';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(this.x, this.y);
                 ctx.lineTo(px, py);
                 ctx.stroke();
 
-                // Organic pulsating nodes along the tongue
+                // Organic pulsating nodes along the tongue (deep dark red)
                 const segCount = 4;
-                ctx.fillStyle = '#a855f7';
+                ctx.fillStyle = '#991b1b';
                 for (let i = 1; i < segCount; i++) {
                     const frac = i / segCount;
                     const nx = this.x + (px - this.x) * frac;
@@ -8823,8 +9168,8 @@ class Enemy extends Unit {
                 }
 
                 // Tongue barb head latching onto player
-                ctx.fillStyle = '#ec4899';
-                ctx.strokeStyle = '#701a75';
+                ctx.fillStyle = '#ef4444';
+                ctx.strokeStyle = '#7f1d1d';
                 ctx.lineWidth = 1.5;
                 ctx.beginPath();
                 ctx.arc(px, py, 9, 0, Math.PI * 2);
@@ -8835,8 +9180,8 @@ class Enemy extends Unit {
             } else if (this.tongueActive) {
                 // Tongue tip in flight towards target
                 ctx.save();
-                ctx.strokeStyle = '#ec4899';
-                ctx.shadowColor = '#d946ef';
+                ctx.strokeStyle = '#dc2626';
+                ctx.shadowColor = '#ef4444';
                 ctx.shadowBlur = 8;
                 ctx.lineWidth = 3.5;
                 ctx.beginPath();
@@ -8846,7 +9191,7 @@ class Enemy extends Unit {
 
                 // Barbed tongue tip
                 ctx.shadowBlur = 0;
-                ctx.fillStyle = '#f43f5e';
+                ctx.fillStyle = '#ef4444';
                 ctx.beginPath();
                 ctx.arc(this.tongueTipX, this.tongueTipY, 6, 0, Math.PI * 2);
                 ctx.fill();
@@ -8858,7 +9203,7 @@ class Enemy extends Unit {
                 ctx.save();
                 const attractPulse = (now % 1000) / 1000;
                 const ringR = 20 + attractPulse * 160;
-                ctx.strokeStyle = `rgba(217, 70, 239, ${0.45 * (1 - attractPulse)})`;
+                ctx.strokeStyle = `rgba(185, 28, 28, ${0.45 * (1 - attractPulse)})`;
                 ctx.lineWidth = 2;
                 ctx.setLineDash([6, 6]);
                 ctx.beginPath();
@@ -8866,52 +9211,194 @@ class Enemy extends Unit {
                 ctx.stroke();
                 ctx.setLineDash([]);
                 ctx.restore();
+
+                // Warning telegraph line just before shooting tongue
+                const warnDuration = 600;
+                if (this.shootTongueAt && now >= this.shootTongueAt - warnDuration && now < this.shootTongueAt) {
+                    const warnProgress = Math.min(1.0, Math.max(0.0, (now - (this.shootTongueAt - warnDuration)) / warnDuration));
+                    const aimAngle = (typeof this.tongueAimAngle === 'number') ? this.tongueAimAngle : 0;
+                    const aimLen = this.tongueRange || 1500;
+                    const endX = this.x + Math.cos(aimAngle) * aimLen;
+                    const endY = this.y + Math.sin(aimAngle) * aimLen;
+
+                    ctx.save();
+                    // 1. Soft glowing threat corridor (pulsing crimson danger beam)
+                    const pulse = 0.6 + 0.4 * Math.sin(now / 50);
+                    ctx.strokeStyle = `rgba(220, 38, 38, ${(0.18 + warnProgress * 0.35) * pulse})`;
+                    ctx.shadowColor = '#ef4444';
+                    ctx.shadowBlur = 12;
+                    ctx.lineWidth = 12 * (0.6 + 0.4 * warnProgress);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(endX, endY);
+                    ctx.stroke();
+
+                    // 2. Animated dashed tracking beam (flowing forward toward target)
+                    ctx.shadowBlur = 4;
+                    ctx.strokeStyle = `rgba(254, 202, 202, ${0.5 + 0.5 * warnProgress})`;
+                    ctx.lineWidth = 2.0;
+                    ctx.setLineDash([12, 8]);
+                    ctx.lineDashOffset = -(now / 15);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(endX, endY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // 3. Target lock crosshair indicator at target player position
+                    if (typeof this.tongueAimTargetX === 'number' && typeof this.tongueAimTargetY === 'number') {
+                        const reticleR = Math.max(14, 36 * (1.0 - warnProgress * 0.6));
+                        ctx.strokeStyle = '#ef4444';
+                        ctx.shadowColor = '#ef4444';
+                        ctx.shadowBlur = 8;
+                        ctx.lineWidth = 2.0;
+                        ctx.beginPath();
+                        ctx.arc(this.tongueAimTargetX, this.tongueAimTargetY, reticleR, 0, Math.PI * 2);
+                        ctx.stroke();
+
+                        // Crosshair notches
+                        for (let i = 0; i < 4; i++) {
+                            const ca = (Math.PI / 2) * i;
+                            ctx.beginPath();
+                            ctx.moveTo(this.tongueAimTargetX + Math.cos(ca) * (reticleR - 4), this.tongueAimTargetY + Math.sin(ca) * (reticleR - 4));
+                            ctx.lineTo(this.tongueAimTargetX + Math.cos(ca) * (reticleR + 5), this.tongueAimTargetY + Math.sin(ca) * (reticleR + 5));
+                            ctx.stroke();
+                        }
+                    }
+
+                    // 4. Glowing mouth charging flare
+                    const flareR = 3 + warnProgress * 7 + Math.sin(now / 40) * 2;
+                    ctx.fillStyle = '#ef4444';
+                    ctx.shadowColor = '#dc2626';
+                    ctx.shadowBlur = 14;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y + 11, flareR, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.restore();
+                }
             }
 
-            // 2. Viper Flyer Body
-            const hoverOffset = Math.sin(now / 140) * 3;
+            // 2. Viper Body — Writhing, Squirming "Ball of Tongues"
+            const hoverOffset = Math.sin(now / 130) * 3.5;
             const drawY = this.y + hoverOffset;
 
             // Faint ground shadow
             ctx.save();
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
             ctx.beginPath();
-            ctx.ellipse(this.x, this.y + 16, this.r * 0.9, this.r * 0.45, 0, 0, Math.PI * 2);
+            ctx.ellipse(this.x, this.y + 18, this.r * 0.95, this.r * 0.45, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
 
-            // Serpentine Zerg Carapace (deep purple)
-            ctx.fillStyle = '#4a148c';
-            ctx.strokeStyle = '#8e24aa';
+            ctx.save();
+
+            // A. Base pulsing visceral meat core
+            const pulseR = this.r * (0.88 + 0.08 * Math.sin(now / 100));
+            ctx.fillStyle = '#7f1d1d';
+            ctx.strokeStyle = '#450a0a';
             ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.arc(this.x, drawY, this.r, 0, Math.PI * 2);
+            ctx.arc(this.x, drawY, pulseR, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            // Dorsal carapace ridges & pulsating fin wings
-            const wingSpread = 11 + Math.sin(now / 90) * 5;
-            ctx.fillStyle = '#7b1fa2';
+            // B. Perimeter writhing tongue loops (8 fleshy tentacles flexing and curling outwards)
+            const numLoops = 8;
+            for (let i = 0; i < numLoops; i++) {
+                const baseAngle = (i / numLoops) * Math.PI * 2;
+                const wave = Math.sin(now / 110 + i * 1.4);
+                const loopAngle = baseAngle + wave * 0.25;
+                const reach = this.r * (0.95 + 0.32 * Math.abs(wave));
+                const midDist = this.r * 0.65;
+
+                // Tongue path curve
+                const startX = this.x + Math.cos(loopAngle - 0.22) * midDist;
+                const startY = drawY + Math.sin(loopAngle - 0.22) * midDist;
+                const tipX = this.x + Math.cos(loopAngle) * reach;
+                const tipY = drawY + Math.sin(loopAngle) * reach;
+                const cpX = this.x + Math.cos(loopAngle + 0.35) * (reach * 1.12);
+                const cpY = drawY + Math.sin(loopAngle + 0.35) * (reach * 1.12);
+
+                // Thick fleshy tongue muscle
+                ctx.strokeStyle = '#dc2626';
+                ctx.lineWidth = 5.5;
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.quadraticCurveTo(cpX, cpY, tipX, tipY);
+                ctx.stroke();
+
+                // Pale inner tendon stripe
+                ctx.strokeStyle = '#fee2e2';
+                ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.quadraticCurveTo(cpX, cpY, tipX, tipY);
+                ctx.stroke();
+
+                // Barbed tip
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(tipX, tipY, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // C. Interwoven foreground cross-tongues spanning the spherical body
+            const numCross = 5;
+            for (let i = 0; i < numCross; i++) {
+                const crossAngle = (i / numCross) * Math.PI + Math.sin(now / 140 + i) * 0.15;
+                const x1 = this.x + Math.cos(crossAngle) * (this.r * 0.82);
+                const y1 = drawY + Math.sin(crossAngle) * (this.r * 0.82);
+                const x2 = this.x - Math.cos(crossAngle) * (this.r * 0.82);
+                const y2 = drawY - Math.sin(crossAngle) * (this.r * 0.82);
+                const bow = Math.sin(now / 90 + i * 1.8) * 8;
+                const midX = (x1 + x2) / 2 + Math.cos(crossAngle + Math.PI / 2) * bow;
+                const midY = (y1 + y2) / 2 + Math.sin(crossAngle + Math.PI / 2) * bow;
+
+                // Fleshy strand
+                ctx.strokeStyle = '#b91c1c';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.quadraticCurveTo(midX, midY, x2, y2);
+                ctx.stroke();
+
+                // Muscle highlight
+                ctx.strokeStyle = '#f87171';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.quadraticCurveTo(midX, midY, x2, y2);
+                ctx.stroke();
+
+                // Organic papillae / nodes along the strand
+                for (let frac of [0.3, 0.7]) {
+                    const px = x1 + (x2 - x1) * frac + Math.cos(crossAngle + Math.PI / 2) * (bow * 0.5);
+                    const py = y1 + (y2 - y1) * frac + Math.sin(crossAngle + Math.PI / 2) * (bow * 0.5);
+                    ctx.fillStyle = '#fee2e2';
+                    ctx.beginPath();
+                    ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // D. Central gaping abduct maw
+            const mawR = 9 + (this.tongueActive || this.viperState === 'stopped_attracting' ? 4 : 0);
+            ctx.fillStyle = '#260404';
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 2.5;
             ctx.beginPath();
-            ctx.ellipse(this.x - wingSpread, drawY - 2, 9, 18, -0.3, 0, Math.PI * 2);
-            ctx.ellipse(this.x + wingSpread, drawY - 2, 9, 18, 0.3, 0, Math.PI * 2);
+            ctx.arc(this.x, drawY, mawR, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Glowing throat depth
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath();
+            ctx.arc(this.x, drawY, mawR * 0.45, 0, Math.PI * 2);
             ctx.fill();
 
-            // Glowing bio-luminescent lime eyes / sensory proboscis
-            ctx.fillStyle = '#76ff03';
-            ctx.shadowColor = '#76ff03';
-            ctx.shadowBlur = 10;
-            ctx.beginPath();
-            ctx.arc(this.x - 7, drawY - 5, 4, 0, Math.PI * 2);
-            ctx.arc(this.x + 7, drawY - 5, 4, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-
-            // Mouth proboscis / abduct nozzle
-            ctx.fillStyle = '#f43f5e';
-            ctx.beginPath();
-            ctx.arc(this.x, drawY + 11, 5, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.restore();
 
             ctx.restore();
             this.drawCryoOverlay(now);
@@ -8920,52 +9407,83 @@ class Enemy extends Unit {
         if (this.type === 'stalker') {
             ctx.save();
 
-            // Blink flash: bright white afterimage that fades out
+            // Blink flash: bright void purple afterimage that fades out
             if (this.blinkFlashUntil && now < this.blinkFlashUntil) {
                 const flashFrac = (this.blinkFlashUntil - now) / 350;
                 ctx.globalAlpha = flashFrac * 0.85;
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = '#e9d5ff';
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r + 10, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, this.r + 12, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.globalAlpha = 1.0;
             }
 
-            // Outer glow (deep indigo)
+            // Outer glow (deep void purple)
             ctx.globalAlpha = 0.28;
-            ctx.fillStyle = '#3949ab';
+            ctx.fillStyle = '#7e22ce';
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.r + 7, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalAlpha = 1.0;
 
-            // Main body — dark indigo Protoss carapace
-            ctx.fillStyle = '#283593';
-            ctx.strokeStyle = '#1a237e';
+            // 4 Angular Mechanical Quadruped Strider Legs (purple crystal striders)
+            ctx.strokeStyle = '#581c87';
+            ctx.lineWidth = 2.5;
+            for (let j = 0; j < 4; j++) {
+                const legBaseAngle = (j / 4) * Math.PI * 2 + Math.PI * 0.25;
+                const lx1 = this.x + Math.cos(legBaseAngle) * (this.r * 0.7);
+                const ly1 = this.y + Math.sin(legBaseAngle) * (this.r * 0.7);
+                const kneeX = this.x + Math.cos(legBaseAngle) * (this.r + 6);
+                const kneeY = this.y + Math.sin(legBaseAngle) * (this.r + 6) - 3;
+                const footX = this.x + Math.cos(legBaseAngle) * (this.r + 10);
+                const footY = this.y + Math.sin(legBaseAngle) * (this.r + 10) + 4;
+
+                ctx.beginPath();
+                ctx.moveTo(lx1, ly1);
+                ctx.lineTo(kneeX, kneeY);
+                ctx.lineTo(footX, footY);
+                ctx.stroke();
+
+                // Knee joint cap (bright purple crystal dot)
+                ctx.fillStyle = '#c084fc';
+                ctx.beginPath();
+                ctx.arc(kneeX, kneeY, 2.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Main body — vibrant void purple Protoss carapace
+            ctx.fillStyle = '#4c1d95';
+            ctx.strokeStyle = '#2e1065';
             ctx.lineWidth = 2.5;
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            // Angular upper carapace plate
-            ctx.fillStyle = '#3f51b5';
+            // Angular upper carapace plate (amethyst violet plate)
+            ctx.fillStyle = '#6b21a8';
+            ctx.strokeStyle = '#a855f7';
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.moveTo(this.x - this.r * 0.7, this.y - 2);
             ctx.lineTo(this.x, this.y - this.r * 0.85);
             ctx.lineTo(this.x + this.r * 0.7, this.y - 2);
             ctx.closePath();
             ctx.fill();
+            ctx.stroke();
 
-            // Glowing crystal core (pulsing cyan-blue)
+            // Glowing crystal core (pulsing void purple)
             const corePulse = 0.7 + 0.3 * Math.abs(Math.sin(now / 200));
-            ctx.fillStyle = `rgba(100, 181, 246, ${corePulse})`;
+            ctx.fillStyle = `rgba(168, 85, 247, ${corePulse})`;
+            ctx.shadowColor = '#a855f7';
+            ctx.shadowBlur = 8;
             ctx.beginPath();
             ctx.arc(this.x, this.y + 2, this.r * 0.32, 0, Math.PI * 2);
             ctx.fill();
+            ctx.shadowBlur = 0;
 
             // Crystal highlight dot
-            ctx.fillStyle = '#e3f2fd';
+            ctx.fillStyle = '#f3e8ff';
             ctx.beginPath();
             ctx.arc(this.x - 2, this.y, this.r * 0.12, 0, Math.PI * 2);
             ctx.fill();
@@ -8976,23 +9494,23 @@ class Enemy extends Unit {
         }
         if (this.type === 'zergling') {
             ctx.save();
-            // Tiny chitinous body — lime green with dark carapace
-            ctx.fillStyle = '#558b2f';
-            ctx.strokeStyle = '#1b5e20';
+            // Tiny chitinous body — brownish green with dark swamp carapace
+            ctx.fillStyle = '#556b2f';
+            ctx.strokeStyle = '#283618';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            // Bright lime top highlight
-            ctx.fillStyle = '#8bc34a';
+            // Muted olive / earthy dorsal highlight
+            ctx.fillStyle = '#6b8e23';
             ctx.beginPath();
             ctx.arc(this.x - 1, this.y - 2, this.r * 0.55, 0, Math.PI * 2);
             ctx.fill();
 
-            // Two small claw marks (angled lines)
-            ctx.strokeStyle = '#ccff90';
+            // Two small claw marks (bone olive)
+            ctx.strokeStyle = '#a3b18a';
             ctx.lineWidth = 1.2;
             ctx.beginPath();
             ctx.moveTo(this.x - 4, this.y + 1); ctx.lineTo(this.x - 1, this.y + 4);
@@ -9007,49 +9525,149 @@ class Enemy extends Unit {
             ctx.save();
             const hpFrac = Math.max(0, this.hp / this.maxHp);
 
-            // Creep aura (pulsing dark purple)
-            const auraPulse = 0.12 + 0.08 * Math.abs(Math.sin(now / 350));
+            // 1. Subterranean toxic moss & acid seepage aura
+            const auraPulse = 0.14 + 0.08 * Math.abs(Math.sin(now / 350));
             ctx.globalAlpha = auraPulse;
-            ctx.fillStyle = '#7b1fa2';
+            ctx.fillStyle = '#4d7c0f';
             ctx.beginPath();
-            ctx.arc(this.x, this.y, this.r + 14, 0, Math.PI * 2);
+            ctx.arc(this.x, this.y, this.r + 15, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalAlpha = 1.0;
 
-            // Body darkens as it takes damage
-            const bodyLightness = Math.floor(15 + hpFrac * 20);
-            ctx.fillStyle = `hsl(275, 70%, ${bodyLightness}%)`;
-            ctx.strokeStyle = '#1a0033';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-
-            // Root legs (4 jagged lines radiating out)
-            ctx.strokeStyle = '#4a148c';
-            ctx.lineWidth = 3;
-            for (let j = 0; j < 4; j++) {
-                const legAngle = (j / 4) * Math.PI * 2 + now / 1800;
-                const lx1 = this.x + Math.cos(legAngle) * (this.r - 4);
-                const ly1 = this.y + Math.sin(legAngle) * (this.r - 4);
-                const lx2 = this.x + Math.cos(legAngle) * (this.r + 10);
-                const ly2 = this.y + Math.sin(legAngle) * (this.r + 10);
-                // Jagged mid-point
+            // 2. 6 Protruding, twitching Zergling scythe talons anchoring into the earth
+            ctx.strokeStyle = '#5d4037';
+            ctx.lineWidth = 3.2;
+            for (let j = 0; j < 6; j++) {
+                const twitch = Math.sin(now / 150 + j * 1.4) * 0.10;
+                const legAngle = (j / 6) * Math.PI * 2 + twitch;
+                const lx1 = this.x + Math.cos(legAngle) * (this.r * 0.65);
+                const ly1 = this.y + Math.sin(legAngle) * (this.r * 0.65);
+                const lx2 = this.x + Math.cos(legAngle) * (this.r + 13);
+                const ly2 = this.y + Math.sin(legAngle) * (this.r + 13);
                 const mx = (lx1 + lx2) / 2 + Math.cos(legAngle + Math.PI / 2) * 5;
                 const my = (ly1 + ly2) / 2 + Math.sin(legAngle + Math.PI / 2) * 5;
+
                 ctx.beginPath();
                 ctx.moveTo(lx1, ly1);
                 ctx.lineTo(mx, my);
                 ctx.lineTo(lx2, ly2);
                 ctx.stroke();
+
+                // Brown-russet keratin talon claw anchor tip
+                ctx.fillStyle = '#853812';
+                ctx.beginPath();
+                ctx.arc(lx2, ly2, 2.6, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Small zergling winglet spur at knee
+                ctx.fillStyle = '#795548';
+                ctx.beginPath();
+                ctx.arc(mx, my, 2.0, 0, Math.PI * 2);
+                ctx.fill();
             }
 
-            // Central spine tip (bright purple glow dot)
-            ctx.fillStyle = hpFrac > 0.5 ? '#ce93d8' : '#ff4081';
+            // 3. Underlying deep organic sinew bed
+            ctx.fillStyle = '#271406';
             ctx.beginPath();
-            ctx.arc(this.x, this.y, this.r * 0.38, 0, Math.PI * 2);
+            ctx.arc(this.x, this.y, this.r * 0.95, 0, Math.PI * 2);
             ctx.fill();
+
+            // 4. Bubbly, Bulbous Aggregate of 7 Bulging Zergling Pods
+            const numPods = 7;
+            for (let i = 0; i < numPods; i++) {
+                const baseAngle = (i / numPods) * Math.PI * 2;
+                // Asynchronous bubbling / swelling pulse per pod
+                const bubblePulse = Math.sin(now / 140 + i * 1.5) * 2.2;
+                const dist = this.r * 0.58 + bubblePulse;
+                const bx = this.x + Math.cos(baseAngle) * dist;
+                const by = this.y + Math.sin(baseAngle) * dist;
+                const br = this.r * 0.44 + Math.sin(now / 200 + i * 2.1) * 1.2;
+
+                // Bulbous brownish green bubble pod dome
+                ctx.fillStyle = '#556b2f';
+                ctx.strokeStyle = '#283618';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.arc(bx, by, br, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Earth-bark dorsal carapace shell capping each bubble
+                ctx.fillStyle = '#4e342e';
+                ctx.beginPath();
+                ctx.ellipse(bx - Math.cos(baseAngle) * 2, by - Math.sin(baseAngle) * 2, br * 0.62, br * 0.48, baseAngle, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Curled zergling body highlight (brownish-olive)
+                ctx.fillStyle = '#6b8e23';
+                ctx.beginPath();
+                ctx.arc(bx - Math.cos(baseAngle) * 2.5, by - Math.sin(baseAngle) * 2.5, br * 0.38, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Visible embryonic zergling claw marks on pod (brown-russet)
+                ctx.strokeStyle = '#853812';
+                ctx.lineWidth = 1.2;
+                const cAng = baseAngle + Math.PI * 0.5;
+                const c1x = bx + Math.cos(cAng) * 2, c1y = by + Math.sin(cAng) * 2;
+                const c2x = bx - Math.cos(cAng) * 2, c2y = by - Math.sin(cAng) * 2;
+                ctx.beginPath();
+                ctx.moveTo(c1x - Math.cos(baseAngle) * 2.5, c1y - Math.sin(baseAngle) * 2.5);
+                ctx.lineTo(c1x + Math.cos(baseAngle) * 2.5, c1y + Math.sin(baseAngle) * 2.5);
+                ctx.moveTo(c2x - Math.cos(baseAngle) * 2.5, c2y - Math.sin(baseAngle) * 2.5);
+                ctx.lineTo(c2x + Math.cos(baseAngle) * 2.5, c2y + Math.sin(baseAngle) * 2.5);
+                ctx.stroke();
+
+                // Glowing zergling nodule eye on bubble surface
+                const eyeX = bx + Math.cos(baseAngle) * (br * 0.55);
+                const eyeY = by + Math.sin(baseAngle) * (br * 0.55);
+                ctx.fillStyle = hpFrac > 0.4 ? '#853812' : '#c2410c';
+                ctx.beginPath();
+                ctx.arc(eyeX, eyeY, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 5. Surface Slime Vesicles / Micro-bubbles along pod seams
+            for (let k = 0; k < 5; k++) {
+                const va = (k / 5) * Math.PI * 2 + Math.PI * 0.1;
+                const vr = 2.8 + Math.sin(now / 110 + k) * 0.8;
+                const vx = this.x + Math.cos(va) * (this.r * 0.35);
+                const vy = this.y + Math.sin(va) * (this.r * 0.35);
+                ctx.fillStyle = '#6b8e23';
+                ctx.strokeStyle = '#283618';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(vx, vy, Math.max(1, vr), 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            // 6. Central Impaling Spine Tip (Hardened Segmented Brown-Russet Horn)
+            ctx.fillStyle = hpFrac > 0.4 ? '#6e3019' : '#c2410c';
+            ctx.strokeStyle = '#3d1308';
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r * 0.36, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Dark brown-russet chitin horn needle core
+            ctx.fillStyle = '#853812';
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r * 0.16, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Suture bands binding pods to central spine (rupture when HP < 0.4)
+            if (hpFrac < 0.4) {
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 1.2;
+                for (let k = 0; k < 4; k++) {
+                    const fa = (k / 4) * Math.PI * 2 + now / 250;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(this.x + Math.cos(fa) * (this.r * 0.8), this.y + Math.sin(fa) * (this.r * 0.8));
+                    ctx.stroke();
+                }
+            }
 
             ctx.restore();
             this.drawCryoOverlay(now);
@@ -9755,6 +10373,75 @@ function testShieldArcHit(prevX, prevY, nextX, nextY, projR, cx, cy, arcRadius, 
     return { hit: false };
 }
 
+function testOrientedBoxHit(prevX, prevY, nextX, nextY, projR, boxX, boxY, halfW, halfH, angle) {
+    const cos = Math.cos(-angle);
+    const sin = Math.sin(-angle);
+
+    // Transform points into local box coordinate space
+    const l1x = cos * (prevX - boxX) - sin * (prevY - boxY);
+    const l1y = sin * (prevX - boxX) + cos * (prevY - boxY);
+    const l2x = cos * (nextX - boxX) - sin * (nextY - boxY);
+    const l2y = sin * (nextX - boxX) + cos * (nextY - boxY);
+
+    const r = projR || 2;
+    const w = halfW + r;
+    const h = halfH + r;
+
+    // 1. Check if next point is already inside the expanded box
+    if (Math.abs(l2x) <= w && Math.abs(l2y) <= h) {
+        return { hit: true, hitX: nextX, hitY: nextY, t: 1.0 };
+    }
+
+    // 2. Raycast line segment against the box in local coordinates (Slab method)
+    const dx = l2x - l1x;
+    const dy = l2y - l1y;
+
+    let tMin = 0.0;
+    let tMax = 1.0;
+
+    // X slab
+    if (Math.abs(dx) < 1e-6) {
+        if (Math.abs(l1x) > w) return { hit: false };
+    } else {
+        const t1 = (-w - l1x) / dx;
+        const t2 = (w - l1x) / dx;
+        const tNear = Math.min(t1, t2);
+        const tFar = Math.max(t1, t2);
+        tMin = Math.max(tMin, tNear);
+        tMax = Math.min(tMax, tFar);
+        if (tMin > tMax) return { hit: false };
+    }
+
+    // Y slab
+    if (Math.abs(dy) < 1e-6) {
+        if (Math.abs(l1y) > h) return { hit: false };
+    } else {
+        const t1 = (-h - l1y) / dy;
+        const t2 = (h - l1y) / dy;
+        const tNear = Math.min(t1, t2);
+        const tFar = Math.max(t1, t2);
+        tMin = Math.max(tMin, tNear);
+        tMax = Math.min(tMax, tFar);
+        if (tMin > tMax) return { hit: false };
+    }
+
+    if (tMin <= 1.0 && tMax >= 0.0) {
+        const hitT = Math.max(0.0, Math.min(1.0, tMin));
+        const hitLx = l1x + hitT * dx;
+        const hitLy = l1y + hitT * dy;
+
+        // Transform hit point back to world space
+        const cosW = Math.cos(angle);
+        const sinW = Math.sin(angle);
+        const hitX = boxX + cosW * hitLx - sinW * hitLy;
+        const hitY = boxY + sinW * hitLx + cosW * hitLy;
+
+        return { hit: true, hitX: hitX, hitY: hitY, t: hitT };
+    }
+
+    return { hit: false };
+}
+
 function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
     let closestIntersection = null;
     let minT = Infinity;
@@ -9805,6 +10492,50 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
         }
     }
 
+    // Check permanent Titan wall debris obstacles in GAME_STATE.terrains
+    if (GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
+        for (const t of GAME_STATE.terrains) {
+            if (t.isWallObstacle) {
+                const test = testOrientedBoxHit(x1, y1, x2, y2, 2, t.x, t.y, t.halfW || 95, t.halfH || 22, t.angle || 0);
+                if (test.hit) {
+                    const tVal = (typeof test.t === 'number') ? test.t : 0.5;
+                    if (tVal < minT) {
+                        minT = tVal;
+                        closestIntersection = {
+                            blocked: true,
+                            hitX: test.hitX,
+                            hitY: test.hitY,
+                            shieldBearer: t,
+                            isWallObstacle: true,
+                            t: tVal
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    // Check actively dragged wall piece on any alive Behemoth
+    for (const e of GAME_STATE.enemies) {
+        if (e.type === 'behemoth' && e.behemothState === 'tongue_dragging_wall' && e.hp > 0 && typeof e.wallPieceX === 'number') {
+            const test = testOrientedBoxHit(x1, y1, x2, y2, 2, e.wallPieceX, e.wallPieceY, 95, 22, e.wallPieceAngle || 0);
+            if (test.hit) {
+                const tVal = (typeof test.t === 'number') ? test.t : 0.5;
+                if (tVal < minT) {
+                    minT = tVal;
+                    closestIntersection = {
+                        blocked: true,
+                        hitX: test.hitX,
+                        hitY: test.hitY,
+                        shieldBearer: e,
+                        isWallObstacle: true,
+                        t: tVal
+                    };
+                }
+            }
+        }
+    }
+
     return closestIntersection || { blocked: false };
 }
 
@@ -9832,12 +10563,12 @@ function fireInstantMissile(sourceX, sourceY, targetEnemy, dmg, isExplosive, aoe
     const shieldCheck = findShieldArcIntersection(sourceX, sourceY, targetEnemy.x, targetEnemy.y, targetEnemy);
 
     if (shieldCheck.blocked) {
-        // Intercepted by shield arc
+        // Intercepted by shield arc or wall
         const hx = shieldCheck.hitX, hy = shieldCheck.hitY;
         if (isExplosive) {
             GAME_STATE.hazards.push(new MineExplosion(hx, hy, aoeRadius, now, player));
         } else {
-            spawnHitParticles(hx, hy, '#00e5ff');
+            spawnHitParticles(hx, hy, shieldCheck.isWallObstacle ? '#a8a29e' : '#ff8f00');
         }
         return;
     }
@@ -10233,11 +10964,57 @@ class RocketProjectile {
                 }
             }
 
+            const prevX = this.x;
+            const prevY = this.y;
             this.x += this.vx * dtFactor;
             this.y += this.vy * dtFactor;
+
+            // Shield and Titan wall collision check for rockets
+            for (const e of GAME_STATE.enemies) {
+                if (e.type === 'shield_bearer' && e.hp > 0) {
+                    const hit = testShieldArcHit(prevX, prevY, this.x, this.y, this.r, e.x, e.y, e.shieldRadius || 100, e.facingAngle || 0, e.shieldHalfArc || Math.PI * 0.5);
+                    if (hit.hit) {
+                        this.x = hit.hitX;
+                        this.y = hit.hitY;
+                        this.detonate(now, e);
+                        return;
+                    }
+                }
+                if (e.type === 'behemoth' && e.behemothState === 'tongue_dragging_wall' && e.hp > 0 && typeof e.wallPieceX === 'number') {
+                    const hit = testOrientedBoxHit(prevX, prevY, this.x, this.y, this.r, e.wallPieceX, e.wallPieceY, 95, 22, e.wallPieceAngle || 0);
+                    if (hit.hit) {
+                        this.x = hit.hitX;
+                        this.y = hit.hitY;
+                        this.detonate(now, { x: e.wallPieceX, y: e.wallPieceY, isWallObstacle: true, halfW: 95, halfH: 22, angle: e.wallPieceAngle || 0 });
+                        return;
+                    }
+                }
+            }
+
+            if (GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
+                for (const t of GAME_STATE.terrains) {
+                    if (t.isWallObstacle) {
+                        const hit = testOrientedBoxHit(prevX, prevY, this.x, this.y, this.r, t.x, t.y, t.halfW || 95, t.halfH || 22, t.angle || 0);
+                        if (hit.hit) {
+                            this.x = hit.hitX;
+                            this.y = hit.hitY;
+                            this.detonate(now, t);
+                            return;
+                        }
+                    } else if (!t.isExpired || !t.isExpired(now)) {
+                        const hit = testShieldArcHit(prevX, prevY, this.x, this.y, this.r, t.x, t.y, t.r || 100, t.facingAngle || 0, t.shieldHalfArc || Math.PI * 0.5);
+                        if (hit.hit) {
+                            this.x = hit.hitX;
+                            this.y = hit.hitY;
+                            this.detonate(now, t);
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
-    detonate(now) {
+    detonate(now, hitObstacle = null) {
         this.dead = true;
         const blastRadius = 100 * (this.player ? this.player.mineAoeModifier : 1.0);
         const dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
@@ -10248,6 +11025,20 @@ class RocketProjectile {
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= (blastRadius + e.r) * (blastRadius + e.r)) {
+                // If detonation occurred on a shield or wall, verify line of sight
+                if (hitObstacle) {
+                    if (hitObstacle.isWallObstacle) {
+                        const hitCheck = testOrientedBoxHit(this.x, this.y, e.x, e.y, e.r, hitObstacle.x, hitObstacle.y, hitObstacle.halfW || 95, hitObstacle.halfH || 22, hitObstacle.angle || 0);
+                        if (hitCheck.hit) continue;
+                    } else {
+                        const sX = hitObstacle.x, sY = hitObstacle.y;
+                        const sR = hitObstacle.shieldRadius || hitObstacle.r || 100;
+                        const sFacing = hitObstacle.facingAngle || 0;
+                        const sHalfArc = hitObstacle.shieldHalfArc || Math.PI * 0.5;
+                        const hitCheck = testShieldArcHit(this.x, this.y, e.x, e.y, e.r, sX, sY, sR, sFacing, sHalfArc);
+                        if (hitCheck.hit) continue;
+                    }
+                }
                 e.hp -= dmg;
                 totalRocketDmg += dmg;
                 if(this.player.projectileLifedrainEnabled && this.sourceUnitType == 'player'){
@@ -10327,7 +11118,7 @@ class SniperProjectile {
         const nextX = this.x + this.vx * dtFactor;
         const nextY = this.y + this.vy * dtFactor;
 
-        // 1. Raycast continuous step from (prevX, prevY) to (nextX, nextY) against all shield bearers
+        // 1. Raycast continuous step from (prevX, prevY) to (nextX, nextY) against all shield bearers & titan walls
         const shieldCheck = findShieldArcIntersection(prevX, prevY, nextX, nextY, null);
         if (shieldCheck && shieldCheck.blocked) {
             this.x = shieldCheck.hitX;
@@ -10336,29 +11127,14 @@ class SniperProjectile {
                 GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
             }
             this.dead = true;
-            spawnHitParticles(this.x, this.y, '#00e5ff');
+            spawnHitParticles(this.x, this.y, shieldCheck.isWallObstacle ? '#a8a29e' : '#ff8f00');
             return;
         }
 
-        // 2. Point/proximity check against Shield Bearer shields & dropped shield terrains at next position
+        // 2. Point/proximity check against Shield Bearer shields, dropped shield terrains & Titan walls at next position
         for (const e of GAME_STATE.enemies) {
-            if (e.type !== 'shield_bearer' || e.hp <= 0) continue;
-            const hit = testShieldArcHit(prevX, prevY, nextX, nextY, this.r, e.x, e.y, e.shieldRadius || 100, e.facingAngle || 0, e.shieldHalfArc || Math.PI * 0.5);
-            if (hit.hit) {
-                this.x = hit.hitX;
-                this.y = hit.hitY;
-                if (this.player && this.player.laserSniperEnabled) {
-                    GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
-                }
-                this.dead = true;
-                spawnHitParticles(this.x, this.y, '#00e5ff');
-                return;
-            }
-        }
-        if (GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
-            for (const t of GAME_STATE.terrains) {
-                if ((!(t instanceof ShieldTerrain) && t.isWallObstacle) || (t.isExpired && t.isExpired(now))) continue;
-                const hit = testShieldArcHit(prevX, prevY, nextX, nextY, this.r, t.x, t.y, t.r || 100, t.facingAngle || 0, t.shieldHalfArc || Math.PI * 0.5);
+            if (e.type === 'shield_bearer' && e.hp > 0) {
+                const hit = testShieldArcHit(prevX, prevY, nextX, nextY, this.r, e.x, e.y, e.shieldRadius || 100, e.facingAngle || 0, e.shieldHalfArc || Math.PI * 0.5);
                 if (hit.hit) {
                     this.x = hit.hitX;
                     this.y = hit.hitY;
@@ -10366,8 +11142,50 @@ class SniperProjectile {
                         GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
                     }
                     this.dead = true;
-                    spawnHitParticles(this.x, this.y, '#00e5ff');
+                    spawnHitParticles(this.x, this.y, '#ff8f00');
                     return;
+                }
+            }
+            if (e.type === 'behemoth' && e.behemothState === 'tongue_dragging_wall' && e.hp > 0 && typeof e.wallPieceX === 'number') {
+                const hit = testOrientedBoxHit(prevX, prevY, nextX, nextY, this.r, e.wallPieceX, e.wallPieceY, 95, 22, e.wallPieceAngle || 0);
+                if (hit.hit) {
+                    this.x = hit.hitX;
+                    this.y = hit.hitY;
+                    if (this.player && this.player.laserSniperEnabled) {
+                        GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
+                    }
+                    this.dead = true;
+                    spawnHitParticles(this.x, this.y, '#a8a29e');
+                    return;
+                }
+            }
+        }
+        if (GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
+            for (const t of GAME_STATE.terrains) {
+                if (t.isWallObstacle) {
+                    const hit = testOrientedBoxHit(prevX, prevY, nextX, nextY, this.r, t.x, t.y, t.halfW || 95, t.halfH || 22, t.angle || 0);
+                    if (hit.hit) {
+                        this.x = hit.hitX;
+                        this.y = hit.hitY;
+                        if (this.player && this.player.laserSniperEnabled) {
+                            GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
+                        }
+                        this.dead = true;
+                        spawnHitParticles(this.x, this.y, '#a8a29e');
+                        return;
+                    }
+                } else if (!t.isExpired || !t.isExpired(now)) {
+                    const hit = testShieldArcHit(prevX, prevY, nextX, nextY, this.r, t.x, t.y, t.r || 100, t.facingAngle || 0, t.shieldHalfArc || Math.PI * 0.5);
+                    if (hit.hit) {
+                        this.x = hit.hitX;
+                        this.y = hit.hitY;
+                        if (this.player && this.player.laserSniperEnabled) {
+                            GAME_STATE.hazards.push(new LaserTrailSegment(prevX, prevY, this.x, this.y, now, this.player));
+                        }
+                        this.dead = true;
+                        spawnHitParticles(this.x, this.y, '#ff8f00');
+                        return;
+                    }
                 }
             }
         }
@@ -10399,7 +11217,7 @@ class SniperProjectile {
                     diff = Math.abs(diff);
                     if (diff <= (e.shieldHalfArc || Math.PI * 0.5)) {
                         this.dead = true;
-                        spawnHitParticles(this.x, this.y, '#00e5ff');
+                        spawnHitParticles(this.x, this.y, '#ff8f00');
                         return;
                     }
                 }
@@ -12145,8 +12963,6 @@ class Projectile {
         this.sourceUnitType = sourceUnitType;
     }
     update(dt, dtFactor = 1.0, now) {
-        this.x += this.vx * dtFactor;
-        this.y += this.vy * dtFactor;
         const prevX = this.x;
         const prevY = this.y;
         this.x += this.vx * dtFactor;
@@ -12155,48 +12971,84 @@ class Projectile {
         if (this.life <= 0) this.dead = true;
         if (this.x < -50 || this.y < -50 || this.x > W + 50 || this.y > H + 50) this.dead = true;
         
-        // Pre-check: shield bearer arc interception & dropped shield terrains (curved arc wall & tips)
-        // Cluster shots explode on shield arc contact; others (non-rocket) are destroyed.
+        // Pre-check: shield bearer arc interception & dropped shield terrains & Titan wall obstacles
+        // Cluster shots explode on barrier contact; others (non-rocket) are destroyed.
         const isPureRocket = this.isRocket || this.kind === 'rocket';
         if (!isPureRocket) {
             for (const e of GAME_STATE.enemies) {
-                if (e.type !== 'shield_bearer' || e.hp <= 0) continue;
-                const hit = testShieldArcHit(prevX, prevY, this.x, this.y, this.r, e.x, e.y, e.shieldRadius || 100, e.facingAngle || 0, e.shieldHalfArc || Math.PI * 0.5);
-                if (hit.hit) {
-                    this.x = hit.hitX;
-                    this.y = hit.hitY;
-                    if (this.isExplosive) {
-                        this.explode(now, null, e);
-                    } else {
-                        this.dead = true;
-                        if (this.player && this.player.buckshotEnabled && (this.kind === 'missile' || this.kind === 'laser')) {
-                            this.spawnBuckshot({ x: this.x, y: this.y, r: 0 }, now, e);
-                        }
-                        spawnHitParticles(this.x, this.y, '#00e5ff');
-                    }
-                    break;
-                }
-            }
-            if (this.dead) return;
-
-            // Dropped shield terrains lying on the battlefield
-            if (GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
-                for (const t of GAME_STATE.terrains) {
-                    if ((!(t instanceof ShieldTerrain) && t.isWallObstacle) || (t.isExpired && t.isExpired(now))) continue;
-                    const hit = testShieldArcHit(prevX, prevY, this.x, this.y, this.r, t.x, t.y, t.r || 100, t.facingAngle || 0, t.shieldHalfArc || Math.PI * 0.5);
+                if (e.type === 'shield_bearer' && e.hp > 0) {
+                    const hit = testShieldArcHit(prevX, prevY, this.x, this.y, this.r, e.x, e.y, e.shieldRadius || 100, e.facingAngle || 0, e.shieldHalfArc || Math.PI * 0.5);
                     if (hit.hit) {
                         this.x = hit.hitX;
                         this.y = hit.hitY;
                         if (this.isExplosive) {
-                            this.explode(now, null, t);
+                            this.explode(now, null, e);
                         } else {
                             this.dead = true;
                             if (this.player && this.player.buckshotEnabled && (this.kind === 'missile' || this.kind === 'laser')) {
-                                this.spawnBuckshot({ x: this.x, y: this.y, r: 0 }, now, t);
+                                this.spawnBuckshot({ x: this.x, y: this.y, r: 0 }, now, e);
                             }
-                            spawnHitParticles(this.x, this.y, '#00e5ff');
+                            spawnHitParticles(this.x, this.y, '#ff8f00');
                         }
                         break;
+                    }
+                }
+                if (e.type === 'behemoth' && e.behemothState === 'tongue_dragging_wall' && e.hp > 0 && typeof e.wallPieceX === 'number') {
+                    const hit = testOrientedBoxHit(prevX, prevY, this.x, this.y, this.r, e.wallPieceX, e.wallPieceY, 95, 22, e.wallPieceAngle || 0);
+                    if (hit.hit) {
+                        this.x = hit.hitX;
+                        this.y = hit.hitY;
+                        const wallObj = { x: e.wallPieceX, y: e.wallPieceY, isWallObstacle: true, halfW: 95, halfH: 22, angle: e.wallPieceAngle || 0 };
+                        if (this.isExplosive) {
+                            this.explode(now, null, wallObj);
+                        } else {
+                            this.dead = true;
+                            if (this.player && this.player.buckshotEnabled && (this.kind === 'missile' || this.kind === 'laser')) {
+                                this.spawnBuckshot({ x: this.x, y: this.y, r: 0 }, now, wallObj);
+                            }
+                            spawnHitParticles(this.x, this.y, '#a8a29e');
+                        }
+                        break;
+                    }
+                }
+            }
+            if (this.dead) return;
+
+            // Dropped shield terrains & Titan wall obstacles lying on the battlefield
+            if (GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
+                for (const t of GAME_STATE.terrains) {
+                    if (t.isWallObstacle) {
+                        const hit = testOrientedBoxHit(prevX, prevY, this.x, this.y, this.r, t.x, t.y, t.halfW || 95, t.halfH || 22, t.angle || 0);
+                        if (hit.hit) {
+                            this.x = hit.hitX;
+                            this.y = hit.hitY;
+                            if (this.isExplosive) {
+                                this.explode(now, null, t);
+                            } else {
+                                this.dead = true;
+                                if (this.player && this.player.buckshotEnabled && (this.kind === 'missile' || this.kind === 'laser')) {
+                                    this.spawnBuckshot({ x: this.x, y: this.y, r: 0 }, now, t);
+                                }
+                                spawnHitParticles(this.x, this.y, '#a8a29e');
+                            }
+                            break;
+                        }
+                    } else if (!t.isExpired || !t.isExpired(now)) {
+                        const hit = testShieldArcHit(prevX, prevY, this.x, this.y, this.r, t.x, t.y, t.r || 100, t.facingAngle || 0, t.shieldHalfArc || Math.PI * 0.5);
+                        if (hit.hit) {
+                            this.x = hit.hitX;
+                            this.y = hit.hitY;
+                            if (this.isExplosive) {
+                                this.explode(now, null, t);
+                            } else {
+                                this.dead = true;
+                                if (this.player && this.player.buckshotEnabled && (this.kind === 'missile' || this.kind === 'laser')) {
+                                    this.spawnBuckshot({ x: this.x, y: this.y, r: 0 }, now, t);
+                                }
+                                spawnHitParticles(this.x, this.y, '#ff8f00');
+                            }
+                            break;
+                        }
                     }
                 }
                 if (this.dead) return;
@@ -12252,7 +13104,7 @@ class Projectile {
             }
         }
     }
-    explode(now, hitTarget = null, hitShield = null) {
+    explode(now, hitTarget = null, hitObstacle = null) {
         this.dead = true;
         const radius = this.aoeRadius || (20 * (this.player ? this.player.mineAoeModifier : 1));
         
@@ -12262,14 +13114,19 @@ class Projectile {
             const dx = e.x - this.x;
             const dy = e.y - this.y;
             if (dx * dx + dy * dy <= (radius + e.r) * (radius + e.r)) {
-                // If this explosion occurred on a shield, verify if enemy was shielded
-                if (hitShield) {
-                    const sX = hitShield.x, sY = hitShield.y;
-                    const sR = hitShield.shieldRadius || hitShield.r || 100;
-                    const sFacing = hitShield.facingAngle || 0;
-                    const sHalfArc = hitShield.shieldHalfArc || Math.PI * 0.5;
-                    const hitCheck = testShieldArcHit(this.x, this.y, e.x, e.y, e.r, sX, sY, sR, sFacing, sHalfArc);
-                    if (hitCheck.hit) continue; // Shield blocks blast from penetrating to protected side
+                // If this explosion occurred on a shield or wall, verify if enemy was protected behind obstacle
+                if (hitObstacle) {
+                    if (hitObstacle.isWallObstacle) {
+                        const hitCheck = testOrientedBoxHit(this.x, this.y, e.x, e.y, e.r, hitObstacle.x, hitObstacle.y, hitObstacle.halfW || 95, hitObstacle.halfH || 22, hitObstacle.angle || 0);
+                        if (hitCheck.hit) continue; // Wall blocks blast from penetrating to protected side
+                    } else {
+                        const sX = hitObstacle.x, sY = hitObstacle.y;
+                        const sR = hitObstacle.shieldRadius || hitObstacle.r || 100;
+                        const sFacing = hitObstacle.facingAngle || 0;
+                        const sHalfArc = hitObstacle.shieldHalfArc || Math.PI * 0.5;
+                        const hitCheck = testShieldArcHit(this.x, this.y, e.x, e.y, e.r, sX, sY, sR, sFacing, sHalfArc);
+                        if (hitCheck.hit) continue; // Shield blocks blast from penetrating to protected side
+                    }
                 }
                 e.hp -= this.damage;
                 totalProjExpDmg += this.damage;
@@ -12287,12 +13144,12 @@ class Projectile {
         applyExplosionHealing(this.x, this.y, radius, totalProjExpDmg, this.player);
         
         if (this.player && this.player.buckshotEnabled && (this.kind === 'missile' || this.kind === 'laser')) {
-            this.spawnBuckshot(hitTarget || { x: this.x, y: this.y, r: 0 }, now, hitShield);
+            this.spawnBuckshot(hitTarget || { x: this.x, y: this.y, r: 0 }, now, hitObstacle);
         }
         
         GAME_STATE.hazards.push(new MineExplosion(this.x, this.y, radius, now, this.player));
     }
-    spawnBuckshot(e, now, hitShield = null) {
+    spawnBuckshot(e, now, hitObstacle = null) {
         const angle = Math.atan2(this.vy, this.vx);
         const speed = Math.hypot(this.vx, this.vy);
         const spreadLimit = 0.35; // about 20 degrees spread
@@ -12311,18 +13168,18 @@ class Projectile {
         
         for (let i = 0; i < 3; i++) {
             const a = angle + (Math.random() * 2 - 1) * spreadLimit;
-            if (hitShield) {
-                // When hitting a shield, buckshot / cluster fragments impact the shield barrier directly
+            if (hitObstacle) {
+                // When hitting a shield or wall obstacle, fragments impact the obstacle surface directly
                 if (isExplosive) {
-                    // Cluster shot fragments detonate directly on the shield surface
+                    // Cluster shot fragments detonate directly on the barrier surface
                     const fragX = this.x + (Math.random() * 8 - 4);
                     const fragY = this.y + (Math.random() * 8 - 4);
                     const expRadius = aoeRadius || (20 * (this.player ? this.player.mineAoeModifier : 1));
                     GAME_STATE.hazards.push(new MineExplosion(fragX, fragY, expRadius, now, this.player));
-                    spawnHitParticles(fragX, fragY, '#00e5ff');
+                    spawnHitParticles(fragX, fragY, hitObstacle.isWallObstacle ? '#a8a29e' : '#ff8f00');
                 } else {
-                    // Standard buckshot shrapnel is blocked and absorbed by the shield
-                    spawnHitParticles(this.x + Math.cos(a) * 4, this.y + Math.sin(a) * 4, '#00e5ff');
+                    // Standard buckshot shrapnel is blocked and absorbed by the barrier
+                    spawnHitParticles(this.x + Math.cos(a) * 4, this.y + Math.sin(a) * 4, hitObstacle.isWallObstacle ? '#a8a29e' : '#ff8f00');
                 }
             } else {
                 const sx = e.x + Math.cos(a) * (e.r + 2);
@@ -14632,7 +15489,7 @@ function spawnEnemy(now) {
             else if (r < 0.037) type = 'warp_anomaly'; // 1.2%
             else if (r < 0.14) type = 'hellion';
             else if (r < 0.17) type = 'medivac';
-            else if (r < 0.185) type = 'sentry';
+            else if (r < 0.177) type = 'sentry'; // rare support drone (0.7% chance)
             else if (r < 0.32) type = 'spine_crawler';
             else if (r < 0.50) type = 'stalker';
             else if (r < 0.72) type = 'marauder';
@@ -14644,7 +15501,7 @@ function spawnEnemy(now) {
             else if (r < 0.030) type = 'warp_anomaly'; // very rare unit (1.2% chance)
             else if (r < 0.13) type = 'hellion';
             else if (r < 0.16) type = 'medivac';
-            else if (r < 0.175) type = 'sentry'; // rare support unit (1.5% chance)
+            else if (r < 0.167) type = 'sentry'; // rare support drone (0.7% chance)
             else if (r < 0.32) type = 'spine_crawler';
             else if (r < 0.50) type = 'stalker';
             else if (r < 0.72) type = 'marauder';
@@ -14655,7 +15512,7 @@ function spawnEnemy(now) {
             if (r < 0.015) type = 'warp_anomaly';
             else if (r < 0.12) type = 'hellion';
             else if (r < 0.15) type = 'medivac';
-            else if (r < 0.165) type = 'sentry'; // rare support unit (1.5% chance)
+            else if (r < 0.157) type = 'sentry'; // rare support drone (0.7% chance)
             else if (r < 0.30) type = 'spine_crawler';
             else if (r < 0.50) type = 'stalker';
             else if (r < 0.70) type = 'marauder';
@@ -14665,7 +15522,7 @@ function spawnEnemy(now) {
             const r = Math.random();
             if (r < 0.12) type = 'hellion';
             else if (r < 0.15) type = 'medivac';
-            else if (r < 0.168) type = 'sentry'; // rare support unit (1.8% chance)
+            else if (r < 0.158) type = 'sentry'; // rare support drone (0.8% chance)
             else if (r < 0.30) type = 'spine_crawler';
             else if (r < 0.50) type = 'stalker';
             else if (r < 0.70) type = 'marauder';
@@ -14674,15 +15531,15 @@ function spawnEnemy(now) {
             // Minute 19–20: Medivacs join the mix
             const r = Math.random();
             if (r < 0.03) type = 'medivac';
-            else if (r < 0.05) type = 'sentry'; // rare support unit (2% chance)
+            else if (r < 0.038) type = 'sentry'; // rare support drone (0.8% chance)
             else if (r < 0.20) type = 'spine_crawler';
             else if (r < 0.44) type = 'stalker';
             else if (r < 0.68) type = 'marauder';
             else type = 'baneling';
         } else if (e >= 1080000) {
-            // Minute 18–19: Sentries join the mix (rare support unit, 2% chance)
+            // Minute 18–19: Sentries join the mix (rare support drone, 0.8% chance)
             const r = Math.random();
-            if (r < 0.02) type = 'sentry';
+            if (r < 0.008) type = 'sentry';
             else if (r < 0.18) type = 'spine_crawler';
             else if (r < 0.42) type = 'stalker';
             else if (r < 0.68) type = 'marauder';
@@ -14825,48 +15682,50 @@ class ShieldTerrain {
         const sR = this.r;
         const sArc = this.shieldHalfArc;
 
-        // 1. Half-Circle Frontal Energy Shield Field (translucent energy web)
-        ctx.fillStyle = 'rgba(0, 229, 255, 0.08)';
+        // 1. Half-Circle Frontal Energy Shield Field (dark translucent amber-bronze barrier)
+        ctx.fillStyle = 'rgba(120, 53, 15, 0.045)';
         ctx.beginPath();
         ctx.arc(this.x, this.y, sR, facing - sArc, facing + sArc);
         ctx.lineTo(this.x, this.y);
         ctx.closePath();
         ctx.fill();
 
-        // 2. Half-Circle Curved Shield Arc (outer glowing barrier)
-        ctx.strokeStyle = '#00e5ff';
-        ctx.shadowColor = '#00e5ff';
-        ctx.shadowBlur = 18;
-        ctx.lineWidth = 8;
+        // 2. Half-Circle Curved Shield Arc (dark matte burnt-amber barrier)
+        ctx.strokeStyle = '#92400e';
+        ctx.shadowColor = '#78350f';
+        ctx.shadowBlur = 4;
+        ctx.lineWidth = 4.5;
         ctx.beginPath();
         ctx.arc(this.x, this.y, sR, facing - sArc, facing + sArc);
         ctx.stroke();
 
-        // Inner bright plasma stripe
+        // Inner subtle bronze accent stripe
         ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#e0f7fa';
-        ctx.lineWidth = 3;
+        ctx.globalAlpha = (remaining < 1000 ? remaining / 1000 : 1.0) * 0.5;
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(this.x, this.y, sR, facing - sArc * 0.96, facing + sArc * 0.96);
         ctx.stroke();
+        ctx.globalAlpha = (remaining < 1000 ? remaining / 1000 : 1.0) * 0.95;
 
         // Heavy metallic emitter brackets at the shield tips
-        ctx.fillStyle = '#37474f';
-        ctx.strokeStyle = '#00bcd4';
+        ctx.fillStyle = '#1c1917';
+        ctx.strokeStyle = '#78350f';
         ctx.lineWidth = 1.5;
         for (const side of [-1, 1]) {
             const tipAngle = facing + side * sArc;
             const tx = this.x + Math.cos(tipAngle) * sR;
             const ty = this.y + Math.sin(tipAngle) * sR;
             ctx.beginPath();
-            ctx.arc(tx, ty, 7, 0, Math.PI * 2);
+            ctx.arc(tx, ty, 6, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
         }
 
         // Dropped center core mount
         ctx.fillStyle = '#212121';
-        ctx.strokeStyle = '#00bcd4';
+        ctx.strokeStyle = '#ff8f00';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
@@ -14993,9 +15852,9 @@ class WallDebrisObstacle {
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        // Glowing crystal clusters
-        ctx.fillStyle = '#00e5ff';
-        ctx.shadowColor = '#00e5ff';
+        // Glowing crystal clusters (subterranean emerald ore)
+        ctx.fillStyle = '#4ade80';
+        ctx.shadowColor = '#22c55e';
         ctx.shadowBlur = 10;
         for (const [cx, cy] of [[-hw * 0.5, -4], [0, 2], [hw * 0.45, -3], [-hw * 0.2, 5], [hw * 0.65, 4]]) {
             ctx.beginPath();
@@ -15189,12 +16048,12 @@ class WhiteHolePush {
         ctx.arc(this.x, this.y, currentR, 0, Math.PI * 2);
         ctx.fill();
 
-        // 3. Expanding crystalline white/cyan shockwave rings
+        // 3. Expanding crystalline white/violet shockwave rings
         for (let i = 0; i < 3; i++) {
             const ringProg = Math.max(0, t - i * 0.12);
             if (ringProg > 0 && ringProg <= 1) {
                 const ringR = this.r * Math.pow(ringProg, 0.45);
-                ctx.strokeStyle = i === 0 ? '#ffffff' : (i === 1 ? '#80deea' : '#00e5ff');
+                ctx.strokeStyle = i === 0 ? '#ffffff' : (i === 1 ? '#ddd6fe' : '#a855f7');
                 ctx.lineWidth = (6 - i * 1.5) * (1 - ringProg);
                 ctx.globalAlpha = (0.9 - i * 0.2) * (1 - ringProg);
                 ctx.beginPath();
@@ -15206,7 +16065,7 @@ class WhiteHolePush {
         // 4. Pure white radiant core
         ctx.globalAlpha = 1 - t;
         ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = '#00e5ff';
+        ctx.shadowColor = '#a855f7';
         ctx.shadowBlur = 18;
         ctx.beginPath();
         ctx.arc(this.x, this.y, Math.max(0, (1 - t) * 22), 0, Math.PI * 2);
@@ -15239,7 +16098,7 @@ class BlackHolePull {
         grad.addColorStop(0.0, 'rgba(0, 0, 0, ' + (0.95 * (1 - t * 0.3)) + ')');
         grad.addColorStop(0.3, 'rgba(33, 0, 60, ' + (0.75 * (1 - t * 0.3)) + ')');
         grad.addColorStop(0.65, 'rgba(124, 77, 255, ' + (0.45 * (1 - t)) + ')');
-        grad.addColorStop(0.9, 'rgba(0, 229, 255, ' + (0.25 * (1 - t)) + ')');
+        grad.addColorStop(0.9, 'rgba(168, 85, 247, ' + (0.25 * (1 - t)) + ')');
         grad.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
 
         ctx.fillStyle = grad;
@@ -15252,7 +16111,7 @@ class BlackHolePull {
         for (let i = 0; i < 4; i++) {
             const spiralR = outerR * (0.85 - i * 0.18);
             if (spiralR > 2) {
-                ctx.strokeStyle = (i % 2 === 0) ? '#d500f9' : '#00e5ff';
+                ctx.strokeStyle = (i % 2 === 0) ? '#d500f9' : '#a855f7';
                 ctx.lineWidth = 2.5 * (1 - t);
                 ctx.globalAlpha = 0.75 * (1 - t);
                 ctx.beginPath();
@@ -15333,7 +16192,7 @@ function triggerWarpAnomalyDeathEffect(x, y, radius = 320, now = performance.now
             const speed = 3.5 + Math.random() * 6.5;
             GAME_STATE.particles.push(new Particle(
                 x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
-                Math.random() < 0.4 ? '#ffffff' : (Math.random() < 0.7 ? '#80deea' : '#00e5ff'), 550
+                Math.random() < 0.4 ? '#ffffff' : (Math.random() < 0.7 ? '#ddd6fe' : '#a855f7'), 550
             ));
         }
     } else {
@@ -15347,7 +16206,7 @@ function triggerWarpAnomalyDeathEffect(x, y, radius = 320, now = performance.now
             const speed = (spawnDist / 320) * 8.5;
             GAME_STATE.particles.push(new Particle(
                 px, py, -Math.cos(angle) * speed, -Math.sin(angle) * speed,
-                Math.random() < 0.5 ? '#d500f9' : (Math.random() < 0.8 ? '#00e5ff' : '#7c4dff'), 500
+                Math.random() < 0.5 ? '#d500f9' : (Math.random() < 0.8 ? '#a855f7' : '#7c4dff'), 500
             ));
         }
     }
@@ -16498,24 +17357,24 @@ function getSpawnProbabilitiesAtTime(e) {
     if (e >= 720000) {
         if (e >= 1380000) {
             probs.viper = 0.007; probs.shield_bearer = 0.018; probs.warp_anomaly = 0.012;
-            probs.hellion = 0.103; probs.medivac = 0.03; probs.sentry = 0.015;
+            probs.hellion = 0.111; probs.medivac = 0.03; probs.sentry = 0.007;
             probs.spine_crawler = 0.135; probs.stalker = 0.18; probs.marauder = 0.22; probs.baneling = 0.28;
         } else if (e >= 1320000) {
-            probs.shield_bearer = 0.018; probs.warp_anomaly = 0.012; probs.hellion = 0.10;
-            probs.medivac = 0.03; probs.sentry = 0.015; probs.spine_crawler = 0.145;
+            probs.shield_bearer = 0.018; probs.warp_anomaly = 0.012; probs.hellion = 0.108;
+            probs.medivac = 0.03; probs.sentry = 0.007; probs.spine_crawler = 0.145;
             probs.stalker = 0.18; probs.marauder = 0.22; probs.baneling = 0.28;
         } else if (e >= 1260000) {
-            probs.warp_anomaly = 0.015; probs.hellion = 0.105; probs.medivac = 0.03;
-            probs.sentry = 0.015; probs.spine_crawler = 0.135; probs.stalker = 0.20;
+            probs.warp_anomaly = 0.015; probs.hellion = 0.113; probs.medivac = 0.03;
+            probs.sentry = 0.007; probs.spine_crawler = 0.135; probs.stalker = 0.20;
             probs.marauder = 0.20; probs.baneling = 0.30;
         } else if (e >= 1200000) {
-            probs.hellion = 0.12; probs.medivac = 0.03; probs.sentry = 0.018;
+            probs.hellion = 0.13; probs.medivac = 0.03; probs.sentry = 0.008;
             probs.spine_crawler = 0.132; probs.stalker = 0.20; probs.marauder = 0.20; probs.baneling = 0.30;
         } else if (e >= 1140000) {
-            probs.medivac = 0.03; probs.sentry = 0.02; probs.spine_crawler = 0.15;
-            probs.stalker = 0.24; probs.marauder = 0.24; probs.baneling = 0.32;
+            probs.medivac = 0.03; probs.sentry = 0.008; probs.spine_crawler = 0.15;
+            probs.stalker = 0.252; probs.marauder = 0.24; probs.baneling = 0.32;
         } else if (e >= 1080000) {
-            probs.sentry = 0.02; probs.spine_crawler = 0.16; probs.stalker = 0.24;
+            probs.sentry = 0.008; probs.spine_crawler = 0.16; probs.stalker = 0.252;
             probs.marauder = 0.26; probs.baneling = 0.32;
         } else if (e >= 900000) {
             probs.spine_crawler = 0.15; probs.stalker = 0.27; probs.marauder = 0.28; probs.baneling = 0.30;
