@@ -20,6 +20,13 @@
     .xp-bar-container { width: 100%; height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
     .xp-bar { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s ease; }
     #stats { margin-top: 6px; font-size: clamp(13px, 1.0vw, 18px); text-shadow: 1px 1px 2px #000, 0 0 4px #000; }
+    @keyframes hpPulse {
+        0%   { transform: scale(1);    text-shadow: 1px 1px 2px #000, 0 0 4px #000; }
+        40%  { transform: scale(1.18); text-shadow: 0 0 10px #ffd700, 0 0 20px #ffaa00; }
+        60%  { transform: scale(1.18); text-shadow: 0 0 10px #ffd700, 0 0 20px #ffaa00; }
+        100% { transform: scale(1);    text-shadow: 1px 1px 2px #000, 0 0 4px #000; }
+    }
+    .hp-pulse { animation: hpPulse 0.5s ease-in-out 6; }
     #timer {
         position: fixed;
         top: calc(max(16px, env(safe-area-inset-top, 16px)) + 18px);
@@ -1030,7 +1037,7 @@ const GAME_CONFIG = {
         PROJECTILE_SPEED: 11.0,
         SLOW_WALL_SLOW_PCT: 40,
         LASER_WALL_DPS: 50,
-        FORTIFIED_DURATION_BOOST_PCT: 40,
+        FORTIFIED_DURATION_BOOST_PCT: 50,
         FORTIFIED_HP_BOOST_PCT: 50,
         RAPID_DEPLOYMENT_REDUCTION_PCT: 30,
         FLAME_INTERVAL_ATTACKS: 4,
@@ -1065,7 +1072,7 @@ const GAME_CONFIG = {
         DAMAGE_MINES_BOOST_PCT: 75,
         ATTACK_SPEED_BOOST_PCT: 40,
         MINE_COOLDOWN_BOOST_PCT: 25,
-        ATTACK_SPEED_MAX_STACKS: 6,
+        ATTACK_SPEED_MAX_STACKS: 7,
         SNIPER_SHOT_INTERVAL: 3,
         SNIPER_SHOT_DAMAGE_MULT: 3,
         LASER_SNIPER_DAMAGE_MULT: 5,
@@ -1118,9 +1125,9 @@ const PLAYER_DASH_BURST = GAME_CONFIG.DASH.BURST_MISSILES;
 // dmgMult = weapon damage dealt; speedMult = base move speed; accuracy = starting
 // accuracyModifier (lower = tighter spread); takenMult = damage taken.
 const DIFFICULTIES = {
-    easy:   { name: 'Easy',   dmgMult: 2.0, speedMult: 1.4,  accuracy: 0.4225, takenMult: 0.5,  enemyWarningMult: 1.5,  enemyProjectileSpeedMult: 2 / 3,   enemyScaleMult: 2 / 3,   stalkerWaitMult: 1.5 },
-    normal: { name: 'Normal', dmgMult: 1.5, speedMult: 1.2,  accuracy: 0.65,   takenMult: 0.75, enemyWarningMult: 1.25, enemyProjectileSpeedMult: 4.8 / 6, enemyScaleMult: 4.8 / 6, stalkerWaitMult: 1.25 },
-    hard:   { name: 'Hard',   dmgMult: 1.0, speedMult: 1.0,  accuracy: 1.0,    takenMult: 1.0,  enemyWarningMult: 1.0,  enemyProjectileSpeedMult: 1.0,     enemyScaleMult: 1.0,     stalkerWaitMult: 1.0 }
+    easy:   { name: 'Easy',   dmgMult: 2.0, speedMult: 1.4,  accuracy: 0.4225, takenMult: 0.5,  difficultyMultiplier: 1.5},
+    normal: { name: 'Normal', dmgMult: 1.5, speedMult: 1.2,  accuracy: 0.65,   takenMult: 0.75, difficultyMultiplier: 1.25},
+    hard:   { name: 'Hard',   dmgMult: 1.0, speedMult: 1.0,  accuracy: 1.0,    takenMult: 1.0,  difficultyMultiplier: 1.0}
 };
 
 const GAME_STATE = {
@@ -1412,7 +1419,7 @@ const SoundEngine = {
     // Mute & Volume State
     isMuted: false,
     masterVolume: 0.35,
-    musicVolume: 0.09,
+    musicVolume: 0.12,
     FX_VOICE_GAIN: 0.70,
 
     // Pre-render a lush stereo synthetic impulse response for spatial room convolution
@@ -3050,7 +3057,7 @@ const SoundEngine = {
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.exponentialRampToValueAtTime(freq * 1.08, now + 0.07);
 
-        voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.7, now);
+        voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.25, now);
         voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
 
         osc.connect(voiceGain);
@@ -4802,7 +4809,7 @@ class Player extends Unit {
             const pm = this.weapons.find(w => w.id === 'proximity_mine');
             const baseMineDmg = pm ? pm.damage : 18;
             const mineDmg = baseMineDmg * this.mineDamageModifier * GAME_STATE.dmgFactor;
-            const mineRadius = 60 * this.mineAoeModifier * rangeMultiplier;
+            const mineRadius = 50 * this.mineAoeModifier * rangeMultiplier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
 
             // Trigger landing mine explosion
             GAME_STATE.hazards.push(new MineExplosion(this.x, this.y, mineRadius, now, this));
@@ -4825,7 +4832,7 @@ class Player extends Unit {
 
             // Burst explosive missiles (1/2 mine damage, 1/3 AoE)
             const burstDmg = baseMineDmg * 0.5 * this.mineDamageModifier * GAME_STATE.dmgFactor;
-            const burstAoe = (60 / 3) * this.mineAoeModifier * rangeMultiplier;
+            const burstAoe = (50 / 3) * this.mineAoeModifier * rangeMultiplier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
             for (let i = 0; i < burstCount; i++) {
                 const a = (i / burstCount) * Math.PI * 2;
                 const proj = new Projectile(
@@ -4877,7 +4884,7 @@ class Player extends Unit {
             if (op !== this && op.alive && op.sacrificialAegisEnabled) {
                 const dx = op.x - this.x;
                 const dy = op.y - this.y;
-                const radius = 60 * op.mineAoeModifier;
+                const radius = 50 * op.mineAoeModifier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
                 if (dx * dx + dy * dy <= radius * radius) {
                     nearbyMartyrShield = true;
                     break;
@@ -4967,7 +4974,7 @@ class Player extends Unit {
     }
     triggerFinalBlast(now) {
         const dmg = this.maxHp * this.damageModifier * GAME_STATE.dmgFactor;
-        let radius = 250;
+        let radius = 230 * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
         if (this.mineAoeCount > 0) radius *= Math.pow(1 + GAME_CONFIG.UPGRADES.MARTYRDOM_AOE_BOOST_PCT / 100, this.mineAoeCount);
         for (const e of GAME_STATE.enemies) {
             if (!isDamageable(e)) continue;
@@ -4980,7 +4987,7 @@ class Player extends Unit {
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     const nx = dist > 0.001 ? dx / dist : (Math.random() < 0.5 ? -1 : 1);
                     const ny = dist > 0.001 ? dy / dist : 0;
-                    const knockbackDist = Math.max(120, radius - dist + 60);
+                    const knockbackDist = Math.max(110, radius - dist + 60)*((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
                     e.airborne = true;
                     e.isKnockbackAirborne = true;
                     e.knockbackStartX = e.x;
@@ -5018,6 +5025,9 @@ class Player extends Unit {
         this.invuln = REVIVE_INVULN;
         this.spawnInvuln = REVIVE_INVULN;
         SoundEngine.playerRevived();
+        // Golden pillar animation + HP pulse in the HUD
+        if (typeof triggerReviveAnimation === 'function') triggerReviveAnimation(this, gameClock);
+        this.hpPulseUntil = gameClock + 3000;
         // reappears exactly where it fell
     }
     draw(now) {
@@ -5866,7 +5876,7 @@ class Enemy extends Unit {
             } else {
                 this.landY = y;                       // ground target; this.x is the impact column
             }
-            const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyWarningMult || 1.0) : 1.0;
+            const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0;
             this.fallDuration = METEOR_FALL_MS * warnMult;
             this.landAt = now + this.fallDuration;
             this.fallHeight = 340;
@@ -5876,7 +5886,7 @@ class Enemy extends Unit {
             // ranged: advances slowly and lobs dodgeable projectiles
             this.hp = 85; this.speed = 0.35; this.damage = 15; this.color = '#661144'; this.r = 14, this.xpValue = 10;
             this.fireReady = now + 1200; this.fireCooldown = 4200;
-            this.shotDamage = 12; this.shotSpeed = 4.8 * (GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyProjectileSpeedMult || 1.0) : 1.0);
+            this.shotDamage = 12; this.shotSpeed = 4.8 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
         } else if (type === 'dasher') {
             // weaves sideways on approach, then lunges at the player
             this.hp = 140; this.speed = 0.9; this.damage = 15; this.color = '#ff3344'; this.r = 13, this.xpValue = 13;
@@ -5912,7 +5922,7 @@ class Enemy extends Unit {
             this.fireReady = now + 800;
             this.fireCooldown = 2600;
             this.shotDamage = 22;
-            this.shotSpeed = 8.5 * (GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyProjectileSpeedMult || 1.0) : 1.0); // Fast undodgeable concussive missile
+            this.shotSpeed = 8.5 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0); // Fast undodgeable concussive missile
         } else if (type === 'stalker') {
             // SC2 Blink Stalker: walks in, blinks past fire ring to melee range, then attacks on contact.
             this.hp = 900; this.speed = 1.4; this.damage = 25; this.color = '#7e22ce'; this.r = 14, this.xpValue = 50;
@@ -5957,7 +5967,7 @@ class Enemy extends Unit {
             this.maxSpd    = 3.8;
             this.accel     = 0.20;
             this.healRange   = 200;
-            this.healPerTick = 35;   // HP per tick per target (350 HP/s)
+            this.healPerTick = 60;   // HP per tick per target (600 HP/s on hard mode)
             this.healTickMs  = 100;
             this.nextHealTick = 0;
             this.healTargets = []; // up to 2 simultaneous targets
@@ -6174,7 +6184,7 @@ class Enemy extends Unit {
         let isAuraSlowed = false;
         for (const p of GAME_STATE.players) {
             if (!p.alive && p.martyrdomAuraEnabled) {
-                const auraRadius = 120 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0);
+                const auraRadius = 110 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
                 const dx = this.x - p.x;
                 const dy = this.y - p.y;
                 if (dx * dx + dy * dy < auraRadius * auraRadius) {
@@ -6260,7 +6270,7 @@ class Enemy extends Unit {
                     if (!p.alive || p.spawnInvuln > 0 || !p.martyrsPresenceEnabled) continue;
                     const dx = p.x - this.x, dy = p.y - this.y;
                     const d2 = dx * dx + dy * dy;
-                    const mineRadius = 60 * p.mineAoeModifier;
+                    const mineRadius = 50 * p.mineAoeModifier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
                     if (d2 <= mineRadius * mineRadius) {
                         if (d2 < provokedBestD2) {
                             provokedBestD2 = d2;
@@ -6439,7 +6449,7 @@ class Enemy extends Unit {
             // lunge straight at the player, but only from outside the fire ring's reach
             if (now >= this.lungeReady && d <= DASHER_LUNGE_RANGE && d >= DASHER_LUNGE_MINDIST) {
                 this.lunging = true;
-                const projSpeedMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyProjectileSpeedMult || 1.0) : 1.0;
+                const projSpeedMult = 1 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
                 this.lungeUntil = now + (DASHER_LUNGE_MS / projSpeedMult); // scales duration so travel distance remains identical
                 this.lungeVx = nx * DASHER_LUNGE_SPEED * projSpeedMult;
                 this.lungeVy = ny * DASHER_LUNGE_SPEED * projSpeedMult;
@@ -6504,7 +6514,7 @@ class Enemy extends Unit {
         if (d <= this.firingRange && now >= this.fireReady && isOnPlayableArea(this)) {
             this.aiming = true;
             this.aimAngle = Math.atan2(target.y - this.y, target.x - this.x);
-            const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyWarningMult || 1.0) : 1.0;
+            const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0;
             this.aimDuration = 650 * warnMult;
             this.aimUntil = now + this.aimDuration; // aim telegraph scaled by difficulty
         }
@@ -6536,8 +6546,8 @@ class Enemy extends Unit {
             this.y = target.y - ny * this.blinkLandDist;
             this.nextBlinkReady = now + this.blinkCooldown;
             this.blinkFlashUntil = now + 350; // brief visual flash
-            const stalkerWaitMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.stalkerWaitMult || 1.0) : 1.0;
-            this.blinkPauseUntil = now + 300 * stalkerWaitMult; // post-blink movement pause scaled by difficulty
+            const difficultyMultiplier = GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0;
+            this.blinkPauseUntil = now + 300 * difficultyMultiplier; // post-blink movement pause scaled by difficulty
             SoundEngine.stalkerBlink();
             // Recalculate d after blink
             const bdx = target.x - this.x, bdy = target.y - this.y;
@@ -6624,7 +6634,7 @@ class Enemy extends Unit {
                 }
                 for (let ti = 0; ti < this.healTargets.length; ti++) {
                     const t = this.healTargets[ti];
-                    const scaleMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyScaleMult || 1.0) : 1.0;
+                    const scaleMult = 1 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
                     t.hp = Math.min(t.maxHp, t.hp + this.healPerTick * scaleMult);
                     if (Math.random() < 0.45) {
                         const a = Math.random() * Math.PI * 2;
@@ -6807,7 +6817,7 @@ class Enemy extends Unit {
                 this.vx = 0;
                 this.vy = 0;
                 // Wait while attracting monsters before shooting tongue (warning scaled by difficulty)
-                const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyWarningMult || 1.0) : 1.0;
+                const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0;
                 const warnDuration = 600 * warnMult;
                 this.warnDuration = warnDuration;
                 this.shootTongueAt = now + warnDuration + 300 + Math.random() * 600;
@@ -6828,7 +6838,7 @@ class Enemy extends Unit {
             this.x = Math.max(30, Math.min(W - 30, this.x));
             this.y = Math.max(30, Math.min(H - 30, this.y));
 
-            const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyWarningMult || 1.0) : 1.0;
+            const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0;
             const warnDuration = 600 * warnMult; // Warning line scaled by difficulty
             this.warnDuration = warnDuration;
             if (this.shootTongueAt && now >= this.shootTongueAt - warnDuration) {
@@ -6939,7 +6949,7 @@ class Enemy extends Unit {
                 // Safe distance & in attack range (<= 180px): Decide to Fire!
                 this.action = 'fire';
                 this.aiming = true;
-                const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyWarningMult || 1.0) : 1.0;
+                const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0;
                 this.aimDuration = 400 * warnMult;
                 this.aimUntil = now + this.aimDuration; // windup scaled by difficulty
                 this.aimAngle = Math.atan2(target.y - this.y, target.x - this.x);
@@ -7145,7 +7155,7 @@ class Enemy extends Unit {
         // --- State 1: Pursuit ---
         if (this.behemothState === 'pursuit') {
             // Check attack availability before moving
-            const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyWarningMult || 1.0) : 1.0;
+            const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0;
             if (now >= this.nextBurrowReady) {
                 this.behemothState = 'burrowing';
                 this.burrowWindupDuration = 650 * warnMult;
@@ -7802,7 +7812,7 @@ class Enemy extends Unit {
         // Radial collapse force: bleed tangential momentum inward, proportional to current speed.
         // This guarantees the orbit is ALWAYS unstable — the faster it goes, the faster it spirals in.
         const spd0 = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-        const collapseMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyScaleMult || 1.0) : 1.0;
+        const collapseMult = 1 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
         const collapseRate = (0.0005 + waveFrac * 0.045) * spd0 * collapseMult; // grows with both waveFrac and speed, scaled by difficulty
         if (d > 0.001 && spd0 > 0.001) {
             this.vx += (dx / d) * collapseRate * dtFactor;
@@ -7905,7 +7915,7 @@ class Enemy extends Unit {
                 angle += (Math.random() - 0.5) * 2.6; // wider random offset of up to ~74.5 degrees (~149 degree total cone)
                 const length = 360 + Math.random() * 240; // varied lengths from 360px up to 600px
                 
-                const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyWarningMult || 1.0) : 1.0;
+                const warnMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0;
                 const warnDuration = 500 * warnMult;
                 this.tentacles.push({
                     state: 'telegraph',
@@ -8073,7 +8083,7 @@ class Enemy extends Unit {
     triggerSpikeExplosion(now) {
         SoundEngine.mineExplosion();
         const count = 16;
-        const speed = 4.0 * (GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyProjectileSpeedMult || 1.0) : 1.0);
+        const speed = 4.0 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
         const damage = 20;
         for (let i = 0; i < count; i++) {
             const angle = (i / count) * Math.PI * 2;
@@ -10076,7 +10086,7 @@ class Enemy extends Unit {
                 ctx.restore();
 
                 // Warning telegraph line just before shooting tongue
-                const warnDuration = this.warnDuration || (600 * (GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyWarningMult || 1.0) : 1.0));
+                const warnDuration = this.warnDuration || (600 * (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0));
                 if (this.shootTongueAt && now >= this.shootTongueAt - warnDuration && now < this.shootTongueAt) {
                     const warnProgress = Math.min(1.0, Math.max(0.0, (now - (this.shootTongueAt - warnDuration)) / warnDuration));
                     const aimAngle = (typeof this.tongueAimAngle === 'number') ? this.tongueAimAngle : 0;
@@ -10969,7 +10979,7 @@ class MagicMissile {
             const baseMineDmg = 18;
             dmg = baseMineDmg * 0.5 * this.player.mineDamageModifier * GAME_STATE.dmgFactor;
             isExplosive = true;
-            aoeRadius = (60 / 3) * this.player.mineAoeModifier;
+            aoeRadius = (50 / 3) * this.player.mineAoeModifier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
         } else {
             dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
         }
@@ -11484,7 +11494,7 @@ function fireInstantMissile(sourceX, sourceY, targetEnemy, dmg, isExplosive, aoe
             const baseMineDmg = 18;
             buckshotDmg = (baseMineDmg / 3) * player.mineDamageModifier * GAME_STATE.dmgFactor;
             buckshotExplosive = true;
-            buckshotAoe = (60 / 3) * player.mineAoeModifier;
+            buckshotAoe = (50 / 3) * player.mineAoeModifier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
         } else {
             buckshotDmg = dmg / 3;
         }
@@ -11884,7 +11894,7 @@ class RocketProjectile {
     }
     detonate(now, hitObstacle = null) {
         this.dead = true;
-        const blastRadius = 100 * (this.player ? this.player.mineAoeModifier : 1.0);
+        const blastRadius = 90 * (this.player ? this.player.mineAoeModifier : 1.0) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
         const dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
         GAME_STATE.hazards.push(new MineExplosion(this.x, this.y, blastRadius, now, this.player));
         let totalRocketDmg = 0;
@@ -12405,7 +12415,7 @@ class MeleeSweep {
         this.player = player;
         this.baseCooldown = 1400;
         this.damage = 8;
-        this.range = 55;
+        this.range = 55 * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
         this.lastFire = -99999;
         this.lastSledgeFire = -99999;
         this.lastChainFire = -99999;
@@ -12440,7 +12450,7 @@ class MeleeSweep {
             SoundEngine.meleeSweep(true);
             const dmg = this.damage * this.player.damageModifier * GAME_STATE.dmgFactor;
             const sledgeDmg = dmg * (GAME_CONFIG.UPGRADES.MELEE_SLEDGE_DAMAGE_PCT / 100);
-            const radius = 120 * this.player.meleeRangeModifier;
+            const radius = 100 * this.player.meleeRangeModifier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
             const coneAngle = Math.PI / 2;
             const angle = this.player.facingAngle;
 
@@ -12736,7 +12746,7 @@ class PlayerMine {
         this.player = player;
         this.spawnTime = (typeof now === 'number' && !isNaN(now)) ? now : gameClock;
         this.dead = false;
-        this.explosionRadius = 60 * this.player.mineAoeModifier;
+        this.explosionRadius = 50 * this.player.mineAoeModifier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
         const attractChance = player.mineAttractEnabled ? (GAME_CONFIG.UPGRADES.MINE_ATTRACT_CHANCE_PCT / 100) : 0;
         this.attractsEnemies = Math.random() < attractChance;
         this.triggeredTime = 0;
@@ -13133,7 +13143,7 @@ class TurretEntity extends Unit {
         // Sawblade Turrets continuation upgrade: continuous 15 dmg/s to all nearby monsters (50px range * Extended Joints)
         if (this.player && this.player.turretSawEnabled) {
             if (!this.sawHitCooldown) this.sawHitCooldown = new Map();
-            const sawRadius = GAME_CONFIG.TURRET.SAW_RADIUS * (this.player.meleeRangeModifier || 1.0);
+            const sawRadius = GAME_CONFIG.TURRET.SAW_RADIUS * (this.player.meleeRangeModifier || 1.0) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
             const dmgPerSec = GAME_CONFIG.TURRET.SAW_DPS * this.player.damageModifier * GAME_STATE.dmgFactor;
             const dmgThisFrame = dmgPerSec * (dt / 1000);
 
@@ -13450,7 +13460,7 @@ class TurretEntity extends Unit {
 
         // 3. Whirling Chitin Cilia / Spore Teeth (Sawblade upgrade - Dark Body with Bright Teeth)
         if (this.player && this.player.turretSawEnabled) {
-            const sawRadius = 50 * (this.player.meleeRangeModifier || 1.0);
+            const sawRadius = 50 * (this.player.meleeRangeModifier || 1.0) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
             const rotAngle = now * 0.012;
             ctx.save();
             ctx.translate(this.x, this.y);
@@ -14128,7 +14138,7 @@ class Projectile {
     }
     explode(now, hitTarget = null, hitObstacle = null) {
         this.dead = true;
-        const radius = this.aoeRadius || (20 * (this.player ? this.player.mineAoeModifier : 1));
+        const radius = this.aoeRadius || (18 * (this.player ? this.player.mineAoeModifier : 1) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5));
         
         let totalProjExpDmg = 0;
         for (const e of GAME_STATE.enemies) {
@@ -14183,7 +14193,7 @@ class Projectile {
             const baseMineDmg = 18;
             dmg = (baseMineDmg / 3) * this.player.mineDamageModifier * GAME_STATE.dmgFactor;
             isExplosive = true;
-            aoeRadius = (60 / 3) * this.player.mineAoeModifier;
+            aoeRadius = (50 / 3) * this.player.mineAoeModifier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
         } else {
             dmg = this.damage / 3;
         }
@@ -14196,7 +14206,7 @@ class Projectile {
                     // Cluster shot fragments detonate directly on the barrier surface
                     const fragX = this.x + (Math.random() * 8 - 4);
                     const fragY = this.y + (Math.random() * 8 - 4);
-                    const expRadius = aoeRadius || (20 * (this.player ? this.player.mineAoeModifier : 1));
+                    const expRadius = aoeRadius || (18 * (this.player ? this.player.mineAoeModifier : 1) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5));
                     GAME_STATE.hazards.push(new MineExplosion(fragX, fragY, expRadius, now, this.player));
                     spawnHitParticles(fragX, fragY, hitObstacle.isWallObstacle ? '#a8a29e' : '#ff8f00');
                 } else {
@@ -14420,9 +14430,9 @@ class PlayerFlail {
     constructor(player) {
         this.player = player;
         this.id = 'player_flail';
-        this.baseR = 13.5; // Base spiked ball radius
+        this.baseR = 13.5 * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5); // Base spiked ball radius
         this.r = this.baseR;
-        this.length = 100; // Chain length (preserves user tuned value)
+        this.length = 90 * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5); // Chain length (preserves user tuned value)
         
         // Cartesian state vectors
         this.x = player.x;
@@ -15073,7 +15083,7 @@ class OrbitProjectile {
         const pm = this.player.weapons.find(w => w.id === 'proximity_mine');
         const baseDmg = pm ? pm.damage : 18;
         const dmg = baseDmg * this.player.mineDamageModifier * GAME_STATE.dmgFactor;
-        const explosionRadius = 60 * this.player.mineAoeModifier;
+        const explosionRadius = 50 * this.player.mineAoeModifier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
         const cooldown = pm ? pm.baseCooldown * this.player.mineCooldownModifier : 2400 * this.player.mineCooldownModifier;
         this.respawnTime = now + cooldown;
 
@@ -15558,7 +15568,87 @@ function spawnHitParticles(x, y, color) {
     }
 }
 
-// ---------------- Progression (shared) ----------------
+// Upward-streaming pillar particle for the revive / horde-complete effect
+class GoldenPillarParticle {
+    constructor(x, y, delay) {
+        this.x = x;
+        this.y = y;
+        this.delay = delay;      // ms before this particle becomes visible
+        this.startY = y;
+        this.vy = -(2.2 + Math.random() * 2.0); // upward drift speed
+        this.w = 3 + Math.random() * 4;          // pillar width
+        this.h = 18 + Math.random() * 22;        // pillar height
+        this.life = 900 + Math.random() * 300;
+        this.maxLife = this.life;
+        this.dead = false;
+        this.elapsed = 0;
+        // Slight horizontal wobble
+        this.vx = (Math.random() - 0.5) * 0.4;
+    }
+    update(dt) {
+        this.elapsed += dt;
+        if (this.elapsed < this.delay) return;
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= dt;
+        if (this.life <= 0) this.dead = true;
+    }
+    draw() {
+        if (this.elapsed < this.delay) return;
+        const t = Math.max(0, this.life / this.maxLife);
+        // Fade in over first 15%, sustain, fade out
+        const fadeIn = Math.min(1, (1 - t) / 0.15);
+        const alpha = Math.min(fadeIn, t) * 0.85;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        const grad = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.h);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.3, '#ffd700');
+        grad.addColorStop(1, 'rgba(255,160,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        // Tapered pillar: full width at bottom, narrow at top
+        const halfW = this.w / 2;
+        ctx.moveTo(this.x - halfW * 0.3, this.y);        // top-left
+        ctx.lineTo(this.x + halfW * 0.3, this.y);        // top-right
+        ctx.lineTo(this.x + halfW, this.y + this.h);      // bottom-right
+        ctx.lineTo(this.x - halfW, this.y + this.h);      // bottom-left
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+function triggerReviveAnimation(player, now) {
+    const cx = player.x;
+    const cy = player.y;
+    const pillars = 12;
+    const radius = player.r + 20;
+
+    for (let i = 0; i < pillars; i++) {
+        const angle = (i / pillars) * Math.PI * 2;
+        const px = cx + Math.cos(angle) * radius;
+        const py = cy + Math.sin(angle) * radius;
+        // Stagger each pillar slightly so they don't all appear at once
+        const delay = i * 40;
+        GAME_STATE.particles.push(new GoldenPillarParticle(px, py, delay));
+    }
+    // A second inner ring of shorter pillars for density
+    const innerPillars = 8;
+    const innerRadius = player.r + 5;
+    for (let i = 0; i < innerPillars; i++) {
+        const angle = (i / innerPillars) * Math.PI * 2 + (Math.PI / innerPillars);
+        const px = cx + Math.cos(angle) * innerRadius;
+        const py = cy + Math.sin(angle) * innerRadius;
+        const delay = i * 50 + 80;
+        const p = new GoldenPillarParticle(px, py, delay);
+        p.vy *= 0.7;
+        p.h *= 0.7;
+        GAME_STATE.particles.push(p);
+    }
+}
+
+
 function addXp(amount) {
     GAME_STATE.xp += amount;
     let gained = 0;
@@ -15755,7 +15845,7 @@ function pickThreeFor(player) {
         if (u.id === 'sacrificial_aegis_upgrade' && !taken.has('martyrs_presence_upgrade')) return false;
         if (u.id === 'carapace_healer_upgrade' && !taken.has('melee_reflect_upgrade')) return false;
         if (u.id === 'ice_trail_upgrade' && (!taken.has('speed_lvl2') || !taken.has('freeze_upgrade'))) return false;
-        if (u.id === 'cooldown' && player.attackSpeedCount >= 6) return false;
+        if (u.id === 'cooldown' && player.attackSpeedCount >= 7) return false;
         if (u.id === 'campervan' && (player.hp > player.maxHp * 0.5 || GAME_STATE.enemies.length < 200)) return false;
         if (u.id === 'final_blast' && (!hasMine || GAME_STATE.players.length < 2 || player.mineAoeCount < 1)) return false;
         if (u.id === 'projectile_shield' && GAME_STATE.elapsed < 420000) return false;
@@ -15776,7 +15866,7 @@ function pickThreeFor(player) {
             if (u.oneShot || u.id === 'unlock_ring') return false;
             if (u.id === 'multishot' && !hasMissile) return false;
             if (u.id === 'mine_aoe_upgrade' && (!hasMine || player.mineAoeCount >= 3)) return false;
-            if (u.id === 'cooldown' && player.attackSpeedCount >= 6) return false;
+            if (u.id === 'cooldown' && player.attackSpeedCount >= 7) return false;
             return true;
         });
         out.push(base[Math.floor(Math.random() * base.length)]);
@@ -17589,6 +17679,14 @@ function endBossWave(bossId, now, isCleared, enemy = null) {
     if (bossId === 'horde') {
         // Ensure no more monsters spawn for the rest of Minute 11 (until Minute 12:00 = 720000ms)
         GAME_STATE.resumeNormalSpawnAt = 720000;
+        for (const p of GAME_STATE.players) {
+            p.maxHp += 300;
+            p.hp = p.maxHp;
+            SoundEngine.heal('medium');
+            // Golden pillar animation + HP pulse in HUD for each player
+            triggerReviveAnimation(p, now);
+            p.hpPulseUntil = now + 3000;
+        }
     } else if (bossId === 'behemoth') {
         // Final boss wave: no monsters spawn ever after this one
         GAME_STATE.resumeNormalSpawnAt = Infinity;
@@ -18896,7 +18994,7 @@ function update(dt, dtFactor, now) {
     // Process Martyrdom Auras (healing and damage)
     for (const p of GAME_STATE.players) {
         if (!p.alive && p.martyrdomAuraEnabled) {
-            const auraRadius = 120 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0);
+            const auraRadius = 110 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
             // 1. Heal other alive players standing in it (10% max HP per second)
             for (const op of GAME_STATE.players) {
                 if (op.alive && op !== p) {
@@ -18975,7 +19073,7 @@ function update(dt, dtFactor, now) {
                 return sdx * sdx + sdy * sdy <= s.shieldRadius * s.shieldRadius;
             });
             if (shielded) {
-                const scaleMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyScaleMult || 1.0) : 1.0;
+                const scaleMult = 1 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
                 e.hp += dmgTaken * (0.75 * scaleMult);
             }
         }
@@ -19004,7 +19102,7 @@ function update(dt, dtFactor, now) {
                 triggerWarpAnomalyDeathEffect(e.x, e.y, 320, now);
             }
             if (e.type === 'shield_bearer') {
-                const scaleMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyScaleMult || 1.0) : 1.0;
+                const scaleMult = 1 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
                 GAME_STATE.terrains.push(new ShieldTerrain(e.x, e.y, e.shieldRadius || 100, e.facingAngle || 0, now + 20000 * scaleMult));
             }
             if (e.type === 'viper') {
@@ -19018,7 +19116,7 @@ function update(dt, dtFactor, now) {
             if (e.type === 'spine_crawler' && !e.spawnedZerglings) {
                 e.spawnedZerglings = true;
                 // Burst open: release zerglings in a tight scatter scaled by difficulty
-                const scaleMult = GAME_STATE.difficulty ? (GAME_STATE.difficulty.enemyScaleMult || 1.0) : 1.0;
+                const scaleMult = 1 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
                 const zergCount = Math.round(7 * scaleMult);
                 for (let j = 0; j < zergCount; j++) {
                     const angle = (j / zergCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.8;
@@ -19086,7 +19184,7 @@ function draw(now) {
     for (const p of GAME_STATE.players) {
         if (!p.alive && p.martyrdomAuraEnabled) {
             ctx.save();
-            const baseRadius = 120 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0);
+            const baseRadius = 110 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
             const pulse = 1 + Math.sin(now * 0.005) * 0.06;
             const radius = baseRadius * pulse;
             const grad = ctx.createRadialGradient(p.x, p.y, 5, p.x, p.y, radius);
