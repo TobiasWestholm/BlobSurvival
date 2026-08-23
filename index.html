@@ -928,8 +928,18 @@ const tips = [
     "Cryo Freeze will save your ass from enemies that are faster than you.",
     "Enemies always pursue the closest player unless something else says otherwise.",
     "Getting some AoE damage will keep you in the game when the masses of enemies become too large to kill one by one.",
-    "Upgrades are chosen at random from all upgrades you have unlocked. Unlocking more upgrades decreases your chances of getting that one specific upgrade you want.",
-    "The Scourge Flail is the only weapon-like upgrade that is not affected by the Hyper-drive attack speed increase."
+    "Upgrades are chosen at random from all upgrades available to you. Unlocking more upgrades decreases your chances of getting that one specific upgrade you want.",
+    "The Scourge Flail is the only weapon-like upgrade that is not affected by the Hyper-drive attack speed increase.",
+    "Surviving the Horde Boss wave fully restores your HP and permanently increases your maximum HP.",
+    "Life regeneration is scarce. All weapons have a late stage upgrade unlocking life regen.",
+    "Hit the question mark beside an upgrade to see how it works and what it unlocks. Some upgrades have caveats that are important to know.",
+    "All weapons are fired automatically on an even interval, and all upgrades are applied automatically.",
+    "Phase dash is the only upgrade that requires a key press to activate.",
+    "When a player dies in multiplayer, they respawn after 20 seconds unless all players die during those 20 seconds - then the game is over.",
+    "Cryo Freeze will freeze enemies in place early on, but later on it will only slow them down.",
+    "All players level up together in multiplayer, but select upgrades individually.",
+    "XP needs to be collected from the ground after killing monsters in order to level up.",
+    "The game progression is based on time, not player level."
 ]
 
 const PROGRESSION = {
@@ -2986,7 +2996,7 @@ const SoundEngine = {
     },
 
     // 14. MEDIUM: Magic Missile (SFXR preset)
-    missileFire() {
+    missileFire(soundVolumeFactor = 1.0) {
         if (!this.throttle('missile_fire', 35)) return;
         const duration = 0.10;
         const v = this.allocateVoice(SOUND_PRIORITY.MEDIUM, 'missile_fire', duration);
@@ -2997,7 +3007,7 @@ const SoundEngine = {
             const source = ctx.createBufferSource();
             source.buffer = this.missileBuffer;
 
-            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN, now);
+            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.9 * soundVolumeFactor, now);
             voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
             source.connect(voiceGain);
@@ -13190,7 +13200,7 @@ class TurretEntity extends Unit {
                 this.angle = targetAngle; // Head 1 independently tracks closest enemy
 
                 const dmg = this.baseDamage * this.player.damageModifier * GAME_STATE.dmgFactor;
-                SoundEngine.missileFire();
+                SoundEngine.missileFire(0.20);
 
                 if (this.player && this.player.instantMissileEnabled) {
                     fireInstantMissile(this.x, this.y, closestMissile, dmg, false, 0, now, this.player, this.unitType, true, this);
@@ -15807,8 +15817,8 @@ function pickThreeFor(player) {
         if (u.id === 'unlock_mine' && hasMine) return false;
         if (u.id === 'unlock_turret' && hasTurret) return false;
         if (u.id === 'laser_walls_upgrade' && !hasTurret) return false;
-        if (u.id === 'building_duration_upgrade' && !hasTurret) return false;
-        if (u.id === 'turret_cooldown_upgrade' && !hasTurret) return false;
+        if (u.id === 'building_duration_upgrade' && (!hasTurret || player.buildingDurationCount >= 4)) return false;
+        if (u.id === 'turret_cooldown_upgrade' && (!hasTurret || player.turretCooldownCount >= 4)) return false;
         if (u.id === 'turret_flamethrower_upgrade' && !hasTurret) return false;
         if (u.id === 'turret_inferno_ring_upgrade' && (!taken.has('turret_flamethrower_upgrade') || !hasRing)) return false;
         if (u.id === 'turret_dispenser_upgrade' && !taken.has('building_duration_upgrade')) return false;
@@ -19159,9 +19169,9 @@ function update(dt, dtFactor, now) {
     GAME_STATE.gems = GAME_STATE.gems.filter(g => !g.dead);
     
     GAME_STATE.particles = GAME_STATE.particles.filter(p => !p.dead);
-    // Cap particles at 250 to avoid drawing overhead
-    if (GAME_STATE.particles.length > 250) {
-        GAME_STATE.particles = GAME_STATE.particles.slice(-250);
+    // Cap particles to avoid drawing overhead (450 leaves room for golden pillar revive rings)
+    if (GAME_STATE.particles.length > 450) {
+        GAME_STATE.particles = GAME_STATE.particles.slice(-450);
     }
 }
 
@@ -19494,6 +19504,19 @@ function updateUI() {
         return `<div style="margin-top:2px;"><span style="color:${p.color};opacity:0.55">P${i + 1} &#9760;${rem}s</span></div>`;
     }).join('');
     document.getElementById('stats').innerHTML = `Level: ${GAME_STATE.level} | Kills: ${GAME_STATE.kills}${playerRows}`;
+
+    // HP pulsate: apply golden glow animation to #stats when a player was just healed/revived
+    const statsEl = document.getElementById('stats');
+    const anyPulsing = GAME_STATE.players.some(p => p.hpPulseUntil && gameClock < p.hpPulseUntil);
+    if (anyPulsing && !statsEl._hpPulseActive) {
+        statsEl._hpPulseActive = true;
+        statsEl.classList.remove('hp-pulse');
+        void statsEl.offsetWidth; // force reflow to restart animation
+        statsEl.classList.add('hp-pulse');
+    } else if (!anyPulsing && statsEl._hpPulseActive) {
+        statsEl._hpPulseActive = false;
+        statsEl.classList.remove('hp-pulse');
+    }
     const mins = Math.floor(GAME_STATE.elapsed / 60000);
     const secs = Math.floor((GAME_STATE.elapsed % 60000) / 1000);
     document.getElementById('timer').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
