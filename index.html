@@ -691,15 +691,15 @@
         <div class="difficulty-list">
             <button class="upgrade-btn difficulty-card" data-difficulty="easy">
                 <span class="name">EASY</span>
-                <span class="desc">Deal 200% · take 50% · much sharper aim · 140% speed</span>
+                <span class="desc">Deal 400% dmg · take 25% dmg · much sharper aim · 150% movement speed</span>
             </button>
             <button class="upgrade-btn difficulty-card" data-difficulty="normal">
                 <span class="name">NORMAL</span>
-                <span class="desc">Deal 150% · take 75% · sharper aim · 120% speed</span>
+                <span class="desc">Deal 200% dmg · take 50% dmg · sharper aim · 125% movement speed</span>
             </button>
             <button class="upgrade-btn difficulty-card" data-difficulty="hard">
                 <span class="name">BRUTALLY HARD</span>
-                <span class="desc">Deal 100% · take 100% · standard aim · 100% speed</span>
+                <span class="desc">Deal 100% dmg · take 100% dmg · standard aim · 100% movement speed</span>
             </button>
         </div>
         <button class="upgrade-btn back-btn" id="backToPlayers"><span class="name">← Back</span></button>
@@ -1007,6 +1007,9 @@ function isLastBossCleared(winCond) {
 }
 
 // GAMEPLAY CONSTANTS
+const LVL2_XP = 15;
+const XP_ADD_PER_LEVEL = 18;
+const XP_EXPONENTIAL = 1.2;
 const REVIVE_MS = 20000;   // 20s until a downed player revives
 const REVIVE_INVULN = 3000; // brief safety after revive (enemies also ignore you during this)
 const METEOR_FALL_MS = 1200; // telegraph time a meteor spends airborne before landing
@@ -1109,7 +1112,7 @@ const GAME_CONFIG = {
         ROCKET_PLAYER_CHANCE_PCT: 10,
         ROCKET_TURRET_CHANCE_PCT: 5,
         BUCKSHOT_SHRAPNEL_COUNT: 3,
-        PROJECTILE_LIFEDRAIN_PCT: 0.1,
+        PROJECTILE_LIFEDRAIN_PCT: 0.2,
         CAMPERVAN_DURATION_SEC: 20,
         DEFLECTOR_ORBITERS_COUNT: 3,
         DEFLECTOR_ORBITERS_RESPAWN_SEC: 3,
@@ -1135,9 +1138,9 @@ const PLAYER_DASH_BURST = GAME_CONFIG.DASH.BURST_MISSILES;
 // dmgMult = weapon damage dealt; speedMult = base move speed; accuracy = starting
 // accuracyModifier (lower = tighter spread); takenMult = damage taken.
 const DIFFICULTIES = {
-    easy:   { name: 'Easy',   dmgMult: 2.0, speedMult: 1.4,  accuracy: 0.4225, takenMult: 0.5,  difficultyMultiplier: 1.5},
-    normal: { name: 'Normal', dmgMult: 1.5, speedMult: 1.2,  accuracy: 0.65,   takenMult: 0.75, difficultyMultiplier: 1.25},
-    hard:   { name: 'Hard',   dmgMult: 1.0, speedMult: 1.0,  accuracy: 1.0,    takenMult: 1.0,  difficultyMultiplier: 1.0}
+    easy:   { name: 'Easy',   dmgMult: 4.0, speedMult: 1.5,  accuracy: 0.25,    takenMult: 0.25,  difficultyMultiplier: 1.5},
+    normal: { name: 'Normal', dmgMult: 2.0, speedMult: 1.25,  accuracy: 0.5,     takenMult: 0.50, difficultyMultiplier: 1.25},
+    hard:   { name: 'Hard',   dmgMult: 1.0, speedMult: 1.0,  accuracy: 1.0,     takenMult: 1.0,  difficultyMultiplier: 1.0}
 };
 
 const GAME_STATE = {
@@ -1174,7 +1177,7 @@ const GAME_STATE = {
     // shared progression
     level: 1,
     xp: 0,
-    nextXp: 20,
+    nextXp: LVL2_XP,
     difficulty: DIFFICULTIES.normal,
     dmgFactor: 1.0,        // y*1.5/(n+0.5) for the chosen player count
     pendingLevels: 0,      // level-ups still waiting to be resolved
@@ -1186,10 +1189,10 @@ const GAME_STATE = {
 // Per-player presentation + control bindings.
 // up/left/down/right hold lowercase key names matching keydown e.key.toLowerCase().
 const PLAYER_DEFS = [
-    { color: '#00ffcc', ring: '#003322', keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] } },
-    { color: '#ff66cc', ring: '#33001f', keys: { up: ['arrowup'], left: ['arrowleft'], down: ['arrowdown'], right: ['arrowright'] } },
-    { color: '#ffcc00', ring: '#332900', keys: { up: ['g'], left: ['c'], down: ['v'], right: ['b'] } },
-    { color: '#66aaff', ring: '#001a33', keys: { up: ['u'], left: ['h'], down: ['j'], right: ['k'] } }
+    { color: '#00ffcc', ring: '#003322', keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] }, keysText: 'WASD' },
+    { color: '#ff66cc', ring: '#33001f', keys: { up: ['arrowup'], left: ['arrowleft'], down: ['arrowdown'], right: ['arrowright'] }, keysText: '↑←↓→' },
+    { color: '#ffcc00', ring: '#332900', keys: { up: ['g'], left: ['c'], down: ['v'], right: ['b'] }, keysText: 'GCVB' },
+    { color: '#66aaff', ring: '#001a33', keys: { up: ['i'], left: ['j'], down: ['k'], right: ['l'] }, keysText: 'IJKL' }
 ];
 
 // ---------------- Procedural Web Audio API Sound Engine ----------------
@@ -2701,7 +2704,7 @@ const SoundEngine = {
             filter.frequency.setValueAtTime(380, now);
             filter.frequency.exponentialRampToValueAtTime(42, now + 0.95);
 
-            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 1.6, now);
+            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 3, now);
             voiceGain.gain.linearRampToValueAtTime(0.001, now + 0.95);
 
             noise.connect(filter);
@@ -2872,7 +2875,7 @@ const SoundEngine = {
             filter.frequency.setValueAtTime(280 * Math.min(1.5, scale), now);
             filter.frequency.exponentialRampToValueAtTime(55, now + duration);
 
-            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 2, now);
+            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 4.5, now);
             voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
             noise.connect(filter);
@@ -4372,6 +4375,7 @@ class Player extends Unit {
         const startY = H / 2 + (index % 2 === 0 ? -40 : 40);
         super(startX, startY, 15, 100, 'player');
         this.index = index;
+        this.keysText = def.keysText;
         this.color = def.color;
         this.ring = def.ring;
         this.keymap = def.keys;
@@ -5867,16 +5871,16 @@ class Enemy extends Unit {
         this.hp = 0;
         this.xpValue = 0;
         if (type === 'brute') {
-            this.hp = 40; this.speed = 0.8; this.damage = 15; this.color = '#cc2222'; this.r = 18, this.xpValue = 4;
+            this.hp = 30; this.speed = 0.8; this.damage = 6; this.color = '#cc2222'; this.r = 18, this.xpValue = MONSTER_BASE_XP.brute;
         } else if (type === 'mega_brute') {
-            this.hp = 140; this.speed = 0.6; this.damage = 30; this.color = '#990606'; this.r = 28, this.xpValue = 6;
+            this.hp = 70; this.speed = 0.6; this.damage = 12; this.color = '#990606'; this.r = 28, this.xpValue = MONSTER_BASE_XP.mega_brute;
         } else if (type === 'brute_lord') {
-            this.hp = 550; this.speed = 0.5; this.damage = 60; this.color = '#770000'; this.r = 38, this.xpValue = 9;
+            this.hp = 200; this.speed = 0.5; this.damage = 20; this.color = '#770000'; this.r = 38, this.xpValue = MONSTER_BASE_XP.brute_lord;
         } else if (type === 'speeder') {
-            this.hp = 112; this.speed = 1.42; this.damage = 15; this.color = '#ff7700'; this.r = 11, this.xpValue = 9;
+            this.hp = 30; this.speed = 1.42; this.damage = 6; this.color = '#ff7700'; this.r = 11, this.xpValue = MONSTER_BASE_XP.speeder;
         } else if (type === 'meteor') {
             // crashes in dealing blast damage + a burning surface, then chases normally
-            this.hp = 500; this.speed = 1.2; this.damage = 40; this.color = '#ff4500'; this.r = 24, this.xpValue = 10;
+            this.hp = 120; this.speed = 1.2; this.damage = 12; this.color = '#ff4500'; this.r = 24, this.xpValue = MONSTER_BASE_XP.meteor;
             this.airborne = true;
             if (GAME_STATE.activeBoss === 'horde') {
                 const ang = Math.random() * Math.PI * 2;
@@ -5890,23 +5894,23 @@ class Enemy extends Unit {
             this.fallDuration = METEOR_FALL_MS * warnMult;
             this.landAt = now + this.fallDuration;
             this.fallHeight = 340;
-            this.blastDamage = 40; this.blastRadius = 80;
+            this.blastDamage = 20; this.blastRadius = 80;
             SoundEngine.meteorFall(this.fallDuration / 1000);
-        } else if (type === 'shooter') {
-            // ranged: advances slowly and lobs dodgeable projectiles
-            this.hp = 85; this.speed = 0.35; this.damage = 15; this.color = '#661144'; this.r = 14, this.xpValue = 10;
-            this.fireReady = now + 1200; this.fireCooldown = 4200;
-            this.shotDamage = 12; this.shotSpeed = 4.8 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
         } else if (type === 'dasher') {
             // weaves sideways on approach, then lunges at the player
-            this.hp = 140; this.speed = 0.9; this.damage = 15; this.color = '#ff3344'; this.r = 13, this.xpValue = 13;
+            this.hp = 50; this.speed = 0.9; this.damage = 6; this.color = '#ff3344'; this.r = 13, this.xpValue = MONSTER_BASE_XP.dasher;
             this.lunging = false; this.lungeUntil = 0; this.lungeReady = now + 800;
             this.lungeVx = 0; this.lungeVy = 0;
             this.sideDashing = false; this.sideUntil = now + 200 + Math.random() * 200;
             this.sideDir = Math.random() < 0.5 ? 1 : -1;
+        } else if (type === 'shooter') {
+            // ranged: advances slowly and lobs dodgeable projectiles
+            this.hp = 50; this.speed = 0.35; this.damage = 5; this.color = '#661144'; this.r = 14, this.xpValue = MONSTER_BASE_XP.shooter;
+            this.fireReady = now + 1200; this.fireCooldown = 4200;
+            this.shotDamage = 6; this.shotSpeed = 4.5 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
         } else if (type === 'octopus' || type === 'boss') {
             this.type = 'octopus';
-            this.hp = 40000; this.speed = 0.48; this.damage = 30; this.color = '#2e0854'; this.r = 60; this.xpValue = 200;
+            this.hp = 20000; this.speed = 0.48; this.damage = 25; this.color = '#2e0854'; this.r = 60; this.xpValue = MONSTER_BASE_XP.octopus;
             this.airborne = true;
             this.landX = W / 2;
             this.landY = H / 2;
@@ -5915,16 +5919,16 @@ class Enemy extends Unit {
             this.tentacles = [];
             this.nextTentacleTime = now + 4000;
         } else if (type === 'spiky') {
-            this.hp = 800; this.speed = 0.6; this.damage = 50; this.color = '#ff1100'; this.r = 54, this.xpValue = 20;
+            this.hp = 400; this.speed = 0.6; this.damage = 25; this.color = '#ff1100'; this.r = 54, this.xpValue = MONSTER_BASE_XP.spiky;
         } else if (type === 'baneling') {
             // SC2 Baneling: fast Zerg rolling acid sac unit that detonates on contact or death
-            this.hp = 1000; this.speed = 1.65; this.damage = 35; this.color = '#4d7c0f'; this.r = 13, this.xpValue = 40;
+            this.hp = 250; this.speed = 1.75; this.damage = 40; this.color = '#4d7c0f'; this.r = 13, this.xpValue = MONSTER_BASE_XP.baneling;
             this.banelingDetonated = false;
             this.burrowed = false;
             this.burrowTriggerRadius = 42; // Radius matching the dark subterranean encircling trigger area
         } else if (type === 'marauder') {
             // SC2 Marauder: heavy armored Terran grenade launcher unit with Concussive Shells
-            this.hp = 1100; this.speed = 1.25; this.damage = 40; this.color = '#37474f'; this.r = 16, this.xpValue = 45;
+            this.hp = 500; this.speed = 1.25; this.damage = 30; this.color = '#37474f'; this.r = 16, this.xpValue = MONSTER_BASE_XP.marauder;
             this.firingRange = 260;
             this.aiming = false;
             this.aimUntil = 0;
@@ -5935,9 +5939,9 @@ class Enemy extends Unit {
             this.shotSpeed = 8.5 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0); // Fast undodgeable concussive missile
         } else if (type === 'stalker') {
             // SC2 Blink Stalker: walks in, blinks past fire ring to melee range, then attacks on contact.
-            this.hp = 900; this.speed = 1.4; this.damage = 25; this.color = '#7e22ce'; this.r = 14, this.xpValue = 50;
-            this.blinkRange = 260;          // trigger blink when within marauder firing range
-            this.blinkLandDist = 45;        // land inside fire ring (70px orbit) but outside contact (28px)
+            this.hp = 200; this.speed = 1.5; this.damage = 25; this.color = '#7e22ce'; this.r = 14, this.xpValue = MONSTER_BASE_XP.stalker;
+            this.blinkRange = 300;          // trigger blink when within marauder firing range
+            this.blinkLandDist = 50 * (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);        // land inside fire ring (70px orbit) but outside contact (28px)
             this.blinked = false;
             this.blinkCooldown = 5000;      // ms before can blink again after re-entering range
             this.nextBlinkReady = now + 800; // small initial delay
@@ -5945,16 +5949,16 @@ class Enemy extends Unit {
             this.blinkPauseUntil = 0;       // pause movement for 0.3 seconds after blinking
         } else if (type === 'zergling') {
             // SC2 Zergling: tiny, fragile, extremely fast melee unit spawned by dying Spine Crawlers
-            this.hp = 300; this.speed = 2.8; this.damage = 20; this.color = '#556b2f'; this.r = 7, this.xpValue = 0;
+            this.hp = 200; this.speed = 2.7 / ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5); this.damage = 20; this.color = '#556b2f'; this.r = 7, this.xpValue = MONSTER_BASE_XP.zergling;
         } else if (type === 'spine_crawler') {
             // SC2 Spine Crawler: a lumbering uprooted Zerg structure. Slow, huge, tanky.
             // On death it bursts open and releases 4 Zerglings.
-            this.hp = 2700; this.speed = 0.5; this.damage = 55; this.color = '#4e342e'; this.r = 24, this.xpValue = 55;
+            this.hp = 1200; this.speed = 0.5; this.damage = 55; this.color = '#4e342e'; this.r = 24, this.xpValue = MONSTER_BASE_XP.spine_crawler;
             this.spawnedZerglings = false;
         
         } else if (type === 'felhound') {
             // WC3-style Felhound: physics-based pursuit — momentum causes natural drift & orbit.
-            this.hp = 200000; this.speed = 0; this.damage = 2000; this.color = '#6a0dad'; this.r = 35; this.xpValue = 400;
+            this.hp = 100000; this.speed = 0; this.damage = 2000; this.color = '#6a0dad'; this.r = 35; this.xpValue = MONSTER_BASE_XP.felhound;
             this.killPauseUntil = 0; // 1s pause and vibration after killing a player
             // Initial velocity: random direction, gentle push so it doesn't sit still
             const startAngle = Math.random() * Math.PI * 2;
@@ -5966,13 +5970,13 @@ class Enemy extends Unit {
         } else if (type === 'sentry') {
             // SC2 Protoss Sentry: slow support unit projecting a Guardian Shield
             // that halves damage taken by all allies within its large aura.
-            this.hp = 2000; this.speed = 0.5; this.damage = 30; this.color = '#94a3b8'; this.r = 15, this.xpValue = 60;
+            this.hp = 1200; this.speed = 0.5; this.damage = 30; this.color = '#94a3b8'; this.r = 15, this.xpValue = MONSTER_BASE_XP.sentry;
             this.shieldRadius = 160; // large protective aura
             this.shieldAngle = 0;   // for rotating ring visual
         } else if (type === 'medivac') {
             // Bio-Restoration Blob: living monster healer blob that restores HP of damaged allies.
             // Does not attack players; ignores them entirely.
-            this.hp = 3000; this.speed = 0; this.damage = 0; this.color = '#b02b1d'; this.r = 18, this.xpValue = 65;
+            this.hp = 1800; this.speed = 0; this.damage = 0; this.color = '#b02b1d'; this.r = 18, this.xpValue = MONSTER_BASE_XP.medivac;
             this.vx = 0; this.vy = 0;
             this.maxSpd    = 3.8;
             this.accel     = 0.20;
@@ -5986,11 +5990,11 @@ class Enemy extends Unit {
             // Drifts slowly across the arena, distorting and magnifying the grid/objects beneath it.
             // Cannot be targeted by auto-turrets or homing projectiles, but damages players on contact.
             // On death: triggers 50% Gravitational Push (Repulsion) or 50% Gravitational Pull (Implosion).
-            this.hp = 3500; this.speed = 0.55; this.damage = 35; this.color = 'transparent'; this.r = 18; this.xpValue = 70;
+            this.hp = 2000; this.speed = 0.55; this.damage = 50; this.color = 'transparent'; this.r = 18; this.xpValue = MONSTER_BASE_XP.warp_anomaly;
             this.invisible = true;
         } else if (type === 'hellion') {
             // SC2 Hellion: quick flame unit, keeps safe distance, fires 180px line of fire (70 dmg, 1500 HP)
-            this.hp = 2500; this.speed = 2.2; this.damage = 70; this.color = '#c2410c'; this.r = 16, this.xpValue = 75;
+            this.hp = 1000; this.speed = 2.2; this.damage = 70; this.color = '#c2410c'; this.r = 16, this.xpValue = MONSTER_BASE_XP.hellion;
             this.targetCoord = null;
             this.nextDecisionTime = 0;
             this.action = 'move'; // 'flee', 'fire', 'move'
@@ -6006,7 +6010,7 @@ class Enemy extends Unit {
             // Solid half-circle arc barrier blocking players and non-rocket projectiles.
             // Players can move and stand inside the half circle. Monsters pass through.
             // On death: drops the identical half-circle shield as physical terrain for 10 seconds.
-            this.hp = 5500; this.speed = 0.70; this.damage = 45; this.color = '#92400e'; this.r = 28; this.xpValue = 90;
+            this.hp = 3500; this.speed = 0.70; this.damage = 50; this.color = '#92400e'; this.r = 28; this.xpValue = MONSTER_BASE_XP.shield_bearer;
             this.facingAngle = 0;
             this.shieldRadius = 100;
             this.shieldHalfArc = Math.PI * 0.5; // exact half circle (180 degrees / +/- 90 degrees)
@@ -6017,7 +6021,7 @@ class Enemy extends Unit {
             // 3. Shoots abduct frog tongue at the player (releasing the monster attraction).
             // 4. If it grabs the player, drags them in and stays in place as long as that player is held.
             // 5. If it misses, resumes following the player for a random duration again (max 3s).
-            this.hp = 4800; this.speed = 0.85; this.damage = 15; this.color = '#dc2626'; this.r = 32; this.xpValue = 120;
+            this.hp = 3500; this.speed = 0.85; this.damage = 15; this.color = '#dc2626'; this.r = 32; this.xpValue = MONSTER_BASE_XP.viper;
             this.vx = 0; this.vy = 0;
             this.accel = 0.22;
             this.maxSpd = 2.2;
@@ -6040,7 +6044,7 @@ class Enemy extends Unit {
         } else if (type === 'behemoth') {
             // SC2 Ultralisk / Hive Behemoth: Colossal armored apex final boss (Minute 24:00).
             // Features: Nydus Worm Emergence, Seismic Kaiser Cleave, Bile Mortar Barrage, Burrow & Subterranean Eruption, and Trample Charge.
-            this.hp = 350000; this.speed = 1.0; this.damage = 2500; this.color = '#1b4332'; this.r = 65; this.xpValue = 500;
+            this.hp = 500000; this.speed = 1.0; this.damage = 2500; this.color = '#1b4332'; this.r = 65; this.xpValue = MONSTER_BASE_XP.behemoth;
             this.airborne = false;
             this.nydusEmerging = true;
             this.nydusStartTime = now;
@@ -6081,11 +6085,11 @@ class Enemy extends Unit {
             this.burrowMoundX = this.x;
             this.burrowMoundY = this.y;
             this.chargeAngle = 0;
-            this.chargeSpeed = 5.4;
+            this.chargeSpeed = 6.0;
             this.tuskFlex = 0;
             this.burrowed = false;
         } else {
-            this.hp = 10; this.speed = 0.9; this.damage = 5; this.color = '#ff4444'; this.r = 10; this.xpValue = 2;
+            this.hp = 10; this.speed = 0.9; this.damage = 4; this.color = '#ff4444'; this.r = 10; this.xpValue = MONSTER_BASE_XP.swarm;
         }
         this.maxHp = this.hp;
         this.inLaserFence = false;
@@ -6102,7 +6106,7 @@ class Enemy extends Unit {
         if (this.banelingDetonated) return;
         this.banelingDetonated = true;
         this.hp = 0;
-        const blastRadius = 75;
+        const blastRadius = 75 / ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
         const blastDamage = 55 * GAME_STATE.difficulty.takenMult;
 
         // Visual acid explosion hazard
@@ -7082,7 +7086,7 @@ class Enemy extends Unit {
 
             if (!this.nydusRoarPlayed && progress >= 0.45) {
                 this.nydusRoarPlayed = true;
-                SoundEngine.behemothRoar();
+                SoundEngine.nukeExplosion();
             }
 
             // Subterranean underground trail particles (progress < 0.35)
@@ -7117,7 +7121,7 @@ class Enemy extends Unit {
 
             if (now >= this.nydusEndTime) {
                 this.nydusEmerging = false;
-                SoundEngine.behemothErupt();
+                SoundEngine.mineExplosion(1.4);
 
                 // Destroy all other monsters on the battlefield instantly
                 for (const e of GAME_STATE.enemies) {
@@ -7181,7 +7185,7 @@ class Enemy extends Unit {
                 return;
             } else if (now >= this.nextChargeReady && d >= 220) {
                 this.behemothState = 'charge_windup';
-                this.chargeWindupDuration = 450 * warnMult;
+                this.chargeWindupDuration = 300 * Math.pow(warnMult, 2);
                 this.stateTimer = now + this.chargeWindupDuration;
                 this.chargeAngle = targetAngle;
                 this.nextChargeReady = now + 16000 + Math.random() * 4000;
@@ -7283,7 +7287,7 @@ class Enemy extends Unit {
             if (now >= this.stateTimer) {
                 this.burrowed = true;
                 this.behemothState = 'subterranean_travel';
-                this.stateTimer = now + 2400; // 2.4s underground pursuit
+                this.stateTimer = now + 2800; // 2.8s underground pursuit
                 this.burrowMoundX = this.x;
                 this.burrowMoundY = this.y;
                 this.burrowTrail = [{ x: this.x, y: this.y }];
@@ -7298,7 +7302,7 @@ class Enemy extends Unit {
             // Move rapidly underground towards closest player until fully underneath
             const tdx = target.x - this.x, tdy = target.y - this.y;
             const td = Math.hypot(tdx, tdy);
-            const subSpeed = 4.6;
+            const subSpeed = 3.0;
             if (td > 0.001) {
                 const step = subSpeed * dtFactor;
                 if (td <= step) {
@@ -7372,7 +7376,7 @@ class Enemy extends Unit {
                 if (typeof SoundEngine !== 'undefined' && SoundEngine.titanSprint) {
                     SoundEngine.titanSprint();
                 } else {
-                    SoundEngine.behemothRoar();
+                    SoundEngine.mineExplosion(1.4);
                 }
             }
         }
@@ -7708,7 +7712,7 @@ class Enemy extends Unit {
     }
 
     performBurrowEruption(now) {
-        SoundEngine.behemothErupt();
+        SoundEngine.mineExplosion(1.4);
         const nydusEruptRadius = 190;
 
         // Damage and launch players airborne from the Nydus Worm eruption bite & shockwave
@@ -8092,9 +8096,9 @@ class Enemy extends Unit {
     }
     triggerSpikeExplosion(now) {
         SoundEngine.mineExplosion();
-        const count = 16;
-        const speed = 4.0 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
-        const damage = 20;
+        const count = 12;
+        const speed = 3.0 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
+        const damage = 10;
         for (let i = 0; i < count; i++) {
             const angle = (i / count) * Math.PI * 2;
             const vx = Math.cos(angle) * speed;
@@ -12769,7 +12773,7 @@ class PlayerMine {
         PlayerMine.enforceCap();
     }
     static enforceCap() {
-        const maxMines = (GAME_CONFIG.UPGRADES && GAME_CONFIG.UPGRADES.MAX_ACTIVE_MINES) || 300;
+        const maxMines = (GAME_CONFIG.UPGRADES && GAME_CONFIG.UPGRADES.MAX_ACTIVE_MINES) || 200;
         if (!GAME_STATE.hazards) return;
         const activeMines = [];
         for (const h of GAME_STATE.hazards) {
@@ -15234,10 +15238,10 @@ class OrbitProjectile {
 
 // ---------------- Gems & Particles ----------------
 class XPGem {
-    constructor(x, y, value = 10, vx = 0, vy = 0) {
+    constructor(x, y, value = 5, vx = 0, vy = 0) {
         this.x = Math.max(15, Math.min(W - 15, x));
         this.y = Math.max(15, Math.min(H - 15, y));
-        this.r = value >= 200 ? 6.8 : (value >= 50 ? 3.9 : 2.65);
+        this.r = value >= 1000 ? 13 : (value >= 500 ? 9.5 : (value >= 100 ? 6.4 : (value >= 25 ? 3.9 : 2.65)));
         this.value = value;
         this.vx = vx;
         this.vy = vy;
@@ -15247,12 +15251,16 @@ class XPGem {
     static createXPGems(x, y, xpValue, spreadFactor = 1) {
         if (!xpValue || xpValue <= 0) return;
         let gemValue = 0;
-        if (xpValue > 50 && Math.random() < xpValue / 200) {
-            gemValue = 200;
-        } else if (xpValue <= 50 && xpValue > 10 && Math.random() < xpValue / 50) {
-            gemValue = 50;
-        } else if (xpValue <= 10 && Math.random() < xpValue / 10) {
-            gemValue = 10;
+        if (xpValue > 500 && Math.random() < xpValue / 1000) {
+            gemValue = 1000;
+        } else if (xpValue <= 500 && xpValue > 100 && Math.random() < xpValue / 500) {
+            gemValue = 500;
+        } else if (xpValue <= 100 && xpValue > 25 && Math.random() < xpValue / 100) {
+            gemValue = 100;
+        } else if (xpValue <= 25 && xpValue > 5 && Math.random() < xpValue / 25) {
+            gemValue = 25;
+        } else if (xpValue <= 5 && Math.random() < xpValue / 5) {
+            gemValue = 5;
         } else {
             return; // No gem spawned
         }
@@ -15665,7 +15673,7 @@ function addXp(amount) {
     while (GAME_STATE.xp >= GAME_STATE.nextXp) {
         GAME_STATE.xp -= GAME_STATE.nextXp;
         GAME_STATE.level++;
-        GAME_STATE.nextXp = Math.floor(GAME_STATE.nextXp * 1.2) + 10;
+        GAME_STATE.nextXp = Math.floor(GAME_STATE.nextXp * XP_EXPONENTIAL) + XP_ADD_PER_LEVEL;
         gained++;
     }
     if (gained > 0) {
@@ -16338,7 +16346,7 @@ function buildStartingWeaponPanel(player, count) {
 
     const title = document.createElement('h3');
     title.className = 'panel-title';
-    title.textContent = count > 1 ? `Player ${n}` : 'Starting Weapon';
+    title.textContent = count > 1 ? `Player ${n} (controls: ${player.keysText})` : 'Starting Weapon';
     title.style.color = player.color;
     panel.appendChild(title);
 
@@ -16793,7 +16801,7 @@ function spawnHordeWave(now, elapsedEvent) {
         waveTypes = Array(15).fill('spiky');
     } else {
         const pool = ['brute', 'speeder', 'mega_brute', 'dasher', 'shooter', 'brute_lord', 'meteor', 'spiky'];
-        const mixCount = 25 + Math.min(35, (waveIdx - 9) * 4);
+        const mixCount = 10 + Math.min(35, (waveIdx - 9) * 4);
         for (let i = 0; i < mixCount; i++) {
             waveTypes.push(pool[Math.floor(Math.random() * pool.length)]);
         }
@@ -17310,7 +17318,7 @@ function triggerWarpAnomalyDeathEffect(x, y, radius = 320, now = performance.now
 
     // 2. Affect Enemies (knockback airborne physics)
     for (const e of GAME_STATE.enemies) {
-        if (e.hp <= 0 || e.airborne) continue;
+        if (!e.isTargetable()) continue;
         const dx = e.x - x, dy = e.y - y;
         const dist = Math.hypot(dx, dy);
         if (dist <= radius && dist > 0.001) {
@@ -17834,6 +17842,9 @@ function startGame(playerCount, difficultyKey) {
         if (testMs > 660000) {
             GAME_STATE.completedBosses.add('horde');
             for (let i = 0; i < 4; i++) GAME_STATE.bossWarningsFired.add('horde_warn_' + i);
+            const p = GAME_STATE.players[0];
+            p.maxHp += 300;
+            p.hp = p.maxHp;
         }
         if (testMs > 960000) {
             GAME_STATE.completedBosses.add('felhound');
@@ -17845,11 +17856,11 @@ function startGame(playerCount, difficultyKey) {
         }
     }
     let startLevel = 1;
-    let nextXp = 20;
+    let nextXp = LVL2_XP;
     if (GAME_STATE.testingMode && GAME_STATE.testStartMinute > 0) {
         startLevel = calculateExpectedPlayerLevel(GAME_STATE.testStartMinute);
         for (let lvl = 1; lvl < startLevel; lvl++) {
-            nextXp = Math.floor(nextXp * 1.2) + 10;
+            nextXp = Math.floor(nextXp * XP_EXPONENTIAL) + XP_ADD_PER_LEVEL;
         }
     }
     GAME_STATE.level = startLevel;
@@ -18529,11 +18540,11 @@ function calculateMeanXPGemYield(xpValue) {
 }
 
 const MONSTER_BASE_XP = {
-    swarm: 2, brute: 4, mega_brute: 6, brute_lord: 9, speeder: 9,
-    meteor: 10, shooter: 10, dasher: 13, spiky: 20, baneling: 40,
-    marauder: 45, stalker: 50, zergling: 0, spine_crawler: 55, sentry: 60,
-    medivac: 65, warp_anomaly: 70, hellion: 75, shield_bearer: 90, viper: 120,
-    octopus: 200, felhound: 400, behemoth: 500
+    swarm: 1, brute: 2, mega_brute: 3, brute_lord: 4, speeder: 5,
+    meteor: 6, dasher: 7, shooter: 8, spiky: 10, baneling: 50,
+    marauder: 20, stalker: 30, zergling: 0, spine_crawler: 40, sentry: 40,
+    medivac: 60, warp_anomaly: 70, hellion: 80, shield_bearer: 90, viper: 100,
+    octopus: 500, felhound: 1000, behemoth: 0
 };
 
 function getSpawnProbabilitiesAtTime(e) {
@@ -18635,42 +18646,42 @@ function calculateExpectedPlayerLevel(targetMinutes) {
     
     let level = 1;
     let xp = totalExpectedXp;
-    let nextXp = 20;
+    let nextXp = LVL2_XP;
     while (xp >= nextXp) {
         xp -= nextXp;
         level++;
-        nextXp = Math.floor(nextXp * 1.2) + 10;
+        nextXp = Math.floor(nextXp * XP_EXPONENTIAL) + XP_ADD_PER_LEVEL;
     }
     return level;
 }
 
 const MINUTE_EVENT_HIGHLIGHTS = {
     0: "Game Starts (Base Swarm)",
-    1: "Swarm & Basic Brutes",
+    1: "Swarm & Brutes",
     2: "Mega Brutes Spawn",
     3: "Brute Lords Spawn",
     4: "Speeders Spawn",
-    5: "Meteorites Crash",
-    6: "Dashers Leap",
-    7: "Shooters (Lobbed Projectiles)",
-    8: "🐙 Boss: Giant Octopus Erupts",
-    9: "Spiky Enemies Spawn",
-    10: "Heavy Spiky Wave",
-    11: "⚔️ Boss Event: The Swarm Horde",
-    12: "🌌 SC2 Phase: Rolling Banelings",
-    13: "Marauders (Concussive Shells)",
-    14: "Blink Stalkers (Teleporting)",
-    15: "Spine Crawlers (7 Zerglings)",
-    16: "Heavy Stalker & Spine Crawler Waves",
-    17: "Fast Baneling Swarms",
-    18: "Sentries (Guardian Shield)",
-    19: "Medivacs (Healing Ray)",
-    20: "Hellions (Flame Line Beams)",
-    21: "Warp Anomalies (Death Vortex)",
-    22: "Shield Bearers (Energy Barrier)",
-    23: "Vipers (Abduct & Enemy Magnet)",
-    24: "All SC2 Forces Combined",
-    25: "🏆 Ultimate Endless Swarm"
+    5: "Meteorites",
+    6: "Dashers",
+    7: "Shooters",
+    8: "🐙 Boss: Octopus",
+    9: "Boss or Spiky if cleared",
+    10: "Spiky",
+    11: "⚔️ Boss: Horde",
+    12: "Banelings",
+    13: "Marauders",
+    14: "Stalkers",
+    15: "Spine Crawlers",
+    16: "Boss: Felhound",
+    17: "Boss: Felhound or cleared",
+    18: "Sentries",
+    19: "Medivacs",
+    20: "Hellions",
+    21: "Warp Anomalies",
+    22: "Shield Bearers",
+    23: "Vipers",
+    24: "🏆 Boss: Behemoth",
+    25: "🏆 Boss killed"
 };
 
 let cachedExpectedLevelsTable = null;
@@ -18925,6 +18936,8 @@ document.getElementById('presetTestingBtn').onclick = () => {
     selectedTestUpgrades.set('damage', 10);
     selectedTestUpgrades.set('unlock_missile', 1);
     selectedTestUpgrades.set('multishot', 2);
+    selectedTestUpgrades.set('speed', 1);
+    selectedTestUpgrades.set('buckshot_upgrade', 1);
     renderUpgradeTree();
     document.getElementById('testingModal').classList.remove('show');
     document.getElementById('testingConfigModal').classList.add('show');
@@ -19295,22 +19308,22 @@ function draw(now) {
                 ctx.fillText('WARNING: IMMINENT THREAT...', W / 2, H / 2 - 20);
                 ctx.font = '20px sans-serif';
                 ctx.fillStyle = '#ffaa00';
-                ctx.fillText('PREPARE FOR OCTOPUS BOSS', W / 2, H / 2 + 20);
+                ctx.fillText('PREPARE FOR BOSS BATTLE', W / 2, H / 2 + 20);
             } else if (cfg.id === 'horde') {
                 ctx.fillText('WARNING: HORDE APPROACHING...', W / 2, H / 2 - 20);
                 ctx.font = '20px sans-serif';
                 ctx.fillStyle = '#ffaa00';
                 ctx.fillText('PREPARE YOUR DEFENSES', W / 2, H / 2 + 20);
             } else if (cfg.id === 'felhound') {
-                ctx.fillText('WARNING: FELHOUND APPROACHING...', W / 2, H / 2 - 20);
+                ctx.fillText('WARNING: HUNGRY FELHOUND APPROACHING...', W / 2, H / 2 - 20);
                 ctx.font = '20px sans-serif';
                 ctx.fillStyle = '#ffaa00';
                 ctx.fillText('PREPARE FOR BOSS BATTLE', W / 2, H / 2 + 20);
             } else if (cfg.id === 'behemoth') {
-                ctx.fillText('WARNING: APEX TITAN APPROACHING...', W / 2, H / 2 - 20);
+                ctx.fillText('WARNING: IMMINENT DEATH APPROACHING...', W / 2, H / 2 - 20);
                 ctx.font = '20px sans-serif';
                 ctx.fillStyle = '#76ff03';
-                ctx.fillText('PREPARE FOR THE HIVE BEHEMOTH', W / 2, H / 2 + 20);
+                ctx.fillText('PREPARE FOR BOSS BATTLE', W / 2, H / 2 + 20);
             }
             ctx.restore();
             break;
