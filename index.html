@@ -893,6 +893,11 @@ if (isMobile) {
 }
 
 const canvas = document.getElementById('gameCanvas');
+// Cached UI elements read/written every updateUI() tick, avoiding repeated getElementById lookups
+const xpBarEl = document.getElementById('xpBar');
+const statsEl = document.getElementById('stats');
+const timerEl = document.getElementById('timer');
+const fpsCounterEl = document.getElementById('fpsCounter');
 const ctx = canvas.getContext('2d');
 let W = window.innerWidth;
 let H = window.innerHeight;
@@ -1021,7 +1026,7 @@ const PROJECTILE_HEAL = 0.002;
 // direction, so it can be side-stepped.
 const DASHER_LUNGE_RANGE = 210;    // begin a lunge when within this distance...
 const DASHER_LUNGE_MINDIST = 100;  // ...but only while still outside the fire ring
-const DASHER_LUNGE_SPEED = 7.0;
+const DASHER_LUNGE_SPEED = 5.0;
 const DASHER_LUNGE_MS = 380;
 const DASHER_LUNGE_COOLDOWN = 1500;
 const DASHER_SIDE_SPEED = 3.8;     // lateral dash speed while approaching
@@ -1141,6 +1146,14 @@ const DIFFICULTIES = {
     easy:   { name: 'Easy',   dmgMult: 4.0, speedMult: 1.5,  accuracy: 0.25,    takenMult: 0.25,  difficultyMultiplier: 1.5},
     normal: { name: 'Normal', dmgMult: 2.0, speedMult: 1.25,  accuracy: 0.5,     takenMult: 0.50, difficultyMultiplier: 1.25},
     hard:   { name: 'Hard',   dmgMult: 1.0, speedMult: 1.0,  accuracy: 1.0,     takenMult: 1.0,  difficultyMultiplier: 1.0}
+};
+
+const MONSTER_BASE_XP = {
+    swarm: 1, brute: 2, mega_brute: 3, brute_lord: 4, speeder: 5,
+    meteor: 6, dasher: 7, shooter: 8, spiky: 10, baneling: 50,
+    marauder: 20, stalker: 30, zergling: 0, spine_crawler: 40, sentry: 40,
+    medivac: 60, warp_anomaly: 70, hellion: 80, shield_bearer: 90, viper: 100,
+    octopus: 500, felhound: 1000, behemoth: 0
 };
 
 const GAME_STATE = {
@@ -2028,7 +2041,7 @@ const SoundEngine = {
             this.stalkerBlinkBuffer = this.buildZzfxBuffer([0.75,,520,.08,,.01,2,3.9,-2,-5,-130,.13,.01,,,.5,,.97,.02]);
 
             // Pre-render ZzFX Felhound Gallop buffer (deep low-frequency beast gallop footstep)
-            this.felhoundGallopBuffer = this.buildZzfxBuffer([,,48,,.02,.03,1,2.5,-6,,70,.06,.01,.3,10,,,.94,.03,.11]);
+            this.felhoundGallopBuffer = this.buildZzfxBuffer([,,48,.019,.02,.035,1,2.3,-5.7,,70,.06,.01,.3,10,,,.94,.03,.11]);
 
             // Pre-render ZzFX Medivac Heal buffer [1.1,0,247,.22,.04,.25,,1.2,,,,,.12,.3,,.1,.1,.57,.14,.54]
             this.medivacHealBuffer = this.buildZzfxBuffer([1.1,0,247,.22,.04,.25,,1.2,,,,,.12,.3,,.1,.1,.57,.14,.54]);
@@ -2544,6 +2557,11 @@ const SoundEngine = {
         return true;
     },
 
+    // Small random pitch/rate variance so frequently-repeated sounds don't feel robotic
+    randPitch(spread = 0.1) {
+        return 1 + (Math.random() * 2 - 1) * spread;
+    },
+
     // Priority-based voice allocation with voice stealing
     allocateVoice(priority, soundId, durationSeconds, isUI = false) {
         if (this.isMuted) return null;
@@ -2698,6 +2716,7 @@ const SoundEngine = {
             const noise = ctx.createBufferSource();
             noise.buffer = this.noiseBuffer;
             noise.loop = true;
+            noise.playbackRate.value = this.randPitch(0.02);
 
             const filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
@@ -2774,6 +2793,7 @@ const SoundEngine = {
         if (this.damageBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.damageBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN, now);
             voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
@@ -2796,6 +2816,7 @@ const SoundEngine = {
         if (this.dashBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.dashBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN, now);
 
@@ -2814,9 +2835,10 @@ const SoundEngine = {
         const { ctx, now, voiceGain } = v;
 
         const osc = ctx.createOscillator();
+        const shieldPitch = this.randPitch();
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(2200, now);
-        osc.frequency.exponentialRampToValueAtTime(900, now + 0.18);
+        osc.frequency.setValueAtTime(2200 * shieldPitch, now);
+        osc.frequency.exponentialRampToValueAtTime(900 * shieldPitch, now + 0.18);
 
         const filter = ctx.createBiquadFilter();
         filter.type = 'bandpass';
@@ -2845,7 +2867,7 @@ const SoundEngine = {
         [0, 0.08].forEach((delay, i) => {
             const osc = ctx.createOscillator();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(i === 0 ? 3200 : 4800, now + delay);
+            osc.frequency.setValueAtTime((i === 0 ? 3200 : 4800) * this.randPitch(), now + delay);
 
             const noteGain = ctx.createGain();
             noteGain.gain.setValueAtTime(1.0, now + delay);
@@ -2869,6 +2891,7 @@ const SoundEngine = {
         if (this.noiseBuffer) {
             const noise = ctx.createBufferSource();
             noise.buffer = this.noiseBuffer;
+            noise.playbackRate.value = this.randPitch(0.15);
 
             const filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
@@ -2895,18 +2918,18 @@ const SoundEngine = {
         const { ctx, now, voiceGain } = v;
 
         if (isSledge) {
-            // Former melee sweep sound recipe
             const osc = ctx.createOscillator();
+            const sledgePitch = this.randPitch(0.12);
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(180, now);
-            osc.frequency.exponentialRampToValueAtTime(45, now + duration);
+            osc.frequency.setValueAtTime(180 * sledgePitch, now);
+            osc.frequency.exponentialRampToValueAtTime(45 * sledgePitch, now + duration);
 
             const filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
             filter.frequency.setValueAtTime(250, now);
             filter.frequency.exponentialRampToValueAtTime(70, now + duration);
 
-            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 1.6, now);
+            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 2.0, now);
             voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
             osc.connect(filter);
@@ -2917,6 +2940,7 @@ const SoundEngine = {
         } else if (this.meleeBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.meleeBuffer;
+            source.playbackRate.value = this.randPitch(0.15);
 
             // Mid-frequency scoop filter to remove muddy mid-range resonance
             const midFilter = ctx.createBiquadFilter();
@@ -2946,6 +2970,7 @@ const SoundEngine = {
         if (this.flameBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.flameBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.15, now);
 
@@ -2967,6 +2992,7 @@ const SoundEngine = {
         if (this.flameBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.flameBuffer;
+            source.playbackRate.value = this.randPitch();
 
             const flameGain = ctx.createGain();
             flameGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.5, now);
@@ -2980,6 +3006,7 @@ const SoundEngine = {
         } else if (this.noiseBuffer) {
             const noise = ctx.createBufferSource();
             noise.buffer = this.noiseBuffer;
+            noise.playbackRate.value = this.randPitch();
 
             const filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
@@ -3009,6 +3036,7 @@ const SoundEngine = {
         if (this.missileBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.missileBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.9 * soundVolumeFactor, now);
             voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
@@ -3031,6 +3059,7 @@ const SoundEngine = {
         if (this.laserBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.laserBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.16, now);
 
@@ -3041,12 +3070,7 @@ const SoundEngine = {
         }
     },
 
-    // 16. LOW: Enemy Hit Spark (disabled)
-    enemyHit() {
-        // Disabled per user request
-    },
-
-    // 17. LOW: XP Gem Pickup (pure sine bell with ascending combo scale)
+    // 16. LOW: XP Gem Pickup (pure sine bell with ascending combo scale)
     gemPickup() {
         if (!this.throttle('gem_pickup', 25)) return;
         const nowMs = performance.now();
@@ -3063,7 +3087,7 @@ const SoundEngine = {
 
         // Pentatonic crystal scale: E7 (2637), G7 (3136), A7 (3520), B7 (3951), D8 (4698)
         const scale = [2637.02, 3135.96, 3520.0, 3951.07, 4698.63];
-        const freq = scale[tier];
+        const freq = scale[tier] * this.randPitch(0.02);
 
         const osc = ctx.createOscillator();
         osc.type = 'sine';
@@ -3088,12 +3112,13 @@ const SoundEngine = {
         if (this.noiseBuffer) {
             const noise = ctx.createBufferSource();
             noise.buffer = this.noiseBuffer;
+            noise.playbackRate.value = this.randPitch();
 
             const filter = ctx.createBiquadFilter();
             filter.type = 'highpass';
             filter.frequency.setValueAtTime(1600, now);
 
-            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN, now);
+            voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.7, now);
             voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
 
             noise.connect(filter);
@@ -3112,9 +3137,10 @@ const SoundEngine = {
 
         // 1. Ignition punch
         const osc = ctx.createOscillator();
+        const rocketPitch = this.randPitch();
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(140, now);
-        osc.frequency.exponentialRampToValueAtTime(35, now + 0.15);
+        osc.frequency.setValueAtTime(140 * rocketPitch, now);
+        osc.frequency.exponentialRampToValueAtTime(35 * rocketPitch, now + 0.15);
 
         const oscGain = ctx.createGain();
         oscGain.gain.setValueAtTime(0.8, now);
@@ -3129,6 +3155,7 @@ const SoundEngine = {
         if (this.noiseBuffer) {
             const noise = ctx.createBufferSource();
             noise.buffer = this.noiseBuffer;
+            noise.playbackRate.value = this.randPitch();
 
             const filter = ctx.createBiquadFilter();
             filter.type = 'bandpass';
@@ -3160,15 +3187,16 @@ const SoundEngine = {
         voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 1.6, now);
 
         const spdFactor = Math.min(2.0, Math.max(0.7, speed * 0.3));
+        const flailPitch = this.randPitch(0.15);
 
         // Sub/Mid impact thud
         const osc = ctx.createOscillator();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(120 * spdFactor, now);
-        osc.frequency.exponentialRampToValueAtTime(32, now + 0.14);
+        osc.frequency.setValueAtTime(120 * spdFactor * flailPitch, now);
+        osc.frequency.exponentialRampToValueAtTime(32 * flailPitch, now + 0.14);
 
         const oscGain = ctx.createGain();
-        oscGain.gain.setValueAtTime(1.3, now);
+        oscGain.gain.setValueAtTime(1.6, now);
         oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
 
         osc.connect(oscGain);
@@ -3180,6 +3208,7 @@ const SoundEngine = {
         if (this.noiseBuffer) {
             const noise = ctx.createBufferSource();
             noise.buffer = this.noiseBuffer;
+            noise.playbackRate.value = this.randPitch();
 
             const filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
@@ -3198,11 +3227,6 @@ const SoundEngine = {
         }
     },
 
-    // 21. LOW: Turret Sawblade (silent)
-    turretSawHit() {
-        // Deliberately silent
-    },
-
     // 22. MEDIUM: Autonomous Network Construction (mechanical ratchet clicks + pneumatic weld power-up)
     autonomousNetwork() {
         if (!this.throttle('autonomous_network', 120)) return;
@@ -3211,11 +3235,12 @@ const SoundEngine = {
         const { ctx, now, voiceGain } = v;
 
         // Mechanical construction ratchet clicks (2 rapid clicks)
+        const netPitch = this.randPitch();
         [0, 0.07].forEach((delay, i) => {
             const osc = ctx.createOscillator();
             osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(i === 0 ? 880 : 1320, now + delay);
-            osc.frequency.exponentialRampToValueAtTime(200, now + delay + 0.035);
+            osc.frequency.setValueAtTime((i === 0 ? 880 : 1320) * netPitch, now + delay);
+            osc.frequency.exponentialRampToValueAtTime(200 * netPitch, now + delay + 0.035);
 
             const clickGain = ctx.createGain();
             clickGain.gain.setValueAtTime(0.6, now + delay);
@@ -3230,8 +3255,8 @@ const SoundEngine = {
         // Rising energetic weld / construction power tone
         const tone = ctx.createOscillator();
         tone.type = 'sine';
-        tone.frequency.setValueAtTime(330, now + 0.12);
-        tone.frequency.exponentialRampToValueAtTime(660, now + 0.28);
+        tone.frequency.setValueAtTime(330 * netPitch, now + 0.12);
+        tone.frequency.exponentialRampToValueAtTime(660 * netPitch, now + 0.28);
 
         const filter = ctx.createBiquadFilter();
         filter.type = 'lowpass';
@@ -3261,6 +3286,7 @@ const SoundEngine = {
         if (this.freezeBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.freezeBuffer;
+            source.playbackRate.value = this.randPitch(0.15);
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.10, now);
 
@@ -3293,6 +3319,7 @@ const SoundEngine = {
         if (buffer) {
             const source = ctx.createBufferSource();
             source.buffer = buffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.12, now);
 
@@ -3314,6 +3341,7 @@ const SoundEngine = {
         if (this.dasherJumpBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.dasherJumpBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.5, now);
 
@@ -3335,6 +3363,7 @@ const SoundEngine = {
         if (this.shooterMissileBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.shooterMissileBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.85, now);
             voiceGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
@@ -3357,6 +3386,7 @@ const SoundEngine = {
         if (this.tentacleLashBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.tentacleLashBuffer;
+            source.playbackRate.value = this.randPitch(0.07);
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.95, now);
 
@@ -3378,6 +3408,7 @@ const SoundEngine = {
         if (this.stalkerBlinkBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.stalkerBlinkBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.15, now);
 
@@ -3388,14 +3419,9 @@ const SoundEngine = {
         }
     },
 
-    // 29. Spine Crawler Death (silent)
-    spineCrawlerDeath() {
-        // Deliberately silent per user request
-    },
-
     // 30. HIGH: Felhound Boss Gallop (ZzFX aggressive bounding beast footstep)
     felhoundGallop() {
-        if (!this.throttle('felhound_gallop', 40)) return;
+        if (!this.throttle('felhound_gallop', 120)) return;
         const duration = (this.felhoundGallopBuffer && this.felhoundGallopBuffer.duration) ? this.felhoundGallopBuffer.duration : 0.07;
         const v = this.allocateVoice(SOUND_PRIORITY.HIGH, 'felhound_gallop', duration);
         if (!v) return;
@@ -3404,6 +3430,7 @@ const SoundEngine = {
         if (this.felhoundGallopBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.felhoundGallopBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.9, now);
 
@@ -3425,6 +3452,7 @@ const SoundEngine = {
         if (this.hellionFlameBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.hellionFlameBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.30, now);
 
@@ -3446,6 +3474,7 @@ const SoundEngine = {
         if (this.warpAnomalyBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.warpAnomalyBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 1.0, now);
 
@@ -3467,6 +3496,7 @@ const SoundEngine = {
         if (this.viperTongueBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.viperTongueBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 1.0, now);
 
@@ -3488,6 +3518,7 @@ const SoundEngine = {
         if (this.titanSprintBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.titanSprintBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 1.05, now);
 
@@ -3519,32 +3550,6 @@ const SoundEngine = {
         }
     },
 
-    // Behemoth Boss Procedural Sound Effects
-    behemothRoar() {
-        if (!this.throttle('behemoth_roar', 600)) return;
-        const v = this.allocateVoice(SOUND_PRIORITY.HIGH, 'behemoth_roar', 0.9);
-        if (!v) return;
-        const { ctx, now, voiceGain } = v;
-
-        const osc = ctx.createOscillator();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(120, now);
-        osc.frequency.exponentialRampToValueAtTime(36, now + 0.85);
-
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(450, now);
-        filter.frequency.exponentialRampToValueAtTime(80, now + 0.85);
-
-        voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 1.2, now);
-        voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
-
-        osc.connect(filter);
-        filter.connect(voiceGain);
-        osc.start(now);
-        osc.stop(now + 0.9);
-    },
-
     behemothCleave() {
         if (!this.throttle('behemoth_cleave', 250)) return;
         const duration = (this.behemothCleaveBuffer && this.behemothCleaveBuffer.duration) ? this.behemothCleaveBuffer.duration : 0.33;
@@ -3555,6 +3560,7 @@ const SoundEngine = {
         if (this.behemothCleaveBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.behemothCleaveBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 1.1, now);
 
@@ -3572,10 +3578,11 @@ const SoundEngine = {
         const { ctx, now, voiceGain } = v;
 
         const osc = ctx.createOscillator();
+        const mortarPitch = this.randPitch();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(80, now);
-        osc.frequency.exponentialRampToValueAtTime(320, now + 0.15);
-        osc.frequency.exponentialRampToValueAtTime(140, now + 0.32);
+        osc.frequency.setValueAtTime(80 * mortarPitch, now);
+        osc.frequency.exponentialRampToValueAtTime(320 * mortarPitch, now + 0.15);
+        osc.frequency.exponentialRampToValueAtTime(140 * mortarPitch, now + 0.32);
 
         voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.9, now);
         voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
@@ -3592,9 +3599,10 @@ const SoundEngine = {
         const { ctx, now, voiceGain } = v;
 
         const osc = ctx.createOscillator();
+        const burrowPitch = this.randPitch();
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(140, now);
-        osc.frequency.exponentialRampToValueAtTime(35, now + 0.55);
+        osc.frequency.setValueAtTime(140 * burrowPitch, now);
+        osc.frequency.exponentialRampToValueAtTime(35 * burrowPitch, now + 0.55);
 
         voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN, now);
         voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
@@ -3602,31 +3610,6 @@ const SoundEngine = {
         osc.connect(voiceGain);
         osc.start(now);
         osc.stop(now + 0.6);
-    },
-
-    behemothErupt() {
-        if (!this.throttle('behemoth_erupt', 600)) return;
-        const v = this.allocateVoice(SOUND_PRIORITY.CRITICAL, 'behemoth_erupt', 0.8);
-        if (!v) return;
-        const { ctx, now, voiceGain } = v;
-
-        const osc = ctx.createOscillator();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(220, now);
-        osc.frequency.exponentialRampToValueAtTime(30, now + 0.75);
-
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(500, now);
-        filter.frequency.exponentialRampToValueAtTime(50, now + 0.75);
-
-        voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 1.3, now);
-        voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
-
-        osc.connect(filter);
-        filter.connect(voiceGain);
-        osc.start(now);
-        osc.stop(now + 0.8);
     },
 
     // Medivac Heal Beam (ZzFX soothing bio-energy resonance pulse)
@@ -3640,6 +3623,7 @@ const SoundEngine = {
         if (this.medivacHealBuffer) {
             const source = ctx.createBufferSource();
             source.buffer = this.medivacHealBuffer;
+            source.playbackRate.value = this.randPitch();
 
             voiceGain.gain.setValueAtTime(this.FX_VOICE_GAIN * 0.2, now);
 
@@ -4006,7 +3990,7 @@ class Unit {
         return this.type === 'octopus' || this.type === 'felhound' || this.type === 'behemoth';
     }
 
-    isSC2() {
+    isPhase2Unit() {
         const sc2Types = ['baneling', 'marauder', 'zergling', 'spine_crawler', 'stalker', 'sentry', 'medivac', 'warp_anomaly', 'hellion', 'shield_bearer', 'viper', 'behemoth'];
         return sc2Types.includes(this.type);
     }
@@ -5910,7 +5894,7 @@ class Enemy extends Unit {
             this.shotDamage = 6; this.shotSpeed = 4.5 / (GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0);
         } else if (type === 'octopus' || type === 'boss') {
             this.type = 'octopus';
-            this.hp = 20000; this.speed = 0.48; this.damage = 25; this.color = '#2e0854'; this.r = 60; this.xpValue = MONSTER_BASE_XP.octopus;
+            this.hp = 10000; this.speed = 0.48; this.damage = 25; this.color = '#2e0854'; this.r = 60; this.xpValue = MONSTER_BASE_XP.octopus;
             this.airborne = true;
             this.landX = W / 2;
             this.landY = H / 2;
@@ -6216,7 +6200,7 @@ class Enemy extends Unit {
                 s *= 0.60; // 40% speed reduction while passing through laser fence
             }
         }
-        if (this.isSC2() && now < this.frozenUntil) {
+        if (this.isPhase2Unit() && now < this.frozenUntil) {
             s *= 0.50; // SC2 units are only slowed by cryo freeze, not stunned
         }
         return s;
@@ -6228,7 +6212,7 @@ class Enemy extends Unit {
         return this.isAlive() && !this.airborne && isOnPlayableArea(this);
     }
     update(dtFactor = 1.0, now) {
-        if (now < this.frozenUntil && !this.isSC2()) return;
+        if (now < this.frozenUntil && !this.isPhase2Unit()) return;
         if (now < (this.attackPauseUntil || 0) && !this.lunging) {
             this.vx = 0;
             this.vy = 0;
@@ -6673,7 +6657,7 @@ class Enemy extends Unit {
                 this.vx *= Math.pow(0.88, dtFactor);
                 this.vy *= Math.pow(0.88, dtFactor);
             } else {
-                const isFrozen = (this.isSC2() && now < this.frozenUntil);
+                const isFrozen = (this.isPhase2Unit() && now < this.frozenUntil);
                 const effAccel = isFrozen ? this.accel * 0.5 : this.accel;
                 const effMaxSpd = isFrozen ? this.maxSpd * 0.5 : this.maxSpd;
                 this.vx += nx * effAccel * dtFactor;
@@ -7847,8 +7831,8 @@ class Enemy extends Unit {
         // Galloping footstep sound: frequency scales directly with movement speed
         if (spd > 0.1) {
             this.gallopDist = (this.gallopDist || 0) + spd * dtFactor;
-            if (this.gallopDist >= 26) {
-                this.gallopDist %= 26;
+            if (this.gallopDist >= 65) {
+                this.gallopDist %= 65;
                 SoundEngine.felhoundGallop();
             }
         }
@@ -7933,6 +7917,7 @@ class Enemy extends Unit {
                 const warnDuration = 500 * warnMult;
                 this.tentacles.push({
                     state: 'telegraph',
+                    dunkSoundPlayed: false,
                     timer: now + warnDuration, // warning phase scaled by difficulty
                     warnDuration: warnDuration,
                     angle: angle,
@@ -7983,6 +7968,11 @@ class Enemy extends Unit {
                 const currentEndX = t.startX + (t.endX - t.startX) * ratioProgress;
                 const currentEndY = t.startY + (t.endY - t.startY) * ratioProgress;
                 
+                if (Math.floor(t.timer - now) == 100 && t.dunkSoundPlayed === false) {
+                    SoundEngine.flailHit(2);
+                    t.dunkSoundPlayed = true;
+                }
+
                 if (!t.hitUnits) t.hitUnits = new Set();
                 
                 // Check all players caught in the currently extended lash segment
@@ -8020,6 +8010,7 @@ class Enemy extends Unit {
                 
                 if (now >= t.timer) {
                     t.state = 'done';
+                    SoundEngine.flailHit(2);
                 }
             }
         }
@@ -9978,16 +9969,21 @@ class Enemy extends Unit {
             ctx.fill();
 
             // 3. Half-Circle Curved Shield Arc (dark matte burnt-amber barrier)
+            // Fast dual-stroke glow: wide translucent pass instead of expensive shadowBlur
+            ctx.strokeStyle = '#78350f';
+            ctx.globalAlpha = 0.4;
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, sR, facing - sArc, facing + sArc);
+            ctx.stroke();
             ctx.strokeStyle = '#92400e';
-            ctx.shadowColor = '#78350f';
-            ctx.shadowBlur = 4;
+            ctx.globalAlpha = 1;
             ctx.lineWidth = 4.5;
             ctx.beginPath();
             ctx.arc(this.x, this.y, sR, facing - sArc, facing + sArc);
             ctx.stroke();
 
             // Inner subtle bronze accent stripe
-            ctx.shadowBlur = 0;
             ctx.globalAlpha = 0.5;
             ctx.strokeStyle = '#d97706';
             ctx.lineWidth = 1.5;
@@ -10361,13 +10357,17 @@ class Enemy extends Unit {
 
             // Glowing crystal core (pulsing void purple)
             const corePulse = 0.7 + 0.3 * Math.abs(Math.sin(now / 200));
+            // Fast glow: translucent halo pass instead of expensive shadowBlur
+            ctx.fillStyle = '#a855f7';
+            ctx.globalAlpha = 0.35 * corePulse;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y + 2, this.r * 0.32 * 1.8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
             ctx.fillStyle = `rgba(168, 85, 247, ${corePulse})`;
-            ctx.shadowColor = '#a855f7';
-            ctx.shadowBlur = 8;
             ctx.beginPath();
             ctx.arc(this.x, this.y + 2, this.r * 0.32, 0, Math.PI * 2);
             ctx.fill();
-            ctx.shadowBlur = 0;
 
             // Crystal highlight dot
             ctx.fillStyle = '#f3e8ff';
@@ -11060,11 +11060,17 @@ class InstantHitImpact {
 
         // 1. Narrow piercing spike / lance penetrating into the monster
         const pierceLen = (14 + Math.min(20, this.monsterR * 0.7)) * (0.85 + t * 0.25);
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = 2.5 * alpha;
-        ctx.shadowColor = this.color;
-        ctx.shadowBlur = 8 * alpha;
         ctx.lineCap = 'round';
+        // Fast dual-stroke glow (wide translucent pass) instead of expensive shadowBlur
+        ctx.strokeStyle = this.color;
+        ctx.globalAlpha = 0.35 * alpha;
+        ctx.lineWidth = 6 * alpha;
+        ctx.beginPath();
+        ctx.moveTo(-3, 0);
+        ctx.lineTo(pierceLen, 0);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 2.5 * alpha;
         ctx.beginPath();
         ctx.moveTo(-3, 0);
         ctx.lineTo(pierceLen, 0);
@@ -11143,11 +11149,17 @@ class InstantMuzzleFlash {
 
         // 1. Forward directional muzzle needle spike
         const beamLen = (15 + t * 6) * alpha;
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = 2.5 * alpha;
-        ctx.shadowColor = this.color;
-        ctx.shadowBlur = 8 * alpha;
         ctx.lineCap = 'round';
+        // Fast dual-stroke glow (wide translucent pass) instead of expensive shadowBlur
+        ctx.strokeStyle = this.color;
+        ctx.globalAlpha = 0.35 * alpha;
+        ctx.lineWidth = 6 * alpha;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(beamLen, 0);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 2.5 * alpha;
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(beamLen, 0);
@@ -12188,60 +12200,6 @@ class SniperProjectile {
         ctx.arc(this.x, this.y, 1.5, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.restore();
-    }
-}
-
-class ChainHitVisual {
-    constructor(x, y, L, W, angle, now) {
-        this.x = x; this.y = y; this.L = L; this.W = W;
-        this.angle = angle;
-        this.spawnTime = now;
-        this.duration = 300;
-        this.dead = false;
-    }
-    update(dt, now) {
-        if (now - this.spawnTime > this.duration) {
-            this.dead = true;
-        }
-    }
-    draw(now) {
-        const elapsed = now - this.spawnTime;
-        const t = Math.min(1, elapsed / this.duration);
-        ctx.save();
-        
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.angle);
-        
-        // Outer faint rectangle highlight for damage area
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(0, -this.W / 2, this.L, this.W);
-        
-        // Draw metallic steel links extending straight forward
-        const segments = 16;
-        const activeLength = this.L * t;
-        for (let i = 1; i <= segments; i++) {
-            const frac = i / segments;
-            const dist = activeLength * frac;
-            const lx = dist;
-            const ly = 0;
-            
-            // Steel link backing
-            ctx.strokeStyle = '#444444';
-            ctx.fillStyle = '#b0b5bc';
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            ctx.arc(lx, ly, 10 * (1 - t * 0.2), 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            
-            // Core white steel sheen reflection
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.arc(lx - 2, ly - 2, 3, 0, Math.PI * 2);
-            ctx.fill();
-        }
         ctx.restore();
     }
 }
@@ -13378,13 +13336,18 @@ class TurretEntity extends Unit {
                     const p1x = (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * midX + t * t * x1;
                     const p1y = (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * midY + t * t * y1;
 
-                    // High-energy laser surge line
+                    // Fast dual-stroke glow: wide translucent pass instead of expensive shadowBlur
                     ctx.strokeStyle = fenceColor;
-                    ctx.lineWidth = isLaserWall ? 4.0 : 2.5;
-                    ctx.shadowColor = fenceColor;
-                    ctx.shadowBlur = isLaserWall ? 14 : 8;
-                    ctx.globalAlpha = 0.95;
+                    ctx.lineWidth = (isLaserWall ? 4.0 : 2.5) + (isLaserWall ? 8 : 5);
+                    ctx.globalAlpha = 0.35;
+                    ctx.beginPath();
+                    ctx.moveTo(p0x, p0y);
+                    ctx.quadraticCurveTo(pMidX, pMidY, p1x, p1y);
+                    ctx.stroke();
 
+                    // High-energy laser surge line
+                    ctx.lineWidth = isLaserWall ? 4.0 : 2.5;
+                    ctx.globalAlpha = 0.95;
                     ctx.beginPath();
                     ctx.moveTo(p0x, p0y);
                     ctx.quadraticCurveTo(pMidX, pMidY, p1x, p1y);
@@ -13396,22 +13359,31 @@ class TurretEntity extends Unit {
                     ctx.globalAlpha = 0.90;
                     ctx.stroke();
 
-                    // Leading edge plasma spark head forging the fence
+                    // Leading edge plasma spark head forging the fence (translucent halo instead of shadowBlur)
+                    ctx.fillStyle = fenceColor;
+                    ctx.globalAlpha = 0.35;
+                    ctx.beginPath();
+                    ctx.arc(p1x, p1y, (isLaserWall ? 3.5 : 2.4) + 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
                     ctx.fillStyle = '#ffffff';
-                    ctx.shadowColor = fenceColor;
-                    ctx.shadowBlur = 14;
                     ctx.beginPath();
                     ctx.arc(p1x, p1y, isLaserWall ? 3.5 : 2.4, 0, Math.PI * 2);
                     ctx.fill();
                 } else {
                     // Settled, permanent bio-tendril fence cord
                     const pulse = 0.5 + 0.3 * Math.sin(now * 0.006);
+                    // Fast dual-stroke glow: wide translucent pass instead of expensive shadowBlur
                     ctx.strokeStyle = fenceColor;
-                    ctx.lineWidth = isLaserWall ? 3.0 : 1.8;
-                    ctx.shadowColor = fenceColor;
-                    ctx.shadowBlur = isLaserWall ? 8 : 4;
-                    ctx.globalAlpha = (isLaserWall ? 0.70 : 0.45) * pulse;
+                    ctx.lineWidth = (isLaserWall ? 3.0 : 1.8) + (isLaserWall ? 6 : 4);
+                    ctx.globalAlpha = ((isLaserWall ? 0.70 : 0.45) * pulse) * 0.4;
+                    ctx.beginPath();
+                    ctx.moveTo(x0, y0);
+                    ctx.quadraticCurveTo(midX, midY, x1, y1);
+                    ctx.stroke();
 
+                    ctx.lineWidth = isLaserWall ? 3.0 : 1.8;
+                    ctx.globalAlpha = (isLaserWall ? 0.70 : 0.45) * pulse;
                     ctx.beginPath();
                     ctx.moveTo(x0, y0);
                     ctx.quadraticCurveTo(midX, midY, x1, y1);
@@ -15396,10 +15368,14 @@ class HealthPack {
     }
     draw() {
         ctx.save();
-        ctx.fillStyle = '#ff1155';
-        ctx.shadowColor = '#ff1155';
-        ctx.shadowBlur = 15;
         const size = this.r * 1.6;
+        // Fast glow: translucent halo pass instead of expensive shadowBlur
+        ctx.fillStyle = '#ff1155';
+        ctx.globalAlpha = 0.35;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, size * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
         ctx.fillRect(this.x - size / 2, this.y - size / 2, size, size);
         
         ctx.fillStyle = '#ffffff';
@@ -15602,6 +15578,8 @@ class GoldenPillarParticle {
         this.elapsed = 0;
         // Slight horizontal wobble
         this.vx = (Math.random() - 0.5) * 0.4;
+        // Built once in local space (0,0)-(0,h); reused every frame via ctx.translate instead of recreating per-frame
+        this.grad = null;
     }
     update(dt) {
         this.elapsed += dt;
@@ -15617,20 +15595,23 @@ class GoldenPillarParticle {
         // Fade in over first 15%, sustain, fade out
         const fadeIn = Math.min(1, (1 - t) / 0.15);
         const alpha = Math.min(fadeIn, t) * 0.85;
+        if (!this.grad) {
+            this.grad = ctx.createLinearGradient(0, 0, 0, this.h);
+            this.grad.addColorStop(0, '#ffffff');
+            this.grad.addColorStop(0.3, '#ffd700');
+            this.grad.addColorStop(1, 'rgba(255,160,0,0)');
+        }
         ctx.save();
         ctx.globalAlpha = alpha;
-        const grad = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.h);
-        grad.addColorStop(0, '#ffffff');
-        grad.addColorStop(0.3, '#ffd700');
-        grad.addColorStop(1, 'rgba(255,160,0,0)');
-        ctx.fillStyle = grad;
+        ctx.translate(this.x, this.y);
+        ctx.fillStyle = this.grad;
         ctx.beginPath();
         // Tapered pillar: full width at bottom, narrow at top
         const halfW = this.w / 2;
-        ctx.moveTo(this.x - halfW * 0.3, this.y);        // top-left
-        ctx.lineTo(this.x + halfW * 0.3, this.y);        // top-right
-        ctx.lineTo(this.x + halfW, this.y + this.h);      // bottom-right
-        ctx.lineTo(this.x - halfW, this.y + this.h);      // bottom-left
+        ctx.moveTo(-halfW * 0.3, 0);        // top-left
+        ctx.lineTo(halfW * 0.3, 0);         // top-right
+        ctx.lineTo(halfW, this.h);          // bottom-right
+        ctx.lineTo(-halfW, this.h);         // bottom-left
         ctx.closePath();
         ctx.fill();
         ctx.restore();
@@ -15685,6 +15666,15 @@ function addXp(amount) {
 
 function isOnPlayableArea(thing){
     return (thing.x >= 0 && thing.x <= W && thing.y >= 0 && thing.y <= H)
+}
+
+// Removes non-kept elements in place (no new array allocation), unlike Array.filter()
+function compactAlive(arr, keepFn) {
+    let write = 0;
+    for (let read = 0; read < arr.length; read++) {
+        if (keepFn(arr[read])) arr[write++] = arr[read];
+    }
+    arr.length = write;
 }
 
 function isDamageable(thing){
@@ -18021,6 +18011,8 @@ class JoystickController {
         this.active = true;
         this.pointerId = e.pointerId;
         try { this.zone.setPointerCapture(e.pointerId); } catch (err) {}
+        // Cache the zone rect once per drag gesture instead of forcing layout on every move event
+        this.cachedRect = this.zone.getBoundingClientRect();
         this.updatePosition(e);
     }
 
@@ -18039,7 +18031,7 @@ class JoystickController {
     }
 
     updatePosition(e) {
-        const rect = this.zone.getBoundingClientRect();
+        const rect = this.cachedRect || this.zone.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         const dx = e.clientX - centerX;
@@ -18539,14 +18531,6 @@ function calculateMeanXPGemYield(xpValue) {
     return total / trials;
 }
 
-const MONSTER_BASE_XP = {
-    swarm: 1, brute: 2, mega_brute: 3, brute_lord: 4, speeder: 5,
-    meteor: 6, dasher: 7, shooter: 8, spiky: 10, baneling: 50,
-    marauder: 20, stalker: 30, zergling: 0, spine_crawler: 40, sentry: 40,
-    medivac: 60, warp_anomaly: 70, hellion: 80, shield_bearer: 90, viper: 100,
-    octopus: 500, felhound: 1000, behemoth: 0
-};
-
 function getSpawnProbabilitiesAtTime(e) {
     const probs = {};
     if (e >= 720000) {
@@ -18812,13 +18796,11 @@ const FX_SOUND_CATALOG = [
     { id: 'nukeExplosion', name: 'Nuclear Blast', category: 'CRITICAL', icon: '☢️', desc: 'Deep sub-bass shockwave rumble', fn: () => SoundEngine.nukeExplosion() },
     { id: 'bossWarning', name: 'Boss Pre-Wave Alarm', category: 'CRITICAL', icon: '🚨', desc: '4-pulse countdown alarm 5s before boss', fn: () => SoundEngine.bossWarning() },
     { id: 'campervan', name: 'Campervan Rampage', category: 'CRITICAL', icon: '🚐', desc: 'Retro dual-tone vehicle horn', fn: () => SoundEngine.campervan() },
-    { id: 'behemothErupt', name: 'Behemoth Eruption', category: 'CRITICAL', icon: '🌋', desc: 'Massive ground breakout shockwave blast', fn: () => SoundEngine.behemothErupt() },
     { id: 'playerDamaged', name: 'Player Damaged', category: 'HIGH', icon: '🩸', desc: 'Visceral impact thud', fn: () => SoundEngine.playerDamaged() },
     { id: 'phaseDash', name: 'Phase Dash', category: 'HIGH', icon: '💨', desc: 'ZzFX warp displacement whoosh', fn: () => SoundEngine.phaseDash() },
     { id: 'shieldBlock', name: 'Deflector Shield', category: 'HIGH', icon: '🛡️', desc: 'Resonant metallic laser block ring', fn: () => SoundEngine.shieldBlock() },
     { id: 'supplyDrop', name: 'Supply Drop', category: 'HIGH', icon: '📦', desc: 'Crisp high double-ping landing & dispenser chime', fn: () => SoundEngine.supplyDrop() },
     { id: 'medivacHeal', name: 'Medivac Heal Beam', category: 'HIGH', icon: '💉', desc: 'ZzFX soothing bio-energy restorative beam pulse', fn: () => SoundEngine.medivacHeal() },
-    { id: 'behemothRoar', name: 'Behemoth Roar', category: 'HIGH', icon: '🦖', desc: 'Deep primal boss roar & resonance', fn: () => SoundEngine.behemothRoar() },
     { id: 'behemothCleave', name: 'Titan Kaiser Cleave / Cone', category: 'HIGH', icon: '🪓', desc: 'ZzFX heavy frontal cone impact strike', fn: () => SoundEngine.behemothCleave() },
     { id: 'behemothBurrow', name: 'Behemoth Burrow', category: 'HIGH', icon: '🕳️', desc: 'Subterranean rumble dive into earth', fn: () => SoundEngine.behemothBurrow() },
     { id: 'titanSprint', name: 'Titan Sprint Launch', category: 'HIGH', icon: '🦏', desc: 'ZzFX heavy thundering trample charge launch', fn: () => SoundEngine.titanSprint() },
@@ -19174,14 +19156,14 @@ function update(dt, dtFactor, now) {
             GAME_STATE.attractingVipers = GAME_STATE.attractingVipers.filter(e => e.hp > 0 && e.viperState === 'stopped_attracting');
         }
     }
-    GAME_STATE.projectiles = GAME_STATE.projectiles.filter(p => !p.dead);
-    GAME_STATE.enemyProjectiles = GAME_STATE.enemyProjectiles.filter(p => !p.dead);
-    GAME_STATE.hazards = GAME_STATE.hazards.filter(h => !h.dead);
-    GAME_STATE.magneticMines = GAME_STATE.magneticMines.filter(m => !m.dead);
-    GAME_STATE.turrets = GAME_STATE.turrets.filter(t => t.alive);
-    GAME_STATE.gems = GAME_STATE.gems.filter(g => !g.dead);
-    
-    GAME_STATE.particles = GAME_STATE.particles.filter(p => !p.dead);
+    compactAlive(GAME_STATE.projectiles, p => !p.dead);
+    compactAlive(GAME_STATE.enemyProjectiles, p => !p.dead);
+    compactAlive(GAME_STATE.hazards, h => !h.dead);
+    compactAlive(GAME_STATE.magneticMines, m => !m.dead);
+    compactAlive(GAME_STATE.turrets, t => t.alive);
+    compactAlive(GAME_STATE.gems, g => !g.dead);
+
+    compactAlive(GAME_STATE.particles, p => !p.dead);
     // Cap particles to avoid drawing overhead (450 leaves room for golden pillar revive rings)
     if (GAME_STATE.particles.length > 450) {
         GAME_STATE.particles = GAME_STATE.particles.slice(-450);
@@ -19501,7 +19483,7 @@ function drawPlayerFocusArrow(p, now) {
 }
 
 function updateUI() {
-    document.getElementById('xpBar').style.width = ((GAME_STATE.xp / GAME_STATE.nextXp) * 100) + '%';
+    xpBarEl.style.width = ((GAME_STATE.xp / GAME_STATE.nextXp) * 100) + '%';
     const playerRows = GAME_STATE.players.map((p, i) => {
         if (p.alive) {
             return `<div style="margin-top:2px;"><span style="color:${p.color}">P${i + 1} ${Math.ceil(p.hp)}/${p.maxHp}</span></div>`;
@@ -19516,10 +19498,9 @@ function updateUI() {
         }
         return `<div style="margin-top:2px;"><span style="color:${p.color};opacity:0.55">P${i + 1} &#9760;${rem}s</span></div>`;
     }).join('');
-    document.getElementById('stats').innerHTML = `Level: ${GAME_STATE.level} | Kills: ${GAME_STATE.kills}${playerRows}`;
+    statsEl.innerHTML = `Level: ${GAME_STATE.level} | Kills: ${GAME_STATE.kills}${playerRows}`;
 
     // HP pulsate: apply golden glow animation to #stats when a player was just healed/revived
-    const statsEl = document.getElementById('stats');
     const anyPulsing = GAME_STATE.players.some(p => p.hpPulseUntil && gameClock < p.hpPulseUntil);
     if (anyPulsing && !statsEl._hpPulseActive) {
         statsEl._hpPulseActive = true;
@@ -19532,9 +19513,9 @@ function updateUI() {
     }
     const mins = Math.floor(GAME_STATE.elapsed / 60000);
     const secs = Math.floor((GAME_STATE.elapsed % 60000) / 1000);
-    document.getElementById('timer').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
 
-    const fpsEl = document.getElementById('fpsCounter');
+    const fpsEl = fpsCounterEl;
     if (fpsEl) {
         if (GAME_STATE.testingMode && GAME_STATE.current === STATES.GAMEPLAY) {
             fpsEl.style.display = 'block';
