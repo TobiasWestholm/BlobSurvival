@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Blob Survival</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="js/multiplayer.js"></script>
 <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #111; overflow: hidden; font-family: sans-serif; color: white; -webkit-tap-highlight-color: transparent; }
     canvas { display: block; background: #1a1a1a; position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
@@ -696,10 +698,105 @@
         }
     }
     
-    /* Virtual Joystick Styles */
-    #joystickZone { display: none; position: fixed; bottom: 35px; left: 50%; transform: translateX(-50%); width: 140px; height: 140px; z-index: 50; touch-action: none; user-select: none; -webkit-user-select: none; }
-    #joystickBase { position: absolute; top: 0; left: 0; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle, rgba(0,255,204,0.08) 0%, rgba(0,0,0,0.5) 70%); border: 2px solid rgba(0,255,204,0.4); box-shadow: 0 0 15px rgba(0,255,204,0.15); box-sizing: border-box; }
-    #joystickThumb { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; margin-top: -25px; margin-left: -25px; border-radius: 50%; background: radial-gradient(circle, #00ffcc 20%, #009977 100%); border: 2px solid #ffffff; box-shadow: 0 0 12px rgba(0,255,204,0.7); pointer-events: none; transform: translate(0px, 0px); }
+    /* Multiplayer & Lobby UI Styles */
+    #inviteCodeBanner {
+        display: none;
+        position: fixed;
+        bottom: max(14px, env(safe-area-inset-bottom, 14px));
+        left: max(14px, env(safe-area-inset-left, 14px));
+        z-index: 130;
+        background: rgba(14, 14, 22, 0.94);
+        border: 1.5px solid #00ffcc;
+        border-radius: 8px;
+        padding: 8px 14px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        box-shadow: 0 0 16px rgba(0, 255, 204, 0.25);
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+        transition: all 0.15s ease;
+    }
+    #inviteCodeBanner:hover {
+        background: rgba(0, 255, 204, 0.15);
+        box-shadow: 0 0 20px rgba(0, 255, 204, 0.45);
+    }
+    #inviteCodeBanner .code-text {
+        font-size: 15px;
+        font-weight: bold;
+        color: #00ffcc;
+        letter-spacing: 1px;
+    }
+    #inviteCodeBanner.copied {
+        border-color: #76ff03;
+        background: rgba(118, 255, 3, 0.18);
+    }
+
+    #lobbyStartBtn {
+        display: none;
+        position: fixed;
+        bottom: calc(max(14px, env(safe-area-inset-bottom, 14px)) + 55px);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 135;
+        padding: 12px 34px;
+        font-size: 17px;
+        font-weight: bold;
+        color: #000;
+        background: #00ffcc;
+        border: 2px solid #ffffff;
+        border-radius: 30px;
+        cursor: pointer;
+        box-shadow: 0 0 25px rgba(0, 255, 204, 0.7);
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+        transition: all 0.2s ease;
+    }
+    #lobbyStartBtn:hover:not(:disabled) {
+        transform: translateX(-50%) scale(1.06);
+        box-shadow: 0 0 35px rgba(0, 255, 204, 0.9);
+    }
+    #lobbyStartBtn:disabled {
+        background: #333;
+        color: #777;
+        border-color: #555;
+        box-shadow: none;
+        cursor: not-allowed;
+        transform: translateX(-50%) scale(0.96);
+    }
+
+    .player-panel.placeholder-panel {
+        border-style: dashed !important;
+        border-color: #555 !important;
+        background: rgba(14, 14, 20, 0.65) !important;
+        box-shadow: none !important;
+    }
+    .waiting-spinner {
+        width: 24px;
+        height: 24px;
+        border: 3px solid rgba(255,255,255,0.15);
+        border-top-color: #00ffcc;
+        border-radius: 50%;
+        margin: 12px auto 6px;
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .upgrade-btn.selected-weapon {
+        border-color: #00ffcc !important;
+        background: rgba(0, 255, 204, 0.25) !important;
+        box-shadow: 0 0 14px rgba(0, 255, 204, 0.35) !important;
+        color: #ffffff !important;
+    }
+    .upgrade-btn.selected-weapon .name {
+        color: #00ffcc !important;
+    }
 </style>
 </head>
 <body>
@@ -719,16 +816,63 @@
 
 <div id="startMenu" class="modal show">
     <h1>BLOB SURVIVAL</h1>
-    <div id="playerStep">
-        <p>Pick how many players will survive together.<br>Weapons fire automatically. Survive!</p>
+    
+    <!-- Step 1: Mode Selection -->
+    <div id="modeStep">
+        <p id="modePrompt">Select game mode:</p>
+        <div class="difficulty-list">
+            <button class="upgrade-btn difficulty-card" id="btnModeSingle">
+                <span class="name">SINGLEPLAYER</span>
+                <span class="desc">Survive alone against the relentless monster hordes</span>
+            </button>
+            <button class="upgrade-btn difficulty-card" id="btnModeLocal">
+                <span class="name">LOCAL MULTIPLAYER</span>
+                <span class="desc">Share the keyboard with 2–4 players on one screen</span>
+            </button>
+            <button class="upgrade-btn difficulty-card" id="btnModeOnline">
+                <span class="name">ONLINE MULTIPLAYER</span>
+                <span class="desc">Play online together with friends using invite codes</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Step 2: Online Choice (Host or Join) -->
+    <div id="onlineChoiceStep" style="display:none">
+        <p>Online Multiplayer</p>
+        <div class="difficulty-list">
+            <button class="upgrade-btn difficulty-card" id="btnOnlineHost">
+                <span class="name">HOST A ROOM</span>
+                <span class="desc">Create a new game and invite friends with a code or link</span>
+            </button>
+            <button class="upgrade-btn difficulty-card" id="btnOnlineJoin">
+                <span class="name">JOIN A ROOM</span>
+                <span class="desc">Enter a friend's room invite code to join their game</span>
+            </button>
+        </div>
+        <button class="upgrade-btn back-btn" id="backFromOnlineChoice"><span class="name">← Back</span></button>
+    </div>
+
+    <!-- Step 3: Join Room Dialog -->
+    <div id="joinRoomStep" style="display:none">
+        <p>Join Online Game</p>
+        <div style="margin: 15px 0;">
+            <input id="joinCodeInput" type="text" placeholder="e.g. BLOB-4821" maxlength="12" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" style="width: 85%; max-width: 320px; padding: 12px 16px; font-size: 20px; font-weight: bold; text-transform: uppercase; text-align: center; background: #1a1a24; color: #00ffcc; border: 2px solid #00ffcc; border-radius: 8px; box-sizing: border-box; outline: none;">
+            <div id="joinStatus" style="font-size: 13px; color: #ffaa00; margin-top: 8px; min-height: 18px;"></div>
+        </div>
+        <button class="upgrade-btn" id="btnSubmitJoin"><span class="name">CONNECT TO ROOM</span></button>
+        <button class="upgrade-btn back-btn" id="backFromJoin"><span class="name">← Back</span></button>
+    </div>
+
+    <!-- Step 4: Player Count (for Local Multiplayer) -->
+    <div id="playerStep" style="display:none">
+        <p>Pick how many players will survive together:</p>
         <div class="player-grid">
-            <button class="upgrade-btn" data-players="1"><span class="name">1 PLAYER</span></button>
             <button class="upgrade-btn" data-players="2"><span class="name">2 PLAYERS</span></button>
             <button class="upgrade-btn" data-players="3"><span class="name">3 PLAYERS</span></button>
             <button class="upgrade-btn" data-players="4"><span class="name">4 PLAYERS</span></button>
         </div>
-        <div class="controls-help">
-            <div class="controls-title">MOVEMENT CONTROLS</div>
+        <div class="controls-help" style="margin-top: 15px;">
+            <div class="controls-title">LOCAL MOVEMENT CONTROLS</div>
             <div class="controls-grid">
                 <div><b>Player 1:</b> WASD</div>
                 <div><b>Player 2:</b> Arrow Keys (↑ ← ↓ →)</div>
@@ -736,7 +880,10 @@
                 <div><b>Player 4:</b> U H J K (up/left/down/right)</div>
             </div>
         </div>
+        <button class="upgrade-btn back-btn" id="backToModesFromPlayers"><span class="name">← Back</span></button>
     </div>
+
+    <!-- Step 5: Difficulty Selection -->
     <div id="difficultyStep" style="display:none">
         <p id="difficultyPrompt">Select difficulty</p>
         <div class="difficulty-list">
@@ -753,9 +900,19 @@
                 <span class="desc">Deal 100% dmg · take 100% dmg · standard aim · 100% movement speed</span>
             </button>
         </div>
-        <button class="upgrade-btn back-btn" id="backToPlayers"><span class="name">← Back</span></button>
+        <button class="upgrade-btn back-btn" id="backToPreviousFromDiff"><span class="name">← Back</span></button>
     </div>
 </div>
+
+<!-- Floating Invite Code Banner (Bottom Left during Online Host) -->
+<div id="inviteCodeBanner">
+    <div style="font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px;">Invite Code</div>
+    <div class="code-text" id="inviteCodeText">BLOB-XXXX</div>
+    <div id="inviteCopyHint" style="font-size: 10px; color: #00ffcc; opacity: 0.85; margin-top: 2px;">Click to copy link</div>
+</div>
+
+<!-- Floating Lobby Start Button (Host in Local & Online Multiplayer) -->
+<button id="lobbyStartBtn" disabled>START GAME</button>
 <button id="testingBtn" style="display: none; position: fixed; bottom: 20px; left: 20px; z-index: 10; background: #222; color: #00ffcc; border: 1px solid #00ffcc; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 0 10px rgba(0,255,200,0.3); pointer-events: auto;">TESTING</button>
 
 
@@ -4618,8 +4775,15 @@ class Player extends Unit {
         let moveX = 0, moveY = 0;
         let hasJoystick = false;
 
-        // Player 1 can use virtual joystick if active
-        if (this.index === 0 && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector.active) {
+        // Player 1 can use virtual joystick if active; remote peers on host read remoteInput
+        if (typeof netManager !== 'undefined' && netManager && netManager.isHost && this.index > 0 && this.remoteInput) {
+            moveX = this.remoteInput.moveX || 0;
+            moveY = this.remoteInput.moveY || 0;
+            if (this.remoteInput.angle !== undefined) {
+                this.facingAngle = this.remoteInput.angle;
+            }
+            hasJoystick = true;
+        } else if (this.index === 0 && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector.active) {
             moveX = joystickInstance.vector.x; // Unit vector Math.cos(angle) -> continuous 360-degree max speed
             moveY = joystickInstance.vector.y; // Unit vector Math.sin(angle)
             this.facingAngle = joystickInstance.vector.angle;
@@ -4712,6 +4876,10 @@ class Player extends Unit {
         this.x += this.vx * dtFactor;
         this.y += this.vy * dtFactor;
         this.clampToArena();
+
+        if (GAME_STATE.current === STATES.WEAPON_SELECT) {
+            return; // In pre-game lobby: do not fire weapons or process combat
+        }
 
         for (const w of this.weapons) w.update(now);
 
@@ -16364,39 +16532,157 @@ window.addEventListener('keydown', (e) => {
 const tip = document.getElementById('tipText');
 
 // ---------------- Starting Weapon Selection ----------------
+const WEAPON_LABELS = {
+    'magic_missile': 'Ranged',
+    'melee_sweep': 'Melee',
+    'proximity_mine': 'Explosives',
+    'turret': 'Structures'
+};
+
+// ---------------- Starting Weapon Selection ----------------
 function startWeaponSelectFlow() {
     GAME_STATE.current = STATES.WEAPON_SELECT;
-    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    if (isMobile && typeof joystickZone !== 'undefined' && joystickZone) {
+        joystickZone.style.display = 'block';
+    }
     const uiLayer = document.querySelector('.ui-layer');
     if (uiLayer) uiLayer.style.display = 'block';
-    const layer = document.getElementById('levelUpLayer');
-    layer.innerHTML = '';
-    const count = GAME_STATE.players.length;
-    GAME_STATE.pendingPicks = count;
+    
     tip.textContent = 'Tip: ' + fetchTip();
     tip.style.display = 'block';
-    for (const player of GAME_STATE.players) {
-        layer.appendChild(buildStartingWeaponPanel(player, count));
+
+    renderLobbyWeaponPanels();
+}
+
+function renderLobbyWeaponPanels() {
+    const layer = document.getElementById('levelUpLayer');
+    layer.innerHTML = '';
+    const isSingle = (GAME_STATE.gameMode === 'single');
+    const isLocal = (GAME_STATE.gameMode === 'local');
+    const isOnlineHost = (GAME_STATE.gameMode === 'online' && netManager.isHost);
+    const isOnlineClient = (GAME_STATE.gameMode === 'online' && netManager.isClient);
+
+    const lobbyStartBtn = document.getElementById('lobbyStartBtn');
+    const inviteBanner = document.getElementById('inviteCodeBanner');
+
+    if (isSingle) {
+        if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
+        if (inviteBanner) inviteBanner.style.display = 'none';
+        const player = GAME_STATE.players[0];
+        layer.appendChild(buildStartingWeaponPanel(player, 1, true));
+    } else if (isLocal) {
+        if (lobbyStartBtn) {
+            lobbyStartBtn.style.display = 'block';
+            lobbyStartBtn.disabled = !GAME_STATE.players.every(p => p.selectedWeapon);
+            lobbyStartBtn.onclick = () => {
+                lobbyStartBtn.style.display = 'none';
+                layer.classList.remove('show');
+                tip.style.display = 'none';
+                startCountdown(true);
+            };
+        }
+        if (inviteBanner) inviteBanner.style.display = 'none';
+        const count = GAME_STATE.players.length;
+        for (const player of GAME_STATE.players) {
+            layer.appendChild(buildStartingWeaponPanel(player, count, true));
+        }
+    } else if (isOnlineHost) {
+        if (inviteBanner) {
+            inviteBanner.style.display = 'block';
+            document.getElementById('inviteCodeText').textContent = netManager.roomCode || 'BLOB-XXXX';
+        }
+        if (lobbyStartBtn) {
+            lobbyStartBtn.style.display = 'block';
+            const allReady = GAME_STATE.players.length > 0 && GAME_STATE.players.every(p => p.selectedWeapon);
+            lobbyStartBtn.disabled = !allReady;
+            lobbyStartBtn.onclick = () => {
+                lobbyStartBtn.style.display = 'none';
+                if (inviteBanner) inviteBanner.style.display = 'none';
+                layer.classList.remove('show');
+                tip.style.display = 'none';
+                netManager.broadcast({ type: 'START_GAME_COUNTDOWN', isNewGame: true });
+                startCountdown(true);
+            };
+        }
+        if (isMobile) {
+            // On mobile, show only host's panel
+            const player = GAME_STATE.players[0];
+            layer.appendChild(buildStartingWeaponPanel(player, 1, true));
+        } else {
+            // On desktop, show 4 slots (active + placeholders)
+            for (let i = 0; i < 4; i++) {
+                const player = GAME_STATE.players[i];
+                if (player) {
+                    layer.appendChild(buildStartingWeaponPanel(player, 4, i === 0));
+                } else {
+                    layer.appendChild(buildPlaceholderPanel(i, 4));
+                }
+            }
+        }
+    } else if (isOnlineClient) {
+        if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
+        if (inviteBanner) inviteBanner.style.display = 'none';
+        const myIndex = netManager.localPlayerIndex;
+        if (isMobile) {
+            // On mobile, show only client's own panel
+            const player = GAME_STATE.players[myIndex] || new Player(myIndex, PLAYER_DEFS[myIndex]);
+            layer.appendChild(buildStartingWeaponPanel(player, 1, true));
+        } else {
+            // On desktop, show 4 slots (interactive only for myIndex)
+            for (let i = 0; i < 4; i++) {
+                const player = GAME_STATE.players[i];
+                if (player) {
+                    layer.appendChild(buildStartingWeaponPanel(player, 4, i === myIndex));
+                } else {
+                    layer.appendChild(buildPlaceholderPanel(i, 4));
+                }
+            }
+        }
     }
     layer.classList.add('show');
 }
 
-function buildStartingWeaponPanel(player, count) {
+function buildPlaceholderPanel(index, count) {
+    const panel = document.createElement('div');
+    panel.className = 'player-panel placeholder-panel';
+    panel.style.cssText = getPanelPosition(index, count);
+    panel.style.borderColor = '#444';
+
+    const title = document.createElement('h3');
+    title.className = 'panel-title';
+    title.textContent = `Player ${index + 1}`;
+    title.style.color = '#777';
+    panel.appendChild(title);
+
+    const sub = document.createElement('div');
+    sub.className = 'panel-sub';
+    sub.textContent = 'Waiting for player to join...';
+    panel.appendChild(sub);
+
+    const spinner = document.createElement('div');
+    spinner.className = 'waiting-spinner';
+    panel.appendChild(spinner);
+
+    return panel;
+}
+
+function buildStartingWeaponPanel(player, count, isInteractive) {
     const panel = document.createElement('div');
     panel.className = 'player-panel';
+    panel.id = `playerPanel_${player.index}`;
     panel.style.cssText = getPanelPosition(player.index, count);
     panel.style.borderColor = player.color;
     const n = player.index + 1;
 
     const title = document.createElement('h3');
     title.className = 'panel-title';
-    title.textContent = count > 1 ? `Player ${n} (controls: ${player.keysText})` : 'Starting Weapon';
+    title.textContent = (count > 1 && !isMobile) ? `Player ${n} (${player.keysText})` : `Player ${n} Starting Weapon`;
     title.style.color = player.color;
     panel.appendChild(title);
 
     const sub = document.createElement('div');
     sub.className = 'panel-sub';
-    sub.textContent = 'Select your starting weapon of choice:';
+    sub.textContent = isInteractive ? 'Select your starting weapon of choice:' : 'Choosing weapon...';
     panel.appendChild(sub);
 
     const addHelpAndTag = (btn, upgradeId, isOneShot) => {
@@ -16423,70 +16709,85 @@ function buildStartingWeaponPanel(player, count) {
         btn.appendChild(topControls);
     };
 
-    // Option 1: Ranged (Magic Missile)
-    const btnMissile = document.createElement('button');
-    btnMissile.className = 'upgrade-btn';
-    btnMissile.innerHTML = '<span class="name">Ranged</span>Magic Missile — Homing projectile. Fires at closest enemy.';
-    btnMissile.onclick = () => {
-        player.unlockWeapon('magic_missile');
-        onStartingWeaponChose(panel, player);
-    };
-    addHelpAndTag(btnMissile, 'unlock_missile', true);
-    panel.appendChild(btnMissile);
+    const weaponsList = [
+        { id: 'magic_missile', upgradeId: 'unlock_missile', name: 'Ranged', desc: 'Magic Missile — Homing projectile. Fires at closest enemy.' },
+        { id: 'melee_sweep', upgradeId: 'unlock_melee', name: 'Melee', desc: 'Melee Sweep — Quick sweep. Hits all enemies in close range.' },
+        { id: 'proximity_mine', upgradeId: 'unlock_mine', name: 'Explosives', desc: 'Proximity Mine — Drops mines that explode for AoE damage.' },
+        { id: 'turret', upgradeId: 'unlock_turret', name: 'Structures', desc: 'Auto-Turret — Drops stationary turrets that fire missiles.' }
+    ];
 
-    // Option 2: Melee (Melee Sweep)
-    const btnMelee = document.createElement('button');
-    btnMelee.className = 'upgrade-btn';
-    btnMelee.innerHTML = '<span class="name">Melee</span>Melee Sweep — Quick sweep. Hits all enemies in close range.';
-    btnMelee.onclick = () => {
-        player.unlockWeapon('melee_sweep');
-        onStartingWeaponChose(panel, player);
-    };
-    addHelpAndTag(btnMelee, 'unlock_melee', true);
-    panel.appendChild(btnMelee);
+    for (const w of weaponsList) {
+        const btn = document.createElement('button');
+        btn.className = 'upgrade-btn';
+        btn.dataset.weaponId = w.id;
+        if (player.selectedWeapon === w.id) {
+            btn.classList.add('selected-weapon');
+        }
+        btn.innerHTML = `<span class="name">${w.name}</span>${w.desc}`;
+        
+        if (isInteractive) {
+            btn.onclick = () => {
+                selectStartingWeapon(player, w.id, w.name, panel);
+            };
+        } else {
+            btn.disabled = true;
+            btn.style.opacity = '0.65';
+        }
+        
+        addHelpAndTag(btn, w.upgradeId, true);
+        panel.appendChild(btn);
+    }
 
-    // Option 3: Explosives (Proximity Mine)
-    const btnMine = document.createElement('button');
-    btnMine.className = 'upgrade-btn';
-    btnMine.innerHTML = '<span class="name">Explosives</span>Proximity Mine — Drops mines that explode for AoE damage when stepped on.';
-    btnMine.onclick = () => {
-        player.unlockWeapon('proximity_mine');
-        onStartingWeaponChose(panel, player);
-    };
-    addHelpAndTag(btnMine, 'unlock_mine', true);
-    panel.appendChild(btnMine);
-
-    // Option 4: Structures (Auto-Turret)
-    const btnTurret = document.createElement('button');
-    btnTurret.className = 'upgrade-btn';
-    btnTurret.innerHTML = '<span class="name">Structures</span>Auto-Turret — Drops stationary turrets that fire high-speed missiles for 35s.';
-    btnTurret.onclick = () => {
-        player.unlockWeapon('turret');
-        onStartingWeaponChose(panel, player);
-    };
-    addHelpAndTag(btnTurret, 'unlock_turret', true);
-    panel.appendChild(btnTurret);
+    // Status ready indicator
+    const statusDiv = document.createElement('div');
+    statusDiv.className = 'panel-status';
+    statusDiv.id = `panelStatus_${player.index}`;
+    statusDiv.style.cssText = `margin-top: 8px; font-weight: bold; color: ${player.color}; font-size: 14px; text-align: center;`;
+    if (player.selectedWeapon) {
+        statusDiv.textContent = `✓ Ready: ${player.selectedWeaponLabel}`;
+    }
+    panel.appendChild(statusDiv);
 
     return panel;
 }
 
-function onStartingWeaponChose(panel, player) {
-    if (panel.classList.contains('chosen')) return; // guard against double clicks
-    panel.classList.add('chosen');
-    panel.querySelectorAll('.upgrade-btn').forEach(b => { b.disabled = true; });
-    const tag = document.createElement('div');
-    tag.className = 'panel-done';
-    tag.textContent = '✓ Ready';
-    tag.style.color = player.color;
-    panel.appendChild(tag);
+function selectStartingWeapon(player, weaponId, weaponLabel, panel) {
+    player.selectedWeapon = weaponId;
+    player.selectedWeaponLabel = weaponLabel;
+    player.weapons = [];
+    player.unlockWeapon(weaponId);
 
-    GAME_STATE.pendingPicks--;
-    if (GAME_STATE.pendingPicks > 0) return;
-    
-    // Everyone has chosen, transition to gameplay via countdown
-    document.getElementById('levelUpLayer').classList.remove('show');
-    tip.style.display = 'none';
-    startCountdown(true);
+    // Update UI highlights in this panel
+    panel.querySelectorAll('.upgrade-btn').forEach(b => {
+        b.classList.remove('selected-weapon');
+        if (b.dataset.weaponId === weaponId) b.classList.add('selected-weapon');
+    });
+    const statusDiv = document.getElementById(`panelStatus_${player.index}`);
+    if (statusDiv) statusDiv.textContent = `✓ Ready: ${weaponLabel}`;
+
+    if (GAME_STATE.gameMode === 'single') {
+        document.getElementById('levelUpLayer').classList.remove('show');
+        tip.style.display = 'none';
+        startCountdown(true);
+        return;
+    }
+
+    if (GAME_STATE.gameMode === 'online') {
+        if (netManager.isClient) {
+            netManager.sendWeaponSelection(weaponId);
+        } else if (netManager.isHost) {
+            netManager.broadcastLobbyState(
+                GAME_STATE.players.map(p => ({ index: p.index, selectedWeapon: p.selectedWeapon, selectedWeaponLabel: p.selectedWeaponLabel })),
+                GAME_STATE.players.every(p => p.selectedWeapon)
+            );
+        }
+    }
+
+    // Update Start Button status for Host in Local & Online
+    const lobbyStartBtn = document.getElementById('lobbyStartBtn');
+    if (lobbyStartBtn) {
+        lobbyStartBtn.disabled = !GAME_STATE.players.every(p => p.selectedWeapon);
+    }
 }
 
 // Each pending level = one round in which every player picks their own upgrade.
@@ -16505,10 +16806,26 @@ function beginSelectionRound() {
     if (uiLayer) uiLayer.style.display = 'block';
     const layer = document.getElementById('levelUpLayer');
     layer.innerHTML = '';
-    const count = GAME_STATE.players.length;
-    GAME_STATE.pendingPicks = count;
+    const isOnline = (GAME_STATE.gameMode === 'online');
+    const myIndex = isOnline ? (netManager ? netManager.localPlayerIndex : 0) : 0;
+
+    // Reset current round chosen upgrade names so they only appear once chosen in this round
     for (const player of GAME_STATE.players) {
-        layer.appendChild(buildPlayerPanel(player, count));
+        player.currentLevelUpgradeName = null;
+    }
+
+    if (isOnline && isMobile) {
+        // On mobile in online multiplayer, render only local player's upgrade panel
+        const player = GAME_STATE.players[myIndex] || GAME_STATE.players[0];
+        GAME_STATE.pendingPicks = 1;
+        layer.appendChild(buildPlayerPanel(player, 1, true));
+    } else {
+        const count = GAME_STATE.players.length;
+        GAME_STATE.pendingPicks = count;
+        for (const player of GAME_STATE.players) {
+            const isInteractive = !isOnline || (player.index === myIndex);
+            layer.appendChild(buildPlayerPanel(player, count, isInteractive));
+        }
     }
     layer.classList.add('show');
 }
@@ -16535,9 +16852,10 @@ function getPanelPosition(index, count) {
     ][index];
 }
 
-function buildPlayerPanel(player, count) {
+function buildPlayerPanel(player, count, isInteractive = true) {
     const panel = document.createElement('div');
     panel.className = 'player-panel';
+    panel.id = `levelPanel_${player.index}`;
     panel.style.cssText = getPanelPosition(player.index, count);
     panel.style.borderColor = player.color;
     const n = player.index + 1;
@@ -16550,7 +16868,7 @@ function buildPlayerPanel(player, count) {
 
     const sub = document.createElement('div');
     sub.className = 'panel-sub';
-    sub.textContent = player.alive ? 'Choose an upgrade' : 'Down — applies on revive';
+    sub.textContent = player.alive ? (isInteractive ? 'Choose an upgrade:' : 'Choosing upgrade...') : 'Down — applies on revive';
     panel.appendChild(sub);
 
     for (const u of pickThreeFor(player)) {
@@ -16578,11 +16896,26 @@ function buildPlayerPanel(player, count) {
         topControls.appendChild(helpBtn);
         btn.appendChild(topControls);
 
-        btn.onclick = () => {
-            u.effect(player);
-            if (u.oneShot) player.takenOneShots.add(u.id);
-            onPlayerChose(panel, player);
-        };
+        if (isInteractive) {
+            btn.onclick = () => {
+                u.effect(player);
+                if (u.oneShot) player.takenOneShots.add(u.id);
+                player.currentLevelUpgradeName = u.name;
+                if (GAME_STATE.gameMode === 'online' && netManager.isClient) {
+                    netManager.sendUpgradeSelection(u.id);
+                } else if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+                    netManager.broadcast({
+                        type: 'UPGRADE_CHOSEN_SYNC',
+                        playerIndex: player.index,
+                        upgradeName: u.name
+                    });
+                }
+                onPlayerChose(panel, player);
+            };
+        } else {
+            btn.disabled = true;
+            btn.style.opacity = '0.65';
+        }
         panel.appendChild(btn);
     }
     return panel;
@@ -16594,7 +16927,7 @@ function onPlayerChose(panel, player) {
     panel.querySelectorAll('.upgrade-btn').forEach(b => { b.disabled = true; });
     const tag = document.createElement('div');
     tag.className = 'panel-done';
-    tag.textContent = '✓ Ready';
+    tag.textContent = '✓ Ready — Waiting for other players...';
     tag.style.color = player.color;
     panel.appendChild(tag);
 
@@ -16603,8 +16936,14 @@ function onPlayerChose(panel, player) {
     // everyone has chosen for this level
     document.getElementById('levelUpLayer').classList.remove('show');
     GAME_STATE.pendingLevels--;
-    if (GAME_STATE.pendingLevels > 0) beginSelectionRound();
-    else startCountdown(false);
+    if (GAME_STATE.pendingLevels > 0) {
+        beginSelectionRound();
+    } else {
+        if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+            netManager.broadcast({ type: 'START_GAME_COUNTDOWN', isNewGame: false });
+        }
+        startCountdown(false);
+    }
 }
 
 function startCountdown(isNewGame = false) {
@@ -18125,14 +18464,29 @@ const joystickZone = document.getElementById('joystickZone');
 const joystickThumb = document.getElementById('joystickThumb');
 const joystickInstance = new JoystickController(joystickZone, joystickThumb, 45);
 
+let selectedGameMode = 'single'; // 'single' | 'local' | 'online_host' | 'online_join'
+let pendingPlayerCount = 1;
+
 function showStartStep(step) {
-    document.getElementById('playerStep').style.display = step === 'players' ? 'block' : 'none';
-    document.getElementById('difficultyStep').style.display = step === 'difficulty' ? 'block' : 'none';
+    document.getElementById('modeStep').style.display = (step === 'mode') ? 'block' : 'none';
+    document.getElementById('onlineChoiceStep').style.display = (step === 'onlineChoice') ? 'block' : 'none';
+    document.getElementById('joinRoomStep').style.display = (step === 'joinRoom') ? 'block' : 'none';
+    document.getElementById('playerStep').style.display = (step === 'players') ? 'block' : 'none';
+    document.getElementById('difficultyStep').style.display = (step === 'difficulty') ? 'block' : 'none';
+
+    // On mobile, local multiplayer on one device is omitted
+    const btnLocal = document.getElementById('btnModeLocal');
+    if (btnLocal) btnLocal.style.display = isMobile ? 'none' : 'block';
 }
 
 function showStartMenu() {
     GAME_STATE.current = STATES.START_MENU;
     GAME_STATE.testingMode = false;
+    GAME_STATE.isOnline = false;
+    GAME_STATE.isHost = false;
+    GAME_STATE.isClient = false;
+    if (typeof netManager !== 'undefined' && netManager) netManager.reset();
+
     SoundEngine.startMenuMusic();
     document.getElementById('testingBtn').style.display = ENABLE_TESTING_LAB ? 'block' : 'none';
     const pauseBtn2 = document.getElementById('pauseMenuBtn');
@@ -18144,33 +18498,333 @@ function showStartMenu() {
     if (joystickZone) joystickZone.style.display = 'none';
     if (tip) tip.style.display = 'none';
 
-    if (isMobile) {
-        pendingPlayerCount = 1;
-        document.getElementById('difficultyPrompt').textContent = 'Select difficulty';
-        const backBtn = document.getElementById('backToPlayers');
-        if (backBtn) backBtn.style.display = 'none';
-        showStartStep('difficulty');
-    } else {
-        const backBtn = document.getElementById('backToPlayers');
-        if (backBtn) backBtn.style.display = 'block';
-        showStartStep('players');
-    }
+    const inviteBanner = document.getElementById('inviteCodeBanner');
+    if (inviteBanner) inviteBanner.style.display = 'none';
+    const lobbyStartBtn = document.getElementById('lobbyStartBtn');
+    if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
+
+    showStartStep('mode');
     document.getElementById('startMenu').classList.add('show');
 }
 
-// Start menu is a two-step flow: choose player count, then choose difficulty.
-let pendingPlayerCount = 1;
+// Mode Selection Handlers
+document.getElementById('btnModeSingle').onclick = () => {
+    selectedGameMode = 'single';
+    pendingPlayerCount = 1;
+    GAME_STATE.gameMode = 'single';
+    document.getElementById('difficultyPrompt').textContent = 'Singleplayer — Select Difficulty';
+    showStartStep('difficulty');
+};
+
+document.getElementById('btnModeLocal').onclick = () => {
+    selectedGameMode = 'local';
+    GAME_STATE.gameMode = 'local';
+    showStartStep('players');
+};
+
+document.getElementById('btnModeOnline').onclick = () => {
+    showStartStep('onlineChoice');
+};
+
+// Online Choice Handlers
+document.getElementById('btnOnlineHost').onclick = () => {
+    selectedGameMode = 'online_host';
+    GAME_STATE.gameMode = 'online';
+    GAME_STATE.isOnline = true;
+    GAME_STATE.isHost = true;
+    GAME_STATE.isClient = false;
+    pendingPlayerCount = 1; // starts with 1, others join
+    document.getElementById('difficultyPrompt').textContent = 'Online Co-Op — Select Difficulty';
+    showStartStep('difficulty');
+};
+
+document.getElementById('btnOnlineJoin').onclick = () => {
+    selectedGameMode = 'online_join';
+    GAME_STATE.gameMode = 'online';
+    GAME_STATE.isOnline = true;
+    GAME_STATE.isHost = false;
+    GAME_STATE.isClient = true;
+    document.getElementById('joinStatus').textContent = '';
+    showStartStep('joinRoom');
+};
+
+// Join Room Submit Handler
+async function joinOnlineRoom(code) {
+    const statusEl = document.getElementById('joinStatus');
+    const cleanCode = (code || '').trim().toUpperCase();
+    if (!cleanCode) {
+        if (statusEl) statusEl.textContent = 'Please enter a valid room code (e.g. BLOB-4821)';
+        return;
+    }
+    if (statusEl) statusEl.textContent = `Connecting to room ${cleanCode}...`;
+    try {
+        await netManager.initClient(cleanCode);
+        if (statusEl) statusEl.textContent = 'Connected! Entering room...';
+    } catch (err) {
+        console.error('[Multiplayer] Join failed:', err);
+        if (statusEl) statusEl.textContent = `Could not connect: ${err.message || 'Room not found'}`;
+    }
+}
+
+document.getElementById('btnSubmitJoin').onclick = () => {
+    const code = document.getElementById('joinCodeInput').value;
+    joinOnlineRoom(code);
+};
+
+// Back Navigation Handlers
+document.getElementById('backFromOnlineChoice').onclick = () => showStartStep('mode');
+document.getElementById('backFromJoin').onclick = () => showStartStep('onlineChoice');
+document.getElementById('backToModesFromPlayers').onclick = () => showStartStep('mode');
+document.getElementById('backToPreviousFromDiff').onclick = () => {
+    if (selectedGameMode === 'single') showStartStep('mode');
+    else if (selectedGameMode === 'local') showStartStep('players');
+    else if (selectedGameMode === 'online_host') showStartStep('onlineChoice');
+    else showStartStep('mode');
+};
+
+// Player count for Local Multiplayer
 for (const btn of document.querySelectorAll('#startMenu [data-players]')) {
     btn.onclick = () => {
         pendingPlayerCount = parseInt(btn.dataset.players, 10);
         document.getElementById('difficultyPrompt').textContent =
-            `${pendingPlayerCount} player${pendingPlayerCount > 1 ? 's' : ''} — select difficulty`;
+            `${pendingPlayerCount} Players (Local) — Select Difficulty`;
         showStartStep('difficulty');
     };
 }
+
+// Difficulty buttons click
 for (const btn of document.querySelectorAll('#startMenu [data-difficulty]')) {
-    btn.onclick = () => startGame(pendingPlayerCount, btn.dataset.difficulty);
+    btn.onclick = async () => {
+        const diffKey = btn.dataset.difficulty;
+        if (selectedGameMode === 'online_host') {
+            try {
+                await netManager.initHost();
+                startGame(1, diffKey);
+            } catch (err) {
+                alert('Could not initialize P2P host: ' + err.message);
+            }
+        } else {
+            startGame(pendingPlayerCount, diffKey);
+        }
+    };
 }
+
+// Invite Code Banner Click -> Copy URL & Code to clipboard
+const inviteBanner = document.getElementById('inviteCodeBanner');
+if (inviteBanner) {
+    inviteBanner.onclick = () => {
+        if (!netManager.roomCode) return;
+        const joinUrl = NetworkManager.getJoinUrl(netManager.roomCode);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(joinUrl).then(() => {
+                inviteBanner.classList.add('copied');
+                document.getElementById('inviteCopyHint').textContent = '✓ Link Copied!';
+                setTimeout(() => {
+                    inviteBanner.classList.remove('copied');
+                    document.getElementById('inviteCopyHint').textContent = 'Click to copy link';
+                }, 2200);
+            }).catch(() => {
+                prompt('Share this invite link with friends to play together:', joinUrl);
+            });
+        } else {
+            prompt('Share this invite link with friends to play together:', joinUrl);
+        }
+    };
+}
+
+// --- Multiplayer Network Event Handlers ---
+window.onOnlinePlayerJoined = function(assignedSlot, peerId) {
+    console.log(`[Game] Online peer joined as Player ${assignedSlot + 1}`);
+    // If player slot does not exist yet in host GAME_STATE.players, create it
+    if (!GAME_STATE.players[assignedSlot]) {
+        GAME_STATE.players[assignedSlot] = new Player(assignedSlot, PLAYER_DEFS[assignedSlot]);
+    } else {
+        GAME_STATE.players[assignedSlot].alive = true;
+        GAME_STATE.players[assignedSlot].disconnected = false;
+    }
+    recalculateDynamicDifficulty();
+
+    if (GAME_STATE.current === STATES.WEAPON_SELECT) {
+        renderLobbyWeaponPanels();
+        netManager.broadcastLobbyState(
+            GAME_STATE.players.map(p => ({ index: p.index, selectedWeapon: p.selectedWeapon, selectedWeaponLabel: p.selectedWeaponLabel })),
+            GAME_STATE.players.every(p => p.selectedWeapon)
+        );
+    }
+};
+
+window.onOnlinePlayerDisconnected = function(playerIndex, peerId) {
+    console.warn(`[Game] Online peer disconnected: Player ${playerIndex + 1}`);
+    if (GAME_STATE.players[playerIndex]) {
+        GAME_STATE.players[playerIndex].disconnected = true;
+        GAME_STATE.players[playerIndex].alive = false;
+    }
+    recalculateDynamicDifficulty();
+
+    if (GAME_STATE.current === STATES.WEAPON_SELECT) {
+        renderLobbyWeaponPanels();
+        netManager.broadcastLobbyState(
+            GAME_STATE.players.map(p => ({ index: p.index, selectedWeapon: p.selectedWeapon, selectedWeaponLabel: p.selectedWeaponLabel })),
+            GAME_STATE.players.every(p => p.selectedWeapon)
+        );
+    }
+};
+
+window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState) {
+    console.log(`[Game] Joined room! Assigned Player ${assignedSlot + 1}`);
+    GAME_STATE.gameMode = 'online';
+    GAME_STATE.isOnline = true;
+    GAME_STATE.isHost = false;
+    GAME_STATE.isClient = true;
+    GAME_STATE.difficulty = DIFFICULTY_MODES[difficultyName] || DIFFICULTY_MODES.normal;
+
+    // Initialize player slots
+    GAME_STATE.players = [];
+    for (let i = 0; i <= Math.max(assignedSlot, 3); i++) {
+        GAME_STATE.players.push(new Player(i, PLAYER_DEFS[i]));
+    }
+    recalculateDynamicDifficulty();
+
+    document.getElementById('startMenu').classList.remove('show');
+    startWeaponSelectFlow();
+};
+
+window.onRemoteInputReceived = function(playerIndex, moveX, moveY, angle, dashing) {
+    const p = GAME_STATE.players[playerIndex];
+    if (p) {
+        p.remoteInput = { moveX, moveY, angle, dashing };
+        p.facingAngle = angle || p.facingAngle;
+        if (dashing && !p.dashing && p.dashEnabled && performance.now() >= p.dashCooldownUntil) {
+            p.dashVx = (moveX || Math.cos(p.facingAngle)) * 14;
+            p.dashVy = (moveY || Math.sin(p.facingAngle)) * 14;
+            p.dashing = true;
+            p.dashUntil = performance.now() + 180;
+        }
+    }
+};
+
+window.onRemoteWeaponSelected = function(playerIndex, weaponId) {
+    const p = GAME_STATE.players[playerIndex];
+    if (p) {
+        p.selectedWeapon = weaponId;
+        p.selectedWeaponLabel = WEAPON_LABELS[weaponId];
+        p.weapons = [];
+        p.unlockWeapon(weaponId);
+
+        renderLobbyWeaponPanels();
+
+        const allReady = GAME_STATE.players.length > 0 && GAME_STATE.players.every(pl => pl.selectedWeapon);
+        const lobbyStartBtn = document.getElementById('lobbyStartBtn');
+        if (lobbyStartBtn) lobbyStartBtn.disabled = !allReady;
+
+        netManager.broadcastLobbyState(
+            GAME_STATE.players.map(pl => ({ index: pl.index, selectedWeapon: pl.selectedWeapon, selectedWeaponLabel: pl.selectedWeaponLabel })),
+            allReady
+        );
+    }
+};
+
+window.onRemoteUpgradeSelected = function(playerIndex, upgradeId) {
+    const p = GAME_STATE.players[playerIndex];
+    if (p) {
+        const upgrade = UPGRADE_POOL.find(item => item.id === upgradeId);
+        if (upgrade) {
+            p.currentLevelUpgradeName = upgrade.name;
+            upgrade.effect(p);
+            if (upgrade.oneShot) p.takenOneShots.add(upgrade.id);
+        }
+        netManager.broadcast({
+            type: 'UPGRADE_CHOSEN_SYNC',
+            playerIndex: playerIndex,
+            upgradeName: upgrade ? upgrade.name : 'Upgrade'
+        });
+        const panel = document.getElementById(`levelPanel_${playerIndex}`);
+        if (panel) onPlayerChose(panel, p);
+    }
+};
+
+window.onUpgradeChosenSync = function(playerIndex, upgradeName) {
+    const p = GAME_STATE.players[playerIndex];
+    if (p) {
+        p.currentLevelUpgradeName = upgradeName;
+    }
+};
+
+window.onLobbyStateUpdated = function(playersData, allReady) {
+    if (!playersData) return;
+    for (const pd of playersData) {
+        if (!GAME_STATE.players[pd.index]) {
+            GAME_STATE.players[pd.index] = new Player(pd.index, PLAYER_DEFS[pd.index]);
+        }
+        const p = GAME_STATE.players[pd.index];
+        p.selectedWeapon = pd.selectedWeapon;
+        p.selectedWeaponLabel = pd.selectedWeaponLabel;
+    }
+    renderLobbyWeaponPanels();
+};
+
+window.onOnlineCountdownStarted = function(isNewGame) {
+    document.getElementById('levelUpLayer').classList.remove('show');
+    tip.style.display = 'none';
+    const inviteBanner = document.getElementById('inviteCodeBanner');
+    if (inviteBanner) inviteBanner.style.display = 'none';
+    startCountdown(isNewGame);
+};
+
+window.onWorldSnapshotReceived = function(snapshot) {
+    if (!snapshot) return;
+    if (snapshot.players) {
+        for (const sp of snapshot.players) {
+            let p = GAME_STATE.players[sp.index];
+            if (!p) {
+                p = new Player(sp.index, PLAYER_DEFS[sp.index]);
+                GAME_STATE.players[sp.index] = p;
+            }
+            p.x = sp.x;
+            p.y = sp.y;
+            p.hp = sp.hp;
+            p.maxHp = sp.maxHp;
+            p.alive = sp.alive;
+            p.facingAngle = sp.facingAngle;
+            p.selectedWeapon = sp.selectedWeapon;
+            p.selectedWeaponLabel = sp.selectedWeaponLabel;
+            p.isMoving = sp.isMoving;
+        }
+    }
+    if (snapshot.elapsed !== undefined) GAME_STATE.elapsed = snapshot.elapsed;
+    if (snapshot.level !== undefined) GAME_STATE.level = snapshot.level;
+    if (snapshot.xp !== undefined) GAME_STATE.xp = snapshot.xp;
+    if (snapshot.nextXp !== undefined) GAME_STATE.nextXp = snapshot.nextXp;
+    if (snapshot.kills !== undefined) GAME_STATE.kills = snapshot.kills;
+    if (snapshot.activeBoss !== undefined) GAME_STATE.activeBoss = snapshot.activeBoss;
+};
+
+function recalculateDynamicDifficulty() {
+    const activePlayers = GAME_STATE.players.filter(p => !p.disconnected).length || 1;
+    const diff = GAME_STATE.difficulty || DIFFICULTY_MODES.normal;
+    GAME_STATE.dmgFactor = (1.5 / (activePlayers + 0.5)) * (diff.dmgMult || 1.0);
+    const coopSpeedBonus = activePlayers > 1 ? (1 + 0.05 * activePlayers) : 1.0;
+    const speedFactor = coopSpeedBonus * (diff.speedMult || 1.0);
+    for (const p of GAME_STATE.players) {
+        p.speed = 1.0 * speedFactor;
+    }
+}
+
+// Auto-check URL query parameter on page load (e.g. ?room=BLOB-4821)
+window.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get('room');
+    if (roomParam) {
+        console.log('[Multiplayer] Auto-joining room from URL parameter:', roomParam);
+        setTimeout(() => {
+            const joinInput = document.getElementById('joinCodeInput');
+            if (joinInput) joinInput.value = roomParam;
+            showStartStep('joinRoom');
+            joinOnlineRoom(roomParam);
+        }, 300);
+    }
+});
+
 function togglePause() {
     if (GAME_STATE.current === STATES.GAMEPLAY) {
         GAME_STATE.current = STATES.PAUSED;
@@ -18182,7 +18836,7 @@ function togglePause() {
         startCountdown(false);
     }
 }
-document.getElementById('backToPlayers').onclick = () => showStartStep('players');
+
 document.getElementById('restartBtn').onclick = showStartMenu;
 document.getElementById('victoryRestartBtn').onclick = showStartMenu;
 document.getElementById('resumeBtn').onclick = togglePause;
@@ -19455,6 +20109,18 @@ function drawPlayerFocusArrow(p, now) {
         ctx.stroke();
     };
 
+    // 1. Singleplayer: never display any weapon/upgrade badge over player.
+    // 2. Multiplayer: display starting weapon once picked in lobby, then display chosen upgrade during level up.
+    const isMultiplayer = (GAME_STATE.gameMode === 'local' || GAME_STATE.gameMode === 'online' || GAME_STATE.players.length > 1);
+    let badgeText = null;
+    if (isMultiplayer) {
+        if (GAME_STATE.current === STATES.WEAPON_SELECT && p.selectedWeaponLabel) {
+            badgeText = p.selectedWeaponLabel;
+        } else if (GAME_STATE.current === STATES.LEVEL_UP && p.currentLevelUpgradeName) {
+            badgeText = p.currentLevelUpgradeName;
+        }
+    }
+
     if (pointDown) {
         const tipX = p.x;
         const tipY = p.y - p.r - 12 + bob;
@@ -19500,6 +20166,27 @@ function drawPlayerFocusArrow(p, now) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(labelText, tipX, pillY + pillH / 2);
+
+        // Weapon/Upgrade label badge above the player pill
+        if (badgeText) {
+            ctx.font = 'bold 12px sans-serif';
+            const wTextW = ctx.measureText(badgeText).width;
+            const wPillW = wTextW + 16;
+            const wPillH = 20;
+            const wPillX = tipX - wPillW / 2;
+            const wPillY = pillY - wPillH - 4;
+
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = 'rgba(12, 12, 18, 0.95)';
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = 2;
+            drawPill(wPillX, wPillY, wPillW, wPillH, 6);
+
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(badgeText, tipX, wPillY + wPillH / 2);
+        }
     } else {
         // Point UP from below player when player is near the top edge
         const tipX = p.x;
@@ -19545,6 +20232,27 @@ function drawPlayerFocusArrow(p, now) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(labelText, tipX, pillY + pillH / 2);
+
+        // Weapon/Upgrade label badge below the player pill
+        if (badgeText) {
+            ctx.font = 'bold 12px sans-serif';
+            const wTextW = ctx.measureText(badgeText).width;
+            const wPillW = wTextW + 16;
+            const wPillH = 20;
+            const wPillX = tipX - wPillW / 2;
+            const wPillY = pillY + pillH + 4;
+
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = 'rgba(12, 12, 18, 0.95)';
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = 2;
+            drawPill(wPillX, wPillY, wPillW, wPillH, 6);
+
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(badgeText, tipX, wPillY + wPillH / 2);
+        }
     }
     ctx.restore();
 }
@@ -19594,6 +20302,68 @@ function updateUI() {
     }
 }
 
+function sendClientLocalInput() {
+    if (!netManager.isClient) return;
+    const myIndex = netManager.localPlayerIndex;
+    const myPlayer = GAME_STATE.players[myIndex];
+    if (!myPlayer) return;
+
+    let moveX = 0, moveY = 0;
+    let hasJoystick = false;
+    if (typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector.active) {
+        moveX = joystickInstance.vector.x;
+        moveY = joystickInstance.vector.y;
+        myPlayer.facingAngle = joystickInstance.vector.angle;
+        hasJoystick = true;
+    }
+    if (!hasJoystick) {
+        let dx = 0, dy = 0;
+        if (anyKey(myPlayer.keymap.up)) dy -= 1;
+        if (anyKey(myPlayer.keymap.down)) dy += 1;
+        if (anyKey(myPlayer.keymap.left)) dx -= 1;
+        if (anyKey(myPlayer.keymap.right)) dx += 1;
+        if (dx !== 0 || dy !== 0) {
+            if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
+            moveX = dx; moveY = dy;
+            myPlayer.facingAngle = Math.atan2(dy, dx);
+        }
+    }
+    netManager.sendLocalInput(moveX, moveY, myPlayer.facingAngle, myPlayer.dashing);
+}
+
+function updateLobbyPlayers(dt, dtFactor, now) {
+    if (netManager.isClient) {
+        sendClientLocalInput();
+        const myIndex = netManager.localPlayerIndex;
+        const myPlayer = GAME_STATE.players[myIndex];
+        if (myPlayer) {
+            myPlayer.update(dt, dtFactor, now);
+        }
+    } else {
+        // Host & Local players
+        for (const p of GAME_STATE.players) {
+            p.update(dt, dtFactor, now);
+        }
+        if (netManager.isHost && netManager.connections.size > 0) {
+            netManager.broadcastWorldSnapshot({
+                players: GAME_STATE.players.map(p => ({
+                    index: p.index,
+                    x: p.x,
+                    y: p.y,
+                    hp: p.hp,
+                    maxHp: p.maxHp,
+                    alive: p.alive,
+                    facingAngle: p.facingAngle,
+                    selectedWeapon: p.selectedWeapon,
+                    selectedWeaponLabel: p.selectedWeaponLabel,
+                    isMoving: p.isMoving
+                })),
+                currentGameState: STATES.WEAPON_SELECT
+            });
+        }
+    }
+}
+
 function loop(now) {
     const dt = Math.min(50, now - lastFrameTime);
     lastFrameTime = now;
@@ -19618,12 +20388,44 @@ function loop(now) {
         update(dt, dtFactor, gameClock);
         draw(gameClock);
         
+        // 60 FPS authoritative sync / input streaming
+        if (netManager.isHost && netManager.connections.size > 0) {
+            netManager.broadcastWorldSnapshot({
+                players: GAME_STATE.players.map(p => ({
+                    index: p.index,
+                    x: p.x,
+                    y: p.y,
+                    hp: p.hp,
+                    maxHp: p.maxHp,
+                    alive: p.alive,
+                    facingAngle: p.facingAngle,
+                    selectedWeapon: p.selectedWeapon,
+                    selectedWeaponLabel: p.selectedWeaponLabel,
+                    isMoving: p.isMoving
+                })),
+                elapsed: GAME_STATE.elapsed,
+                level: GAME_STATE.level,
+                xp: GAME_STATE.xp,
+                nextXp: GAME_STATE.nextXp,
+                kills: GAME_STATE.kills,
+                activeBoss: GAME_STATE.activeBoss
+            });
+        } else if (netManager.isClient) {
+            sendClientLocalInput();
+        }
+
         // Throttle UI DOM layout reflow updates to 10Hz (every 6 frames)
         GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
         if (GAME_STATE.uiTick % 6 === 0) {
             updateUI();
         }
-    } else if (GAME_STATE.current === STATES.LEVEL_UP || GAME_STATE.current === STATES.COUNTDOWN || GAME_STATE.current === STATES.WEAPON_SELECT || GAME_STATE.current === STATES.PAUSED) {
+    } else if (GAME_STATE.current === STATES.WEAPON_SELECT) {
+        // Pre-game Starting Weapon selection lobby: update blobs so players can freely move around!
+        updateLobbyPlayers(dt, dtFactor, now);
+        SoundEngine.updateMusic(now);
+        draw(gameClock);
+        updateUI();
+    } else if (GAME_STATE.current === STATES.LEVEL_UP || GAME_STATE.current === STATES.COUNTDOWN || GAME_STATE.current === STATES.PAUSED) {
         SoundEngine.updateMusic(now);
         draw(gameClock);
         updateUI();
