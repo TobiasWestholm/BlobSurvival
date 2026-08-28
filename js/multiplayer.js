@@ -10,6 +10,12 @@ class NetworkManager {
         this.connections = new Map(); // peerId -> DataConnection
         this.playerPeerMap = new Map(); // playerIndex (1..3) -> peerId
         this.peerPlayerMap = new Map(); // peerId -> playerIndex (1..3)
+        this.sessionPlayerMap = new Map(); // sessionToken -> playerIndex (1..3)
+        this.playerSessionMap = new Map(); // playerIndex (1..3) -> sessionToken
+        this.peerLastSeenMap = new Map(); // peerId -> timestamp
+        this.heartbeatInterval = null;
+        this.healthCheckInterval = null;
+        this.sessionToken = null;
         this.isHost = false;
         this.isClient = false;
         this.isOnline = false;
@@ -19,6 +25,37 @@ class NetworkManager {
         this.statusCallback = null;
         this.lastStateBroadcast = 0;
         this.reconnectAttempts = 0;
+        this.isReconnecting = false;
+    }
+
+    reset() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+        if (this.healthCheckInterval) {
+            clearInterval(this.healthCheckInterval);
+            this.healthCheckInterval = null;
+        }
+        if (this.peer) {
+            try { this.peer.destroy(); } catch (e) {}
+            this.peer = null;
+        }
+        for (const conn of this.connections.values()) {
+            try { conn.close(); } catch (e) {}
+        }
+        this.connections.clear();
+        this.playerPeerMap.clear();
+        this.peerPlayerMap.clear();
+        this.sessionPlayerMap.clear();
+        this.playerSessionMap.clear();
+        this.peerLastSeenMap.clear();
+        this.isHost = false;
+        this.isClient = false;
+        this.isOnline = false;
+        this.localPlayerIndex = 0;
+        this.roomCode = null;
+        this.hostConnection = null;
         this.isReconnecting = false;
     }
 
@@ -65,6 +102,25 @@ class NetworkManager {
                 this.peer.on('open', (id) => {
                     this.roomCode = id;
                     console.log('[Net] Host registered room code:', id);
+
+                    // Health check: check heartbeat of clients every 1s
+                    if (this.healthCheckInterval) clearInterval(this.healthCheckInterval);
+                    this.healthCheckInterval = setInterval(() => {
+                        if (!this.isHost) return;
+                        const now = Date.now();
+                        for (const [slot, peerId] of this.playerPeerMap.entries()) {
+                            const lastSeen = this.peerLastSeenMap.get(peerId) || 0;
+                            if (lastSeen > 0 && now - lastSeen > 3500) {
+                                console.warn(`[Net] Peer ${peerId} (Player ${slot + 1}) timed out via heartbeat (${now - lastSeen}ms).`);
+                                const conn = this.connections.get(peerId);
+                                if (conn) {
+                                    try { conn.close(); } catch (e) {}
+                                }
+                                this.handlePeerDisconnected(slot, peerId);
+                            }
+                        }
+                    }, 1000);
+
                     resolve(id);
                 });
 
@@ -101,6 +157,15 @@ class NetworkManager {
             this.isOnline = true;
             this.roomCode = roomCode.trim().toUpperCase();
 
+            // Retrieve or generate persistent sessionToken for this room
+            const sessionKey = `blob_session_${this.roomCode}`;
+            let sessionToken = sessionStorage.getItem(sessionKey);
+            if (!sessionToken) {
+                sessionToken = 'tok_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now().toString(36);
+                sessionStorage.setItem(sessionKey, sessionToken);
+            }
+            this.sessionToken = sessionToken;
+
             if (typeof Peer === 'undefined') {
                 return reject(new Error('PeerJS library not loaded'));
             }
@@ -118,10 +183,11 @@ class NetworkManager {
                 });
 
                 this.peer.on('open', (myPeerId) => {
-                    console.log('[Net] Client peer initialized:', myPeerId);
+                    console.log('[Net] Client peer initialized:', myPeerId, 'sessionToken:', this.sessionToken);
                     const conn = this.peer.connect(this.roomCode, {
                         reliable: true,
-                        serialization: 'json'
+                        serialization: 'json',
+                        metadata: { sessionToken: this.sessionToken }
                     });
 
                     let connectionTimeout = setTimeout(() => {
@@ -133,6 +199,17 @@ class NetworkManager {
                         this.hostConnection = conn;
                         this.connections.set('host', conn);
                         console.log('[Net] Connected to Host:', this.roomCode);
+
+                        // Start 1s active heartbeat ping
+                        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+                        this.heartbeatInterval = setInterval(() => {
+                            if (this.hostConnection && this.hostConnection.open) {
+                                this.hostConnection.send({ type: 'HEARTBEAT', time: Date.now() });
+                            }
+                        }, 1000);
+
+                        // Also send explicit HANDSHAKE with sessionToken
+                        conn.send({ type: 'HANDSHAKE', sessionToken: this.sessionToken });
 
                         conn.on('data', (data) => {
                             this.handleClientReceivedData(data);
@@ -165,47 +242,131 @@ class NetworkManager {
     handleIncomingConnection(conn) {
         conn.on('open', () => {
             console.log('[Net] Peer connecting:', conn.peer);
-            
-            // Check if this peer is reconnecting to an existing slot
-            let assignedSlot = this.peerPlayerMap.get(conn.peer);
-            if (assignedSlot === undefined) {
-                // Find first free slot between 1 and 3
-                for (let i = 1; i <= 3; i++) {
-                    if (!this.playerPeerMap.has(i)) {
-                        assignedSlot = i;
-                        break;
-                    }
+            this.peerLastSeenMap.set(conn.peer, Date.now());
+            let sessionToken = (conn.metadata && conn.metadata.sessionToken) ? conn.metadata.sessionToken : null;
+            const isGameStarted = (typeof GAME_STATE !== 'undefined' && typeof STATES !== 'undefined' && GAME_STATE.current !== STATES.WEAPON_SELECT && GAME_STATE.current !== STATES.START_MENU);
+
+            // 1. Check if this is an established player reconnecting with their sessionToken
+            let assignedSlot = (sessionToken && this.sessionPlayerMap.has(sessionToken)) ? this.sessionPlayerMap.get(sessionToken) : undefined;
+
+            if (assignedSlot !== undefined) {
+                // Existing player RECONNECTING!
+                console.log(`[Net] Recognized reconnecting player: P${assignedSlot + 1} (token: ${sessionToken})`);
+                this.connections.set(conn.peer, conn);
+                this.playerPeerMap.set(assignedSlot, conn.peer);
+                this.peerPlayerMap.set(conn.peer, assignedSlot);
+                this.sessionPlayerMap.set(sessionToken, assignedSlot);
+                this.playerSessionMap.set(assignedSlot, sessionToken);
+                this.peerLastSeenMap.set(conn.peer, Date.now());
+
+                const connectedSlots = [0, ...this.playerPeerMap.keys()];
+                conn.send({
+                    type: 'ASSIGN_SLOT',
+                    playerIndex: assignedSlot,
+                    isReconnection: true,
+                    difficulty: (typeof GAME_STATE !== 'undefined' && GAME_STATE.difficulty) ? GAME_STATE.difficulty.name.toLowerCase() : 'normal',
+                    currentGameState: (typeof GAME_STATE !== 'undefined') ? GAME_STATE.current : 0,
+                    elapsed: (typeof GAME_STATE !== 'undefined') ? GAME_STATE.elapsed : 0,
+                    connectedSlots: connectedSlots,
+                    hostW: typeof W !== 'undefined' ? W : 1512,
+                    hostH: typeof H !== 'undefined' ? H : 945
+                });
+
+                if (typeof onOnlinePlayerJoined === 'function') {
+                    onOnlinePlayerJoined(assignedSlot, conn.peer, true);
                 }
+
+                if (conn.peerConnection) {
+                    conn.peerConnection.addEventListener('connectionstatechange', () => {
+                        const st = conn.peerConnection.connectionState;
+                        if (st === 'disconnected' || st === 'failed' || st === 'closed') {
+                            console.warn(`[Net] Peer ${conn.peer} WebRTC state: ${st}`);
+                            this.handlePeerDisconnected(assignedSlot, conn.peer);
+                        }
+                    });
+                }
+
+                conn.on('data', (data) => {
+                    this.handleHostReceivedData(conn.peer, assignedSlot, data);
+                });
+
+                conn.on('close', () => {
+                    console.warn(`[Net] Player P${assignedSlot + 1} (${conn.peer}) disconnected.`);
+                    this.handlePeerDisconnected(assignedSlot, conn.peer);
+                });
+                return;
             }
 
-            if (assignedSlot === undefined) {
-                // Room is full (max 4 players)
-                conn.send({ type: 'ROOM_FULL' });
+            // 2. New player attempting to join:
+            if (isGameStarted) {
+                // Game has started past weapon selection -> DENY new connections
+                console.warn(`[Net] Rejected new connection from ${conn.peer} - game already in progress.`);
+                conn.send({
+                    type: 'JOIN_DENIED',
+                    reason: 'The game has already started. Only players who joined during weapon selection can reconnect.'
+                });
                 setTimeout(() => conn.close(), 500);
                 return;
             }
 
+            // 3. Still in starting weapon selection: allow up to 4 players (slots 1..3 for clients)
+            for (let i = 1; i <= 3; i++) {
+                if (!this.playerSessionMap.has(i) && !this.playerPeerMap.has(i)) {
+                    assignedSlot = i;
+                    break;
+                }
+            }
+
+            if (assignedSlot === undefined) {
+                // Room is full
+                console.warn(`[Net] Rejected connection from ${conn.peer} - lobby is full.`);
+                conn.send({
+                    type: 'ROOM_FULL',
+                    reason: 'The lobby is full (maximum 4 players).'
+                });
+                setTimeout(() => conn.close(), 500);
+                return;
+            }
+
+            if (!sessionToken) {
+                sessionToken = 'tok_' + conn.peer;
+            }
             this.connections.set(conn.peer, conn);
             this.playerPeerMap.set(assignedSlot, conn.peer);
             this.peerPlayerMap.set(conn.peer, assignedSlot);
+            this.sessionPlayerMap.set(sessionToken, assignedSlot);
+            this.playerSessionMap.set(assignedSlot, sessionToken);
+            this.peerLastSeenMap.set(conn.peer, Date.now());
 
-            console.log(`[Net] Assigned player slot P${assignedSlot + 1} to peer:`, conn.peer);
+            console.log(`[Net] Assigned new player slot P${assignedSlot + 1} to peer:`, conn.peer, 'sessionToken:', sessionToken);
 
-            // Inform the client of their assigned slot
+            const connectedSlots = [0, ...this.playerPeerMap.keys()];
             conn.send({
                 type: 'ASSIGN_SLOT',
                 playerIndex: assignedSlot,
-                difficulty: GAME_STATE.difficulty ? GAME_STATE.difficulty.name.toLowerCase() : 'normal',
-                currentGameState: GAME_STATE.current,
-                elapsed: GAME_STATE.elapsed
+                isReconnection: false,
+                difficulty: (typeof GAME_STATE !== 'undefined' && GAME_STATE.difficulty) ? GAME_STATE.difficulty.name.toLowerCase() : 'normal',
+                currentGameState: (typeof GAME_STATE !== 'undefined') ? GAME_STATE.current : 0,
+                elapsed: (typeof GAME_STATE !== 'undefined') ? GAME_STATE.elapsed : 0,
+                connectedSlots: connectedSlots,
+                hostW: typeof W !== 'undefined' ? W : 1512,
+                hostH: typeof H !== 'undefined' ? H : 945
             });
 
-            // Notify game engine that a player joined / reconnected
             if (typeof onOnlinePlayerJoined === 'function') {
-                onOnlinePlayerJoined(assignedSlot, conn.peer);
+                onOnlinePlayerJoined(assignedSlot, conn.peer, false);
             }
 
-            // Listen for data from this client
+            if (conn.peerConnection) {
+                conn.peerConnection.addEventListener('connectionstatechange', () => {
+                    const st = conn.peerConnection.connectionState;
+                    if (st === 'disconnected' || st === 'failed' || st === 'closed') {
+                        console.warn(`[Net] Peer ${conn.peer} WebRTC state: ${st}`);
+                        this.handlePeerDisconnected(assignedSlot, conn.peer);
+                    }
+                });
+            }
+
             conn.on('data', (data) => {
                 this.handleHostReceivedData(conn.peer, assignedSlot, data);
             });
@@ -219,8 +380,16 @@ class NetworkManager {
 
     handleHostReceivedData(peerId, playerIndex, data) {
         if (!data || !data.type) return;
+        this.peerLastSeenMap.set(peerId, Date.now());
 
         switch (data.type) {
+            case 'HANDSHAKE':
+                if (data.sessionToken && !this.playerSessionMap.has(playerIndex)) {
+                    this.sessionPlayerMap.set(data.sessionToken, playerIndex);
+                    this.playerSessionMap.set(playerIndex, data.sessionToken);
+                }
+                break;
+
             case 'INPUT':
                 // 60 FPS remote movement stream
                 if (typeof onRemoteInputReceived === 'function') {
@@ -243,7 +412,10 @@ class NetworkManager {
                 break;
 
             case 'HEARTBEAT':
-                conn.send({ type: 'HEARTBEAT_ACK', time: Date.now() });
+                const conn = this.connections.get(peerId);
+                if (conn && conn.open) {
+                    conn.send({ type: 'HEARTBEAT_ACK', time: Date.now() });
+                }
                 break;
         }
     }
@@ -254,9 +426,17 @@ class NetworkManager {
         switch (data.type) {
             case 'ASSIGN_SLOT':
                 this.localPlayerIndex = data.playerIndex;
-                console.log(`[Net] Successfully joined as Player ${this.localPlayerIndex + 1}`);
+                console.log(`[Net] Successfully joined as Player ${this.localPlayerIndex + 1} (Reconnection: ${!!data.isReconnection})`);
                 if (typeof onAssignedSlot === 'function') {
-                    onAssignedSlot(this.localPlayerIndex, data.difficulty, data.currentGameState);
+                    onAssignedSlot(this.localPlayerIndex, data.difficulty, data.currentGameState, data.connectedSlots, data.hostW, data.hostH, data.isReconnection, data.elapsed);
+                }
+                break;
+
+            case 'JOIN_DENIED':
+                console.warn('[Net] Join denied:', data.reason);
+                alert(data.reason || 'The game has already started. Late joins are not permitted.');
+                if (typeof showStartMenu === 'function') {
+                    showStartMenu();
                 }
                 break;
 
@@ -290,7 +470,7 @@ class NetworkManager {
 
             case 'UPGRADE_CHOSEN_SYNC':
                 if (typeof onUpgradeChosenSync === 'function') {
-                    onUpgradeChosenSync(data.playerIndex, data.upgradeName);
+                    onUpgradeChosenSync(data.playerIndex, data.upgradeId, data.upgradeName);
                 }
                 break;
 
@@ -300,15 +480,72 @@ class NetworkManager {
                 }
                 break;
 
+            case 'GAME_OVER':
+                if (typeof onOnlineGameOver === 'function') {
+                    onOnlineGameOver();
+                }
+                break;
+
+            case 'GAME_VICTORY':
+                if (typeof onOnlineVictory === 'function') {
+                    onOnlineVictory();
+                }
+                break;
+
             case 'ROOM_FULL':
                 alert('This room is already full (maximum 4 players).');
                 showStartMenu();
                 break;
+
+            case 'KICKED':
+                alert(data.reason || 'You have been permanently removed from the session by the host.');
+                if (typeof showStartMenu === 'function') {
+                    showStartMenu();
+                }
+                break;
+
+            case 'PLAYER_KICKED':
+                if (typeof onOnlinePlayerKicked === 'function') {
+                    onOnlinePlayerKicked(data.playerIndex);
+                }
+                break;
         }
+    }
+
+    kickPlayer(playerIndex) {
+        if (!this.isHost) return;
+        const peerId = this.playerPeerMap.get(playerIndex);
+        const sessionToken = this.playerSessionMap.get(playerIndex);
+
+        if (peerId) {
+            const conn = this.connections.get(peerId);
+            if (conn) {
+                try {
+                    conn.send({ type: 'KICKED', reason: 'You were permanently removed from the game session by the host.' });
+                    setTimeout(() => conn.close(), 250);
+                } catch (e) {}
+                this.connections.delete(peerId);
+            }
+            this.peerPlayerMap.delete(peerId);
+            this.playerPeerMap.delete(playerIndex);
+        }
+
+        if (sessionToken) {
+            this.sessionPlayerMap.delete(sessionToken);
+            this.playerSessionMap.delete(playerIndex);
+        }
+
+        this.broadcast({
+            type: 'PLAYER_KICKED',
+            playerIndex: playerIndex
+        });
     }
 
     handlePeerDisconnected(playerIndex, peerId) {
         this.connections.delete(peerId);
+        this.peerPlayerMap.delete(peerId);
+        this.playerPeerMap.delete(playerIndex);
+        this.peerLastSeenMap.delete(peerId);
         if (typeof onOnlinePlayerDisconnected === 'function') {
             onOnlinePlayerDisconnected(playerIndex, peerId);
         }

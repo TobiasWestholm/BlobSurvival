@@ -208,7 +208,9 @@
     .player-panel {
         position: absolute;
         pointer-events: auto;
-        background: rgba(12, 12, 18, 0.95);
+        background: rgba(14, 16, 22, 0.78);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
         border: 2px solid #00ffcc;
         border-radius: clamp(8px, 0.7vw, 14px);
         padding: clamp(8px, 0.8vw, 18px);
@@ -216,8 +218,18 @@
         box-sizing: border-box;
         text-align: center;
         box-shadow: 0 0 25px rgba(0, 255, 204, 0.18);
+        transition: opacity 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
     }
-    .player-panel.chosen { opacity: 0.55; }
+    .player-panel.chosen {
+        opacity: 0.28;
+        background: rgba(10, 12, 16, 0.35);
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+    }
+    .player-panel.chosen:hover {
+        opacity: 0.82;
+        background: rgba(14, 16, 22, 0.85);
+        box-shadow: 0 0 20px rgba(0, 255, 204, 0.25);
+    }
     .panel-title { margin: 0 0 2px; font-size: clamp(15px, 1.25vw, 26px); }
     .panel-sub { font-size: clamp(10px, 0.73vw, 16px); color: #bbb; margin-bottom: 6px; }
     .panel-done { margin-top: 4px; font-weight: bold; font-size: clamp(11px, 0.86vw, 18px); }
@@ -227,8 +239,8 @@
         font-size: clamp(10px, 0.8vw, 16px);
         width: 94%;
         line-height: 1.35;
-        background: #1e1e24;
-        border: 1px solid #444;
+        background: rgba(28, 30, 38, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 8px;
         color: #bbb;
         transition: all 0.15s ease;
@@ -788,14 +800,44 @@
         100% { transform: rotate(360deg); }
     }
 
-    .upgrade-btn.selected-weapon {
+    .upgrade-btn.selected-weapon,
+    .upgrade-btn.selected-upgrade,
+    .upgrade-btn.selected-weapon:disabled,
+    .upgrade-btn.selected-upgrade:disabled {
         border-color: #00ffcc !important;
-        background: rgba(0, 255, 204, 0.25) !important;
-        box-shadow: 0 0 14px rgba(0, 255, 204, 0.35) !important;
+        background: rgba(0, 255, 204, 0.28) !important;
+        box-shadow: 0 0 16px rgba(0, 255, 204, 0.40) !important;
         color: #ffffff !important;
+        opacity: 1 !important;
     }
-    .upgrade-btn.selected-weapon .name {
+    .upgrade-btn.selected-weapon .name,
+    .upgrade-btn.selected-upgrade .name,
+    .upgrade-btn.selected-weapon:disabled .name,
+    .upgrade-btn.selected-upgrade:disabled .name {
         color: #00ffcc !important;
+    }
+    .player-panel.chosen .upgrade-btn:not(.selected-upgrade):not(.selected-weapon) {
+        opacity: 0.35 !important;
+    }
+    .kick-player-btn {
+        margin-top: 10px;
+        width: 100%;
+        padding: 8px 10px;
+        font-size: clamp(11px, 0.8vw, 15px);
+        font-weight: bold;
+        background: rgba(180, 25, 25, 0.88);
+        color: #ffffff;
+        border: 1px solid #ff4444;
+        border-radius: 6px;
+        box-shadow: 0 0 12px rgba(255, 68, 68, 0.40);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        pointer-events: auto;
+    }
+    .kick-player-btn:hover {
+        background: #cc2222;
+        box-shadow: 0 0 18px rgba(255, 68, 68, 0.70);
+        transform: translateY(-1px);
     }
 </style>
 </head>
@@ -1101,7 +1143,7 @@ if (isMobile) {
 }
 
 // Feature flag: set to true locally to expose the Upgrade Testing Lab button. Keep false in production builds.
-const ENABLE_TESTING_LAB = false;
+let ENABLE_TESTING_LAB = false;
 
 const canvas = document.getElementById('gameCanvas');
 // Cached UI elements read/written every updateUI() tick, avoiding repeated getElementById lookups
@@ -1112,6 +1154,8 @@ const fpsCounterEl = document.getElementById('fpsCounter');
 const ctx = canvas.getContext('2d');
 let W = window.innerWidth;
 let H = window.innerHeight;
+
+let isGameEngineReady = false;
 
 function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
@@ -1124,6 +1168,43 @@ function resizeCanvas() {
     H = Math.round(rawH * scale);
     canvas.width = W;
     canvas.height = H;
+
+    // Push / clamp all active entities within new boundaries if resized mid-game
+    if (isGameEngineReady && typeof GAME_STATE !== 'undefined') {
+        if (GAME_STATE.players) {
+            for (const p of GAME_STATE.players) {
+                if (p) p.clampToArena();
+            }
+        }
+        if (GAME_STATE.turrets) {
+            for (const t of GAME_STATE.turrets) {
+                t.x = Math.max(15, Math.min(W - 15, t.x));
+                t.y = Math.max(15, Math.min(H - 15, t.y));
+            }
+        }
+        if (GAME_STATE.hazards) {
+            for (const h of GAME_STATE.hazards) {
+                if (h.x !== undefined) h.x = Math.max(15, Math.min(W - 15, h.x));
+                if (h.y !== undefined) h.y = Math.max(15, Math.min(H - 15, h.y));
+                if (h.x1 !== undefined) h.x1 = Math.max(15, Math.min(W - 15, h.x1));
+                if (h.y1 !== undefined) h.y1 = Math.max(15, Math.min(H - 15, h.y1));
+                if (h.x2 !== undefined) h.x2 = Math.max(15, Math.min(W - 15, h.x2));
+                if (h.y2 !== undefined) h.y2 = Math.max(15, Math.min(H - 15, h.y2));
+            }
+        }
+        if (GAME_STATE.magneticMines) {
+            for (const m of GAME_STATE.magneticMines) {
+                m.x = Math.max(15, Math.min(W - 15, m.x));
+                m.y = Math.max(15, Math.min(H - 15, m.y));
+            }
+        }
+        if (GAME_STATE.gems) {
+            for (const g of GAME_STATE.gems) {
+                g.x = Math.max(15, Math.min(W - 15, g.x));
+                g.y = Math.max(15, Math.min(H - 15, g.y));
+            }
+        }
+    }
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
@@ -1409,6 +1490,17 @@ const GAME_STATE = {
     countdownTimer: null,
     siphonCellsOwner: null
 };
+isGameEngineReady = true;
+
+window.addEventListener('keydown', (e) => {
+    if (e.key && !e.repeat) {
+        const k = e.key.toLowerCase();
+        if (k === '§' && GAME_STATE.current === STATES.START_MENU) {
+            ENABLE_TESTING_LAB = !ENABLE_TESTING_LAB;
+            document.getElementById('testingBtn').style.display = ENABLE_TESTING_LAB ? 'block' : 'none';
+        }
+    }
+});
 
 // Per-player presentation + control bindings.
 // up/left/down/right hold lowercase key names matching keydown e.key.toLowerCase().
@@ -4053,8 +4145,12 @@ function anyKey(list) {
 function handleDoubleTap(k) {
     if (GAME_STATE.current !== STATES.GAMEPLAY) return;
     const tnow = performance.now();
+    const isOnline = (GAME_STATE.gameMode === 'online');
+    const myLocalIndex = isOnline ? (netManager ? netManager.localPlayerIndex : 0) : null;
+
     for (const p of GAME_STATE.players) {
         if (!p.alive || !p.dashEnabled) continue;
+        if (isOnline && p.index !== myLocalIndex) continue;
         let dir = null;
         for (const d of ['up', 'down', 'left', 'right']) {
             if (p.keymap[d].includes(k)) { dir = d; break; }
@@ -4570,10 +4666,15 @@ class Player extends Unit {
         const startY = H / 2 + (index % 2 === 0 ? -40 : 40);
         super(startX, startY, 15, 100, 'player');
         this.index = index;
-        this.keysText = def.keysText;
+        if (GAME_STATE.gameMode === 'online') {
+            this.keysText = 'WASD';
+            this.keymap = { up: ['w', 'arrowup'], left: ['a', 'arrowleft'], down: ['s', 'arrowdown'], right: ['d', 'arrowright'] };
+        } else {
+            this.keysText = def.keysText;
+            this.keymap = def.keys;
+        }
         this.color = def.color;
         this.ring = def.ring;
-        this.keymap = def.keys;
         this.damageModifier = 1.0;
         this.mineDamageModifier = 1.0;
         this.cooldownModifier = 1.0;
@@ -4948,10 +5049,12 @@ class Player extends Unit {
         this.lastY = this.y;
     }
     clampToArena() {
+        const boundW = (GAME_STATE.gameMode === 'online' && GAME_STATE.hostW) ? GAME_STATE.hostW : W;
+        const boundH = (GAME_STATE.gameMode === 'online' && GAME_STATE.hostH) ? GAME_STATE.hostH : H;
         if (this.x < this.r) this.x = this.r;
         if (this.y < this.r) this.y = this.r;
-        if (this.x > W - this.r) this.x = W - this.r;
-        if (this.y > H - this.r) this.y = H - this.r;
+        if (this.x > boundW - this.r) this.x = boundW - this.r;
+        if (this.y > boundH - this.r) this.y = boundH - this.r;
     }
     updateNetworkExpansion(now) {
         if (!this.turretNetworkEnabled) return;
@@ -5406,7 +5509,7 @@ class Player extends Unit {
             // 1. Calculate Melee Sweep Pseudopod Extension (if active)
             let pseudopod = null;
             const melee = this.weapons.find(w => w.id === 'melee_sweep');
-            if (melee && now - melee.lastFire < melee.sweepDuration) {
+            if (melee && melee.lastFire > 0 && now - melee.lastFire < melee.sweepDuration) {
                 const elapsed = now - melee.lastFire;
                 const t = elapsed / melee.sweepDuration; // 0 to 1
                 
@@ -5879,9 +5982,9 @@ class Player extends Unit {
             ctx.fill();
             ctx.restore();
             
-            // Draw invuln bubble shield (from dash level 2, revival invulnerability, or dispensed aegis)
+            // Draw invuln bubble shield (from dash level 2, revival/reconnect invulnerability, or dispensed aegis)
             const isDashInvuln = this.dashLvl2 && (this.dashCooldownUntil - now) > this.dashCooldown / 2;
-            const isReviveInvuln = this.spawnInvuln > 0;
+            const isReviveInvuln = (this.invuln > 0) || (this.spawnInvuln > 0);
             const isAegisInvuln = (this.aegisUntil && now < this.aegisUntil);
             if (isDashInvuln || isReviveInvuln || isAegisInvuln) {
                 ctx.save();
@@ -16542,6 +16645,8 @@ const WEAPON_LABELS = {
 // ---------------- Starting Weapon Selection ----------------
 function startWeaponSelectFlow() {
     GAME_STATE.current = STATES.WEAPON_SELECT;
+    const tBtn = document.getElementById('testingBtn');
+    if (tBtn) tBtn.style.display = 'none';
     if (isMobile && typeof joystickZone !== 'undefined' && joystickZone) {
         joystickZone.style.display = 'block';
     }
@@ -16593,7 +16698,7 @@ function renderLobbyWeaponPanels() {
         }
         if (lobbyStartBtn) {
             lobbyStartBtn.style.display = 'block';
-            const allReady = GAME_STATE.players.length > 0 && GAME_STATE.players.every(p => p.selectedWeapon);
+            const allReady = GAME_STATE.players.length > 0 && GAME_STATE.players.filter(p => p && !p.disconnected).every(p => p.selectedWeapon);
             lobbyStartBtn.disabled = !allReady;
             lobbyStartBtn.onclick = () => {
                 lobbyStartBtn.style.display = 'none';
@@ -16612,7 +16717,7 @@ function renderLobbyWeaponPanels() {
             // On desktop, show 4 slots (active + placeholders)
             for (let i = 0; i < 4; i++) {
                 const player = GAME_STATE.players[i];
-                if (player) {
+                if (player && !player.disconnected) {
                     layer.appendChild(buildStartingWeaponPanel(player, 4, i === 0));
                 } else {
                     layer.appendChild(buildPlaceholderPanel(i, 4));
@@ -16631,7 +16736,7 @@ function renderLobbyWeaponPanels() {
             // On desktop, show 4 slots (interactive only for myIndex)
             for (let i = 0; i < 4; i++) {
                 const player = GAME_STATE.players[i];
-                if (player) {
+                if (player && !player.disconnected) {
                     layer.appendChild(buildStartingWeaponPanel(player, 4, i === myIndex));
                 } else {
                     layer.appendChild(buildPlaceholderPanel(i, 4));
@@ -16644,7 +16749,7 @@ function renderLobbyWeaponPanels() {
 
 function buildPlaceholderPanel(index, count) {
     const panel = document.createElement('div');
-    panel.className = 'player-panel placeholder-panel';
+    panel.className = 'player-panel placeholder-panel chosen';
     panel.style.cssText = getPanelPosition(index, count);
     panel.style.borderColor = '#444';
 
@@ -16673,6 +16778,11 @@ function buildStartingWeaponPanel(player, count, isInteractive) {
     panel.style.cssText = getPanelPosition(player.index, count);
     panel.style.borderColor = player.color;
     const n = player.index + 1;
+
+    // In online multiplayer, keep non-local player panels in the fully faded state
+    if (player.selectedWeapon || (GAME_STATE.gameMode === 'online' && !isInteractive)) {
+        panel.classList.add('chosen');
+    }
 
     const title = document.createElement('h3');
     title.className = 'panel-title';
@@ -16757,6 +16867,8 @@ function selectStartingWeapon(player, weaponId, weaponLabel, panel) {
     player.weapons = [];
     player.unlockWeapon(weaponId);
 
+    if (panel) panel.classList.add('chosen');
+
     // Update UI highlights in this panel
     panel.querySelectorAll('.upgrade-btn').forEach(b => {
         b.classList.remove('selected-weapon');
@@ -16798,12 +16910,25 @@ function startLevelUpFlow() {
     GAME_STATE.current = STATES.LEVEL_UP;
     SoundEngine.setMuffled(true, 0.5);
     if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+
+    if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+        netManager.broadcast({
+            type: 'LEVEL_UP_START',
+            pendingLevels: GAME_STATE.pendingLevels
+        });
+    }
+
     beginSelectionRound();
 }
 
+let kickTimeoutId = null;
+
 function beginSelectionRound() {
-    const uiLayer = document.querySelector('.ui-layer');
-    if (uiLayer) uiLayer.style.display = 'block';
+    if (kickTimeoutId) {
+        clearTimeout(kickTimeoutId);
+        kickTimeoutId = null;
+    }
+
     const layer = document.getElementById('levelUpLayer');
     layer.innerHTML = '';
     const isOnline = (GAME_STATE.gameMode === 'online');
@@ -16811,7 +16936,7 @@ function beginSelectionRound() {
 
     // Reset current round chosen upgrade names so they only appear once chosen in this round
     for (const player of GAME_STATE.players) {
-        player.currentLevelUpgradeName = null;
+        if (player) player.currentLevelUpgradeName = null;
     }
 
     if (isOnline && isMobile) {
@@ -16820,15 +16945,117 @@ function beginSelectionRound() {
         GAME_STATE.pendingPicks = 1;
         layer.appendChild(buildPlayerPanel(player, 1, true));
     } else {
-        const count = GAME_STATE.players.length;
-        GAME_STATE.pendingPicks = count;
+        const activePlayers = GAME_STATE.players.filter(p => p && !p.disconnected && !p.kicked);
+        const count = Math.max(activePlayers.length, 1);
+        GAME_STATE.pendingPicks = activePlayers.length;
         for (const player of GAME_STATE.players) {
+            if (!player || player.disconnected || player.kicked) continue;
             const isInteractive = !isOnline || (player.index === myIndex);
             layer.appendChild(buildPlayerPanel(player, count, isInteractive));
         }
     }
     layer.classList.add('show');
+
+    // Host: after 1 minute (60s), if any remote player hasn't picked yet, show Kick button beneath their panel
+    if (isOnline && netManager && netManager.isHost) {
+        kickTimeoutId = setTimeout(() => {
+            showKickButtonsForUnpickedPlayers();
+        }, 60000);
+    }
 }
+
+function showKickButtonsForUnpickedPlayers() {
+    if (GAME_STATE.current !== STATES.LEVEL_UP) return;
+    for (const player of GAME_STATE.players) {
+        if (!player || player.index === 0 || player.disconnected || player.kicked) continue;
+        const panel = document.getElementById(`levelPanel_${player.index}`);
+        if (!panel || panel.dataset.pickDone === 'true' || player.currentLevelUpgradeName) continue;
+        if (panel.querySelector('.kick-player-btn')) continue;
+
+        const kickBtn = document.createElement('button');
+        kickBtn.className = 'kick-player-btn';
+        kickBtn.innerHTML = `⚠️ Kick Player ${player.index + 1} (AFK / Disconnected)`;
+        kickBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (confirm(`Permanently kick Player ${player.index + 1} from this game session?`)) {
+                kickPlayerByHost(player.index);
+            }
+        };
+        panel.appendChild(kickBtn);
+    }
+}
+
+function kickPlayerByHost(playerIndex) {
+    const p = GAME_STATE.players[playerIndex];
+    const panel = document.getElementById(`levelPanel_${playerIndex}`);
+
+    if (netManager && netManager.isHost) {
+        netManager.kickPlayer(playerIndex);
+    }
+
+    if (p) {
+        p.disconnected = true;
+        p.alive = false;
+        p.kicked = true;
+    }
+    recalculateDynamicDifficulty();
+
+    if (panel) {
+        panel.innerHTML = `<h3 class="panel-title" style="color: #ff4444;">Player ${playerIndex + 1}</h3><div style="color: #ff6666; font-size: 13px; margin-top: 10px; font-weight: bold;">✕ Kicked by Host</div>`;
+        panel.classList.add('chosen');
+        if (panel.dataset.pickDone !== 'true') {
+            panel.dataset.pickDone = 'true';
+            GAME_STATE.pendingPicks--;
+        }
+    }
+
+    if (GAME_STATE.pendingPicks <= 0) {
+        if (kickTimeoutId) {
+            clearTimeout(kickTimeoutId);
+            kickTimeoutId = null;
+        }
+        document.getElementById('levelUpLayer').classList.remove('show');
+        GAME_STATE.pendingLevels--;
+        if (GAME_STATE.pendingLevels > 0) {
+            if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+                netManager.broadcast({
+                    type: 'LEVEL_UP_START',
+                    pendingLevels: GAME_STATE.pendingLevels
+                });
+            }
+            beginSelectionRound();
+        } else {
+            if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+                netManager.broadcast({ type: 'START_GAME_COUNTDOWN', isNewGame: false });
+            }
+            startCountdown(false);
+        }
+    }
+}
+
+window.onOnlinePlayerKicked = function(playerIndex) {
+    const p = GAME_STATE.players[playerIndex];
+    if (p) {
+        p.disconnected = true;
+        p.alive = false;
+        p.kicked = true;
+    }
+    recalculateDynamicDifficulty();
+
+    const panel = document.getElementById(`levelPanel_${playerIndex}`);
+    if (panel) {
+        panel.innerHTML = `<h3 class="panel-title" style="color: #ff4444;">Player ${playerIndex + 1}</h3><div style="color: #ff6666; font-size: 13px; margin-top: 10px; font-weight: bold;">✕ Removed by Host</div>`;
+        panel.classList.add('chosen');
+        if (panel.dataset.pickDone !== 'true') {
+            panel.dataset.pickDone = 'true';
+            GAME_STATE.pendingPicks--;
+        }
+    }
+
+    if (GAME_STATE.pendingPicks <= 0 && GAME_STATE.current === STATES.LEVEL_UP) {
+        document.getElementById('levelUpLayer').classList.remove('show');
+    }
+};
 
 // Anchors each player's panel to a different region so all are visible at once.
 function getPanelPosition(index, count) {
@@ -16842,14 +17069,14 @@ function getPanelPosition(index, count) {
     if (count === 3) {
         if (index === 0) return `top:${TOP}px; left:${M}px;`;
         if (index === 1) return `top:${TOP}px; right:${M}px;`;
-        return `bottom:${M}px; left:50%; transform:translateX(-50%);`;
+        return `bottom:${M}px; left:${M}px;`;
     }
     return [
         `top:${TOP}px; left:${M}px;`,
         `top:${TOP}px; right:${M}px;`,
         `bottom:${M}px; left:${M}px;`,
         `bottom:${M}px; right:${M}px;`
-    ][index];
+    ][index] || `top:${TOP}px; left:${M}px;`;
 }
 
 function buildPlayerPanel(player, count, isInteractive = true) {
@@ -16859,6 +17086,11 @@ function buildPlayerPanel(player, count, isInteractive = true) {
     panel.style.cssText = getPanelPosition(player.index, count);
     panel.style.borderColor = player.color;
     const n = player.index + 1;
+
+    // In online multiplayer, keep non-local player panels in the fully faded state
+    if (player.currentLevelUpgradeName || (GAME_STATE.gameMode === 'online' && !isInteractive)) {
+        panel.classList.add('chosen');
+    }
 
     const title = document.createElement('h3');
     title.className = 'panel-title';
@@ -16874,6 +17106,11 @@ function buildPlayerPanel(player, count, isInteractive = true) {
     for (const u of pickThreeFor(player)) {
         const btn = document.createElement('button');
         btn.className = 'upgrade-btn';
+        btn.dataset.upgradeId = u.id;
+        btn.dataset.upgradeName = u.name;
+        if (player.currentLevelUpgradeName === u.name || player.currentLevelUpgradeName === u.id) {
+            btn.classList.add('selected-upgrade');
+        }
         btn.innerHTML = `<span class="name">${u.name}</span>${u.desc}`;
 
         const topControls = document.createElement('div');
@@ -16901,12 +17138,17 @@ function buildPlayerPanel(player, count, isInteractive = true) {
                 u.effect(player);
                 if (u.oneShot) player.takenOneShots.add(u.id);
                 player.currentLevelUpgradeName = u.name;
+                
+                panel.querySelectorAll('.upgrade-btn').forEach(b => b.classList.remove('selected-upgrade'));
+                btn.classList.add('selected-upgrade');
+
                 if (GAME_STATE.gameMode === 'online' && netManager.isClient) {
                     netManager.sendUpgradeSelection(u.id);
                 } else if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
                     netManager.broadcast({
                         type: 'UPGRADE_CHOSEN_SYNC',
                         playerIndex: player.index,
+                        upgradeId: u.id,
                         upgradeName: u.name
                     });
                 }
@@ -16922,9 +17164,15 @@ function buildPlayerPanel(player, count, isInteractive = true) {
 }
 
 function onPlayerChose(panel, player) {
-    if (panel.classList.contains('chosen')) return; // guard against double-clicks
+    if (panel.dataset.pickDone === 'true') return; // guard against double-processing
+    panel.dataset.pickDone = 'true';
     panel.classList.add('chosen');
-    panel.querySelectorAll('.upgrade-btn').forEach(b => { b.disabled = true; });
+    panel.querySelectorAll('.upgrade-btn').forEach(b => {
+        b.disabled = true;
+        if (player.currentLevelUpgradeName && (b.dataset.upgradeName === player.currentLevelUpgradeName || b.dataset.upgradeId === player.currentLevelUpgradeName)) {
+            b.classList.add('selected-upgrade');
+        }
+    });
     const tag = document.createElement('div');
     tag.className = 'panel-done';
     tag.textContent = '✓ Ready — Waiting for other players...';
@@ -16933,10 +17181,20 @@ function onPlayerChose(panel, player) {
 
     GAME_STATE.pendingPicks--;
     if (GAME_STATE.pendingPicks > 0) return;
+    if (kickTimeoutId) {
+        clearTimeout(kickTimeoutId);
+        kickTimeoutId = null;
+    }
     // everyone has chosen for this level
     document.getElementById('levelUpLayer').classList.remove('show');
     GAME_STATE.pendingLevels--;
     if (GAME_STATE.pendingLevels > 0) {
+        if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+            netManager.broadcast({
+                type: 'LEVEL_UP_START',
+                pendingLevels: GAME_STATE.pendingLevels
+            });
+        }
         beginSelectionRound();
     } else {
         if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
@@ -16952,6 +17210,8 @@ function startCountdown(isNewGame = false) {
     } else {
         SoundEngine.setMuffled(false, 1.8);
     }
+    const tBtn = document.getElementById('testingBtn');
+    if (tBtn) tBtn.style.display = 'none';
     document.getElementById('levelUpLayer').classList.remove('show');
     const uiLayer = document.querySelector('.ui-layer');
     if (uiLayer) uiLayer.style.display = 'block';
@@ -17542,6 +17802,7 @@ function resolvePlayerTerrainCollisions(player) {
             }
         }
     }
+    player.clampToArena();
 }
 
 function resolveEnemyTerrainCollisionsAndPathing(enemy, dtFactor = 1.0) {
@@ -18280,6 +18541,10 @@ function gameOver() {
     if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
     const pauseBtn0 = document.getElementById('pauseMenuBtn');
     if (pauseBtn0) pauseBtn0.style.display = 'none';
+
+    if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+        netManager.broadcast({ type: 'GAME_OVER' });
+    }
     
     // Save current match result first so bestScore reflects accuracy
     if (!GAME_STATE.testingMode){
@@ -18288,7 +18553,7 @@ function gameOver() {
     
     const m = document.getElementById('gameOverModal');
     const s = document.getElementById('gameOverStats');
-    const bestScore = getBestScore(GAME_STATE.players.length, GAME_STATE.difficulty.name);
+    const bestScore = getBestScore(GAME_STATE.players.length, GAME_STATE.difficulty ? GAME_STATE.difficulty.name : 'normal');
     
     s.innerHTML = buildStatsHTML("Survived", GAME_STATE, bestScore);
     m.classList.add('show');
@@ -18300,6 +18565,10 @@ function showVictory() {
     if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
     const pauseBtn1 = document.getElementById('pauseMenuBtn');
     if (pauseBtn1) pauseBtn1.style.display = 'none';
+
+    if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+        netManager.broadcast({ type: 'GAME_VICTORY' });
+    }
     
     if (GAME_STATE.countdownTimer) { 
         clearTimeout(GAME_STATE.countdownTimer); 
@@ -18312,7 +18581,7 @@ function showVictory() {
     
     const m = document.getElementById('victoryModal');
     const s = document.getElementById('victoryStats');
-    const bestScore = getBestScore(GAME_STATE.players.length, GAME_STATE.difficulty.name);
+    const bestScore = getBestScore(GAME_STATE.players.length, GAME_STATE.difficulty ? GAME_STATE.difficulty.name : 'normal');
     
     s.innerHTML = buildStatsHTML("Completed", GAME_STATE, bestScore);
     m.classList.add('show');
@@ -18474,12 +18743,22 @@ function showStartStep(step) {
     document.getElementById('playerStep').style.display = (step === 'players') ? 'block' : 'none';
     document.getElementById('difficultyStep').style.display = (step === 'difficulty') ? 'block' : 'none';
 
+    // Hide testing lab button when leaving mode selection
+    const tBtn = document.getElementById('testingBtn');
+    if (tBtn) {
+        tBtn.style.display = (ENABLE_TESTING_LAB && step === 'mode') ? 'block' : 'none';
+    }
+
     // On mobile, local multiplayer on one device is omitted
     const btnLocal = document.getElementById('btnModeLocal');
     if (btnLocal) btnLocal.style.display = isMobile ? 'none' : 'block';
 }
 
 function showStartMenu() {
+    if (typeof kickTimeoutId !== 'undefined' && kickTimeoutId) {
+        clearTimeout(kickTimeoutId);
+        kickTimeoutId = null;
+    }
     GAME_STATE.current = STATES.START_MENU;
     GAME_STATE.testingMode = false;
     GAME_STATE.isOnline = false;
@@ -18632,61 +18911,173 @@ if (inviteBanner) {
     };
 }
 
+// --- Mid-game Player Entity Despawn & Cleanup ---
+function despawnPlayerEntities(playerIndex) {
+    const player = GAME_STATE.players[playerIndex];
+    if (!player) return;
+
+    // 1. Mark player as disconnected and not alive/targetable
+    player.disconnected = true;
+    player.alive = false;
+
+    // 2. Despawn all turrets owned by this player
+    if (GAME_STATE.turrets) {
+        for (let i = GAME_STATE.turrets.length - 1; i >= 0; i--) {
+            const t = GAME_STATE.turrets[i];
+            if (t.player === player || (t.player && t.player.index === playerIndex)) {
+                t.alive = false;
+                if (typeof t.cleanup === 'function') t.cleanup();
+                GAME_STATE.turrets.splice(i, 1);
+            }
+        }
+    }
+
+    // 3. Despawn all player hazards / mines owned by this player
+    if (GAME_STATE.hazards) {
+        for (let i = GAME_STATE.hazards.length - 1; i >= 0; i--) {
+            const h = GAME_STATE.hazards[i];
+            if (h.player === player || (h.player && h.player.index === playerIndex) || h.owner === player) {
+                h.dead = true;
+                if (typeof h.despawn === 'function') h.despawn();
+                GAME_STATE.hazards.splice(i, 1);
+            }
+        }
+    }
+
+    // 4. Remove magnetic mines tracking
+    if (GAME_STATE.magneticMines) {
+        GAME_STATE.magneticMines = GAME_STATE.magneticMines.filter(m => m.player !== player && (!m.player || m.player.index !== playerIndex));
+    }
+
+    // 5. Despawn projectiles fired by this player
+    if (GAME_STATE.projectiles) {
+        for (let i = GAME_STATE.projectiles.length - 1; i >= 0; i--) {
+            const proj = GAME_STATE.projectiles[i];
+            if (proj.player === player || (proj.player && proj.player.index === playerIndex) || proj.owner === player) {
+                proj.dead = true;
+                GAME_STATE.projectiles.splice(i, 1);
+            }
+        }
+    }
+
+    // 6. Reset any active enemy target referencing this player
+    if (GAME_STATE.enemies) {
+        for (const e of GAME_STATE.enemies) {
+            if (e.targetPlayer === player || (e.targetPlayer && e.targetPlayer.index === playerIndex)) {
+                e.targetPlayer = null;
+            }
+        }
+    }
+}
+
 // --- Multiplayer Network Event Handlers ---
-window.onOnlinePlayerJoined = function(assignedSlot, peerId) {
-    console.log(`[Game] Online peer joined as Player ${assignedSlot + 1}`);
-    // If player slot does not exist yet in host GAME_STATE.players, create it
-    if (!GAME_STATE.players[assignedSlot]) {
+window.onOnlinePlayerJoined = function(assignedSlot, peerId, isReconnection) {
+    console.log(`[Game] Online peer joined as Player ${assignedSlot + 1} (Reconnection: ${!!isReconnection})`);
+    let p = GAME_STATE.players[assignedSlot];
+    if (!p) {
         GAME_STATE.players[assignedSlot] = new Player(assignedSlot, PLAYER_DEFS[assignedSlot]);
+        p = GAME_STATE.players[assignedSlot];
     } else {
-        GAME_STATE.players[assignedSlot].alive = true;
-        GAME_STATE.players[assignedSlot].disconnected = false;
+        p.disconnected = false;
+        p.alive = true;
+        if (isReconnection) {
+            // User requirement: Respawn in same place, invulnerable for 3 seconds to find safety
+            p.invuln = 3000;
+            p.spawnInvuln = 3000;
+            p.clampToArena();
+            if (p.selectedWeapon && (!p.weapons || p.weapons.length === 0)) {
+                p.unlockWeapon(p.selectedWeapon);
+            }
+        }
     }
     recalculateDynamicDifficulty();
 
     if (GAME_STATE.current === STATES.WEAPON_SELECT) {
         renderLobbyWeaponPanels();
         netManager.broadcastLobbyState(
-            GAME_STATE.players.map(p => ({ index: p.index, selectedWeapon: p.selectedWeapon, selectedWeaponLabel: p.selectedWeaponLabel })),
-            GAME_STATE.players.every(p => p.selectedWeapon)
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).map(p => ({ index: p.index, selectedWeapon: p.selectedWeapon, selectedWeaponLabel: p.selectedWeaponLabel })),
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).every(p => p.selectedWeapon)
         );
     }
 };
 
 window.onOnlinePlayerDisconnected = function(playerIndex, peerId) {
     console.warn(`[Game] Online peer disconnected: Player ${playerIndex + 1}`);
-    if (GAME_STATE.players[playerIndex]) {
-        GAME_STATE.players[playerIndex].disconnected = true;
-        GAME_STATE.players[playerIndex].alive = false;
-    }
+    despawnPlayerEntities(playerIndex);
     recalculateDynamicDifficulty();
 
     if (GAME_STATE.current === STATES.WEAPON_SELECT) {
         renderLobbyWeaponPanels();
         netManager.broadcastLobbyState(
-            GAME_STATE.players.map(p => ({ index: p.index, selectedWeapon: p.selectedWeapon, selectedWeaponLabel: p.selectedWeaponLabel })),
-            GAME_STATE.players.every(p => p.selectedWeapon)
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).map(p => ({ index: p.index, selectedWeapon: p.selectedWeapon, selectedWeaponLabel: p.selectedWeaponLabel })),
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).every(p => p.selectedWeapon)
         );
+    } else if (GAME_STATE.current === STATES.LEVEL_UP && netManager && netManager.isHost) {
+        // Disconnected player in level up: immediately offer Kick button to host
+        const panel = document.getElementById(`levelPanel_${playerIndex}`);
+        if (panel && panel.dataset.pickDone !== 'true' && !panel.querySelector('.kick-player-btn')) {
+            const kickBtn = document.createElement('button');
+            kickBtn.className = 'kick-player-btn';
+            kickBtn.innerHTML = `⚠️ Kick Player ${playerIndex + 1} (Disconnected)`;
+            kickBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (confirm(`Permanently kick Player ${playerIndex + 1} from this game session?`)) {
+                    kickPlayerByHost(playerIndex);
+                }
+            };
+            panel.appendChild(kickBtn);
+        }
     }
 };
 
-window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState) {
-    console.log(`[Game] Joined room! Assigned Player ${assignedSlot + 1}`);
+window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState, connectedSlots, hostW, hostH, isReconnection, elapsed) {
+    console.log(`[Game] Joined room! Assigned Player ${assignedSlot + 1} (Reconnection: ${!!isReconnection})`);
     GAME_STATE.gameMode = 'online';
     GAME_STATE.isOnline = true;
     GAME_STATE.isHost = false;
     GAME_STATE.isClient = true;
-    GAME_STATE.difficulty = DIFFICULTY_MODES[difficultyName] || DIFFICULTY_MODES.normal;
+    GAME_STATE.difficulty = DIFFICULTIES[difficultyName] || DIFFICULTIES.normal;
+    if (hostW) GAME_STATE.hostW = hostW;
+    if (hostH) GAME_STATE.hostH = hostH;
+    if (elapsed !== undefined) {
+        GAME_STATE.elapsed = elapsed;
+        gameClock = elapsed;
+    }
 
-    // Initialize player slots
+    // Initialize ONLY the actual connected player slots
     GAME_STATE.players = [];
-    for (let i = 0; i <= Math.max(assignedSlot, 3); i++) {
-        GAME_STATE.players.push(new Player(i, PLAYER_DEFS[i]));
+    const slots = (Array.isArray(connectedSlots) && connectedSlots.length > 0)
+        ? connectedSlots
+        : [0, assignedSlot];
+    for (const s of slots) {
+        GAME_STATE.players[s] = new Player(s, PLAYER_DEFS[s]);
+    }
+    if (isReconnection && GAME_STATE.players[assignedSlot]) {
+        GAME_STATE.players[assignedSlot].invuln = 3000;
+        GAME_STATE.players[assignedSlot].spawnInvuln = 3000;
     }
     recalculateDynamicDifficulty();
 
-    document.getElementById('startMenu').classList.remove('show');
-    startWeaponSelectFlow();
+    const startMenu = document.getElementById('startMenu');
+    if (startMenu) startMenu.classList.remove('show');
+    const joinStep = document.getElementById('joinRoomStep');
+    if (joinStep) joinStep.style.display = 'none';
+    const tBtn = document.getElementById('testingBtn');
+    if (tBtn) tBtn.style.display = 'none';
+
+    if (currentGameState === STATES.WEAPON_SELECT || currentGameState === STATES.START_MENU || !isReconnection) {
+        startWeaponSelectFlow();
+    } else {
+        // Reconnecting to active game session
+        GAME_STATE.current = currentGameState || STATES.GAMEPLAY;
+        SoundEngine.stopMusic();
+        SoundEngine.setMuffled(false);
+        if (tip) tip.style.display = 'none';
+        const inviteBanner = document.getElementById('inviteCodeBanner');
+        if (inviteBanner) inviteBanner.style.display = 'none';
+        const pauseBtn = document.getElementById('pauseMenuBtn');
+        if (pauseBtn) pauseBtn.style.display = 'none';
+    }
 };
 
 window.onRemoteInputReceived = function(playerIndex, moveX, moveY, angle, dashing) {
@@ -18713,12 +19104,12 @@ window.onRemoteWeaponSelected = function(playerIndex, weaponId) {
 
         renderLobbyWeaponPanels();
 
-        const allReady = GAME_STATE.players.length > 0 && GAME_STATE.players.every(pl => pl.selectedWeapon);
+        const allReady = GAME_STATE.players.length > 0 && GAME_STATE.players.filter(pl => pl && !pl.disconnected).every(pl => pl.selectedWeapon);
         const lobbyStartBtn = document.getElementById('lobbyStartBtn');
         if (lobbyStartBtn) lobbyStartBtn.disabled = !allReady;
 
         netManager.broadcastLobbyState(
-            GAME_STATE.players.map(pl => ({ index: pl.index, selectedWeapon: pl.selectedWeapon, selectedWeaponLabel: pl.selectedWeaponLabel })),
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).map(pl => ({ index: pl.index, selectedWeapon: pl.selectedWeapon, selectedWeaponLabel: pl.selectedWeaponLabel })),
             allReady
         );
     }
@@ -18736,6 +19127,7 @@ window.onRemoteUpgradeSelected = function(playerIndex, upgradeId) {
         netManager.broadcast({
             type: 'UPGRADE_CHOSEN_SYNC',
             playerIndex: playerIndex,
+            upgradeId: upgradeId,
             upgradeName: upgrade ? upgrade.name : 'Upgrade'
         });
         const panel = document.getElementById(`levelPanel_${playerIndex}`);
@@ -18743,22 +19135,42 @@ window.onRemoteUpgradeSelected = function(playerIndex, upgradeId) {
     }
 };
 
-window.onUpgradeChosenSync = function(playerIndex, upgradeName) {
+window.onUpgradeChosenSync = function(playerIndex, upgradeId, upgradeName) {
     const p = GAME_STATE.players[playerIndex];
     if (p) {
         p.currentLevelUpgradeName = upgradeName;
+        if (upgradeId) {
+            const upgrade = UPGRADE_POOL.find(item => item.id === upgradeId);
+            if (upgrade && (!netManager.isClient || playerIndex !== netManager.localPlayerIndex)) {
+                upgrade.effect(p);
+                if (upgrade.oneShot) p.takenOneShots.add(upgrade.id);
+            }
+        }
+        const panel = document.getElementById(`levelPanel_${playerIndex}`);
+        if (panel) onPlayerChose(panel, p);
     }
 };
 
 window.onLobbyStateUpdated = function(playersData, allReady) {
     if (!playersData) return;
+    const activeIndices = new Set(playersData.map(pd => pd.index));
+    // Clear slots that are no longer connected
+    for (let i = 0; i < 4; i++) {
+        if (!activeIndices.has(i) && (typeof netManager === 'undefined' || i !== netManager.localPlayerIndex)) {
+            delete GAME_STATE.players[i];
+        }
+    }
     for (const pd of playersData) {
         if (!GAME_STATE.players[pd.index]) {
             GAME_STATE.players[pd.index] = new Player(pd.index, PLAYER_DEFS[pd.index]);
         }
         const p = GAME_STATE.players[pd.index];
-        p.selectedWeapon = pd.selectedWeapon;
-        p.selectedWeaponLabel = pd.selectedWeaponLabel;
+        if (p.selectedWeapon !== pd.selectedWeapon) {
+            p.selectedWeapon = pd.selectedWeapon;
+            p.selectedWeaponLabel = pd.selectedWeaponLabel;
+            p.weapons = [];
+            if (pd.selectedWeapon) p.unlockWeapon(pd.selectedWeapon);
+        }
     }
     renderLobbyWeaponPanels();
 };
@@ -18771,37 +19183,515 @@ window.onOnlineCountdownStarted = function(isNewGame) {
     startCountdown(isNewGame);
 };
 
+let netEntityCounter = 1;
+const clientEnemyCache = new Map(); // id -> Enemy instance
+const clientTurretCache = new Map(); // id -> TurretEntity instance
+const clientHazardCache = new Map(); // id -> Hazard instance
+
+function serializeWorldForNetwork() {
+    // 1. Players
+    const players = GAME_STATE.players.map(p => {
+        const flail = p.weapons ? p.weapons.find(w => w.id === 'player_flail') : null;
+        return {
+            i: p.index,
+            x: Math.round(p.x),
+            y: Math.round(p.y),
+            hp: Math.round(p.hp * 10) / 10,
+            mhp: p.maxHp,
+            al: p.alive ? 1 : 0,
+            fa: Math.round(p.facingAngle * 100) / 100,
+            mv: p.isMoving ? 1 : 0,
+            w: p.selectedWeapon || '',
+            wl: p.selectedWeaponLabel || '',
+            up: p.currentLevelUpgradeName || '',
+            cv: p.campervanUntil > gameClock ? Math.round(p.campervanUntil) : 0,
+            iv: p.invuln > 0 ? Math.round(p.invuln) : (p.spawnInvuln > 0 ? Math.round(p.spawnInvuln) : 0),
+            ma: p.martyrdomAuraEnabled ? 1 : 0,
+            mp: p.martyrsPresenceEnabled ? 1 : 0,
+            dc: (p.disconnected || p.kicked) ? 1 : 0,
+            fx: flail ? Math.round(flail.x) : undefined,
+            fy: flail ? Math.round(flail.y) : undefined
+        };
+    });
+
+    // 2. Enemies (all active monsters with unique IDs)
+    const enemies = GAME_STATE.enemies.map(e => {
+        if (!e._nid) e._nid = ++netEntityCounter;
+        return {
+            id: e._nid,
+            t: e.type,
+            x: Math.round(e.x),
+            y: Math.round(e.y),
+            hp: Math.round(e.hp),
+            mhp: e.maxHp,
+            fa: Math.round(e.facingAngle * 100) / 100,
+            r: e.r,
+            c: e.color,
+            st: e.viperState || e.stalkerState || '',
+            sr: e.shieldRadius || 0,
+            ab: e.airborne ? 1 : 0,
+            ly: e.landY ? Math.round(e.landY) : 0,
+            la: e.landAt ? Math.round(e.landAt) : 0
+        };
+    });
+
+    // 3. Projectiles
+    const projectiles = GAME_STATE.projectiles.map(p => ({
+        t: p.type || '',
+        x: Math.round(p.x),
+        y: Math.round(p.y),
+        r: p.r || 3,
+        c: p.color || '#00ffcc',
+        a: Math.round((p.angle || 0) * 100) / 100,
+        tx: p.targetX !== undefined ? Math.round(p.targetX) : undefined,
+        ty: p.targetY !== undefined ? Math.round(p.targetY) : undefined,
+        sx: p.startX !== undefined ? Math.round(p.startX) : undefined,
+        sy: p.startY !== undefined ? Math.round(p.startY) : undefined
+    }));
+
+    // 4. Enemy Projectiles
+    const enemyProjectiles = GAME_STATE.enemyProjectiles.map(ep => ({
+        x: Math.round(ep.x),
+        y: Math.round(ep.y),
+        r: ep.r || 4,
+        c: ep.color || '#ff3344'
+    }));
+
+    // 5. Gems & Health Packs
+    const gems = GAME_STATE.gems.map(g => ({
+        x: Math.round(g.x),
+        y: Math.round(g.y),
+        v: g.value || 5,
+        hp: (g instanceof HealthPack) ? 1 : 0
+    }));
+
+    // 6. Turrets
+    const turrets = GAME_STATE.turrets.map(t => {
+        if (!t._nid) t._nid = ++netEntityCounter;
+        return {
+            id: t._nid,
+            x: Math.round(t.x),
+            y: Math.round(t.y),
+            a: Math.round((t.angle || 0) * 100) / 100,
+            fa: Math.round((t.flameAngle || 0) * 100) / 100,
+            hp: Math.round(t.hp),
+            mhp: t.maxHp,
+            pi: (t.player && t.player.index !== undefined) ? t.player.index : (t.playerIndex || 0),
+            st: t.spawnTime || 0,
+            fl: t.isFlamethrower ? 1 : 0,
+            faU: t.flameActiveUntil ? Math.round(t.flameActiveUntil) : 0,
+            fcA: t.flameCenterAngle ? Math.round(t.flameCenterAngle * 100) / 100 : 0
+        };
+    });
+
+    // 7. Hazards, Mines & Visual Explosion FX
+    const hazards = GAME_STATE.hazards.map(h => {
+        if (!h._nid) h._nid = ++netEntityCounter;
+        let type = 'hazard';
+        if (h instanceof PlayerMine) type = 'mine';
+        else if (h instanceof MineExplosion) type = 'mine_explosion';
+        else if (h instanceof NukeExplosion) type = 'nuke_explosion';
+        else if (h instanceof FreezeBlastVisual) type = 'freeze_explosion';
+        else if (h instanceof SledgeHitVisual) type = 'sledge_hit';
+        else if (h instanceof InstantMuzzleFlash) type = 'muzzle_flash';
+        else if (h instanceof InstantHitImpact) type = 'hit_impact';
+        else if (h instanceof BurningSurface) type = 'burning_surface';
+        else if (h instanceof BurningTrailSegment) type = 'burning_trail';
+        else if (h instanceof LaserTrailSegment) type = 'laser_trail';
+        else if (h instanceof IceTrailSegment) type = 'ice_trail';
+        else if (h instanceof BileMortarPod) type = 'bile_mortar';
+        else if (h instanceof AcidPoolHazard) type = 'acid_pool';
+        else if (h instanceof WhiteHolePush) type = 'white_hole';
+        else if (h instanceof BlackHolePull) type = 'black_hole';
+        else if (h.type) type = h.type;
+
+        return {
+            id: h._nid,
+            t: type,
+            x: Math.round(h.x !== undefined ? h.x : (h.x1 || 0)),
+            y: Math.round(h.y !== undefined ? h.y : (h.y1 || 0)),
+            x2: h.x2 !== undefined ? Math.round(h.x2) : (h.targetX !== undefined ? Math.round(h.targetX) : undefined),
+            y2: h.y2 !== undefined ? Math.round(h.y2) : (h.targetY !== undefined ? Math.round(h.targetY) : undefined),
+            r: Math.round(h.r || h.radius || 15),
+            a: Math.round((h.angle || h.facingAngle || 0) * 100) / 100,
+            ca: h.coneAngle !== undefined ? Math.round(h.coneAngle * 100) / 100 : undefined,
+            c: h.color || undefined,
+            st: h.spawnTime || 0,
+            dur: h.duration || undefined,
+            lt: h.landTime || undefined,
+            tr: h.triggeredTime ? 1 : 0,
+            pi: (h.player && h.player.index !== undefined) ? h.player.index : 0
+        };
+    });
+
+    const terrains = (GAME_STATE.terrains || []).map(t => ({
+        x: Math.round(t.x),
+        y: Math.round(t.y),
+        r: Math.round(t.radius || t.r || 0),
+        fa: Math.round((t.facingAngle || 0) * 100) / 100
+    }));
+
+    return {
+        players,
+        enemies,
+        projectiles,
+        enemyProjectiles,
+        gems,
+        turrets,
+        hazards,
+        terrains,
+        elapsed: GAME_STATE.elapsed,
+        level: GAME_STATE.level,
+        xp: GAME_STATE.xp,
+        nextXp: GAME_STATE.nextXp,
+        kills: GAME_STATE.kills,
+        activeBoss: GAME_STATE.activeBoss,
+        activeBossStartTime: GAME_STATE.activeBossStartTime,
+        hordeStartTime: GAME_STATE.hordeStartTime,
+        hostW: W,
+        hostH: H,
+        currentGameState: GAME_STATE.current
+    };
+}
+
 window.onWorldSnapshotReceived = function(snapshot) {
     if (!snapshot) return;
+
+    if (snapshot.hostW !== undefined) GAME_STATE.hostW = snapshot.hostW;
+    if (snapshot.hostH !== undefined) GAME_STATE.hostH = snapshot.hostH;
+
+    // 1. Reconcile Players
     if (snapshot.players) {
         for (const sp of snapshot.players) {
-            let p = GAME_STATE.players[sp.index];
+            let p = GAME_STATE.players[sp.i];
             if (!p) {
-                p = new Player(sp.index, PLAYER_DEFS[sp.index]);
-                GAME_STATE.players[sp.index] = p;
+                p = new Player(sp.i, PLAYER_DEFS[sp.i] || { keysText: 'WASD', color: '#00ffcc', ring: 'rgba(0,255,204,0.3)', keys: {} });
+                GAME_STATE.players[sp.i] = p;
             }
-            p.x = sp.x;
-            p.y = sp.y;
             p.hp = sp.hp;
-            p.maxHp = sp.maxHp;
-            p.alive = sp.alive;
-            p.facingAngle = sp.facingAngle;
-            p.selectedWeapon = sp.selectedWeapon;
-            p.selectedWeaponLabel = sp.selectedWeaponLabel;
-            p.isMoving = sp.isMoving;
+            p.maxHp = sp.mhp;
+            p.alive = (sp.al === 1);
+            if (p.selectedWeapon !== sp.w) {
+                p.selectedWeapon = sp.w;
+                p.selectedWeaponLabel = sp.wl;
+                p.weapons = [];
+                if (sp.w) p.unlockWeapon(sp.w);
+            }
+            if (sp.fx !== undefined && sp.fy !== undefined) {
+                let flail = p.weapons ? p.weapons.find(w => w.id === 'player_flail') : null;
+                if (!flail) {
+                    p.unlockWeapon('player_flail');
+                    flail = p.weapons ? p.weapons.find(w => w.id === 'player_flail') : null;
+                }
+                if (flail) {
+                    flail.x = sp.fx;
+                    flail.y = sp.fy;
+                }
+            } else if (p.weapons && p.index !== netManager.localPlayerIndex) {
+                p.weapons = p.weapons.filter(w => w.id !== 'player_flail');
+            }
+            p.currentLevelUpgradeName = sp.up;
+            p.campervanUntil = sp.cv || 0;
+            p.invuln = sp.iv || 0;
+            p.martyrdomAuraEnabled = (sp.ma === 1);
+            p.martyrsPresenceEnabled = (sp.mp === 1);
+            p.disconnected = (sp.dc === 1);
+
+            if (sp.i === netManager.localPlayerIndex) {
+                // Client's own player: reconcile position if desynced by > 45px
+                const dist2 = (p.x - sp.x) ** 2 + (p.y - sp.y) ** 2;
+                if (dist2 > 2025) {
+                    p.x = sp.x;
+                    p.y = sp.y;
+                }
+            } else {
+                // Remote player: update position and orientation
+                p.x = sp.x;
+                p.y = sp.y;
+                p.facingAngle = sp.fa;
+                p.isMoving = (sp.mv === 1);
+            }
         }
     }
-    if (snapshot.elapsed !== undefined) GAME_STATE.elapsed = snapshot.elapsed;
+
+    // 2. Reconcile Enemies
+    if (snapshot.enemies) {
+        const seenIds = new Set();
+        const activeEnemies = [];
+        for (const se of snapshot.enemies) {
+            seenIds.add(se.id);
+            let e = clientEnemyCache.get(se.id);
+            if (!e) {
+                e = new Enemy(se.x, se.y, se.t, gameClock);
+                e._nid = se.id;
+                clientEnemyCache.set(se.id, e);
+            }
+            e.x = se.x;
+            e.y = se.y;
+            e.hp = se.hp;
+            e.maxHp = se.mhp;
+            e.facingAngle = se.fa;
+            if (se.r) e.r = se.r;
+            if (se.c) e.color = se.c;
+            if (se.st) {
+                e.viperState = se.st;
+                e.stalkerState = se.st;
+            }
+            if (se.sr) e.shieldRadius = se.sr;
+            if (se.ab !== undefined) e.airborne = (se.ab === 1);
+            if (se.ly) e.landY = se.ly;
+            if (se.la) e.landAt = se.la;
+            activeEnemies.push(e);
+        }
+        for (const [id] of clientEnemyCache.entries()) {
+            if (!seenIds.has(id)) {
+                clientEnemyCache.delete(id);
+            }
+        }
+        GAME_STATE.enemies = activeEnemies;
+    }
+
+    // 3. Reconcile Projectiles & Enemy Projectiles
+    if (snapshot.projectiles) {
+        GAME_STATE.projectiles = snapshot.projectiles.map(sp => ({
+            type: sp.t,
+            x: sp.x,
+            y: sp.y,
+            r: sp.r || 3,
+            color: sp.c || '#00ffcc',
+            angle: sp.a || 0,
+            targetX: sp.tx,
+            targetY: sp.ty,
+            startX: sp.sx,
+            startY: sp.sy,
+            dead: false,
+            draw: function(now) {
+                ctx.save();
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }));
+    }
+
+    if (snapshot.enemyProjectiles) {
+        GAME_STATE.enemyProjectiles = snapshot.enemyProjectiles.map(sep => ({
+            x: sep.x,
+            y: sep.y,
+            r: sep.r || 4,
+            color: sep.c || '#ff3344',
+            dead: false,
+            draw: function() {
+                ctx.save();
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }));
+    }
+
+    // 4. Reconcile Gems & Health Packs
+    if (snapshot.gems) {
+        GAME_STATE.gems = snapshot.gems.map(sg => {
+            if (sg.hp) {
+                return new HealthPack(sg.x, sg.y, gameClock);
+            }
+            return new XPGem(sg.x, sg.y, sg.v);
+        });
+    }
+
+    // 5. Reconcile Turrets (with spawnTime and flame angles preserved)
+    if (snapshot.turrets) {
+        const seenTurretIds = new Set();
+        const activeTurrets = [];
+        for (const st of snapshot.turrets) {
+            seenTurretIds.add(st.id);
+            let turret = clientTurretCache.get(st.id);
+            const owner = GAME_STATE.players[st.pi] || GAME_STATE.players[0];
+            if (!turret) {
+                turret = new TurretEntity(st.x, st.y, owner, st.st || gameClock);
+                turret._nid = st.id;
+                turret.spawnTime = st.st || gameClock;
+                clientTurretCache.set(st.id, turret);
+            }
+            turret.x = st.x;
+            turret.y = st.y;
+            turret.angle = st.a || 0;
+            turret.flameAngle = st.fa || 0;
+            turret.hp = st.hp;
+            turret.maxHp = st.mhp;
+            turret.isFlamethrower = (st.fl === 1);
+            turret.flameActiveUntil = st.faU || 0;
+            turret.flameCenterAngle = st.fcA || 0;
+            turret.player = owner;
+            activeTurrets.push(turret);
+        }
+        for (const [id] of clientTurretCache.entries()) {
+            if (!seenTurretIds.has(id)) {
+                clientTurretCache.delete(id);
+            }
+        }
+        GAME_STATE.turrets = activeTurrets;
+
+        // Re-link laser/energy walls between turrets on client
+        for (const t of GAME_STATE.turrets) {
+            if (t.player && (t.player.laserWallsEnabled || t.player.slowWallsEnabled)) {
+                t.connections = [];
+                t.linkWalls();
+            }
+        }
+    }
+
+    // 6. Reconcile Hazards, Mines & Visual Explosions (preserving original animations)
+    if (snapshot.hazards) {
+        const seenHazardIds = new Set();
+        const activeHazards = [];
+        for (const sh of snapshot.hazards) {
+            seenHazardIds.add(sh.id);
+            let hazard = clientHazardCache.get(sh.id);
+            const owner = GAME_STATE.players[sh.pi] || GAME_STATE.players[0];
+
+            if (!hazard) {
+                switch (sh.t) {
+                    case 'mine':
+                        hazard = new PlayerMine(sh.x, sh.y, sh.r || 8, 50, owner, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        if (sh.tr) hazard.triggeredTime = gameClock;
+                        break;
+                    case 'mine_explosion':
+                        hazard = new MineExplosion(sh.x, sh.y, sh.r, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'nuke_explosion':
+                        hazard = new NukeExplosion(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'freeze_explosion':
+                        hazard = new FreezeBlastVisual(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'sledge_hit':
+                        hazard = new SledgeHitVisual(sh.x, sh.y, sh.r, sh.ca || 1.2, sh.a || 0, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'muzzle_flash':
+                        hazard = new InstantMuzzleFlash(sh.x, sh.y, sh.a || 0, sh.c || (owner ? owner.color : '#00ffcc'), sh.st || gameClock, owner, sh.r || 16);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'hit_impact':
+                        hazard = new InstantHitImpact(sh.x, sh.y, sh.a || 0, sh.c || '#ffcc00', sh.st || gameClock, sh.r || 20);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'burning_surface':
+                        hazard = new BurningSurface(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'burning_trail':
+                        hazard = new BurningTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'laser_trail':
+                        hazard = new LaserTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'ice_trail':
+                        hazard = new IceTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'bile_mortar':
+                        hazard = new BileMortarPod(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, sh.lt || (sh.st + 1500));
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'acid_pool':
+                        hazard = new AcidPoolHazard(sh.x, sh.y, sh.r, sh.st || gameClock, sh.dur || 5000);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'white_hole':
+                        hazard = new WhiteHolePush(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'black_hole':
+                        hazard = new BlackHolePull(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    default:
+                        hazard = {
+                            type: sh.t,
+                            x: sh.x,
+                            y: sh.y,
+                            r: sh.r || 15,
+                            angle: sh.a || 0,
+                            dead: false,
+                            draw: function(now) {
+                                ctx.save();
+                                ctx.fillStyle = 'rgba(255, 68, 68, 0.4)';
+                                ctx.beginPath();
+                                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                                ctx.fill();
+                                ctx.restore();
+                            }
+                        };
+                        break;
+                }
+                hazard._nid = sh.id;
+                clientHazardCache.set(sh.id, hazard);
+            } else {
+                // Update position / state of ongoing hazard
+                if (hazard.x !== undefined) hazard.x = sh.x;
+                if (hazard.y !== undefined) hazard.y = sh.y;
+                if (sh.tr && hazard.triggeredTime === 0) hazard.triggeredTime = gameClock;
+            }
+            activeHazards.push(hazard);
+        }
+        for (const [id] of clientHazardCache.entries()) {
+            if (!seenHazardIds.has(id)) {
+                clientHazardCache.delete(id);
+            }
+        }
+        GAME_STATE.hazards = activeHazards;
+    }
+
+    if (snapshot.terrains) {
+        GAME_STATE.terrains = snapshot.terrains.map(st => new ShieldTerrain(st.x, st.y, st.r, st.fa, gameClock + 10000));
+    }
+
+    // 7. World Stats
+    if (snapshot.elapsed !== undefined) {
+        GAME_STATE.elapsed = snapshot.elapsed;
+        gameClock = snapshot.elapsed;
+    }
     if (snapshot.level !== undefined) GAME_STATE.level = snapshot.level;
     if (snapshot.xp !== undefined) GAME_STATE.xp = snapshot.xp;
     if (snapshot.nextXp !== undefined) GAME_STATE.nextXp = snapshot.nextXp;
     if (snapshot.kills !== undefined) GAME_STATE.kills = snapshot.kills;
     if (snapshot.activeBoss !== undefined) GAME_STATE.activeBoss = snapshot.activeBoss;
+    if (snapshot.activeBossStartTime !== undefined) GAME_STATE.activeBossStartTime = snapshot.activeBossStartTime;
+    if (snapshot.hordeStartTime !== undefined) GAME_STATE.hordeStartTime = snapshot.hordeStartTime;
+};
+
+window.onOnlineLevelUpStarted = function(pendingLevels) {
+    GAME_STATE.pendingLevels = pendingLevels || 1;
+    GAME_STATE.current = STATES.LEVEL_UP;
+    SoundEngine.setMuffled(true, 0.5);
+    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    beginSelectionRound();
+};
+
+window.onOnlineGameOver = function() {
+    gameOver();
+};
+
+window.onOnlineVictory = function() {
+    showVictory();
 };
 
 function recalculateDynamicDifficulty() {
     const activePlayers = GAME_STATE.players.filter(p => !p.disconnected).length || 1;
-    const diff = GAME_STATE.difficulty || DIFFICULTY_MODES.normal;
+    const diff = GAME_STATE.difficulty || DIFFICULTIES.normal;
     GAME_STATE.dmgFactor = (1.5 / (activePlayers + 0.5)) * (diff.dmgMult || 1.0);
     const coopSpeedBonus = activePlayers > 1 ? (1 + 0.05 * activePlayers) : 1.0;
     const speedFactor = coopSpeedBonus * (diff.speedMult || 1.0);
@@ -19706,6 +20596,7 @@ function update(dt, dtFactor, now) {
     }
 
     for (const p of GAME_STATE.players) {
+        if (!p || p.disconnected || p.kicked) continue;
         if (p.alive) {
             p.update(dt, dtFactor, now);
             resolvePlayerTerrainCollisions(p);
@@ -19719,6 +20610,7 @@ function update(dt, dtFactor, now) {
 
     // Process Martyrdom Auras (healing and damage)
     for (const p of GAME_STATE.players) {
+        if (!p || p.disconnected || p.kicked) continue;
         if (!p.alive && p.martyrdomAuraEnabled) {
             const auraRadius = 110 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
             // 1. Heal other alive players standing in it (10% max HP per second)
@@ -19891,6 +20783,81 @@ function update(dt, dtFactor, now) {
     }
 }
 
+function drawBattlefieldBorder(now) {
+    const isOnlineClient = (GAME_STATE.gameMode === 'online' && typeof netManager !== 'undefined' && netManager && netManager.isClient);
+    const hostW = GAME_STATE.hostW || W;
+    const hostH = GAME_STATE.hostH || H;
+
+    // Render boundary on clients or whenever battlefield bounds differ from canvas
+    if (!isOnlineClient && hostW === W && hostH === H) return;
+
+    ctx.save();
+
+    // 1. Darken out-of-bounds area outside the host battlefield
+    ctx.fillStyle = 'rgba(8, 10, 14, 0.65)';
+    if (W > hostW) {
+        ctx.fillRect(hostW, 0, W - hostW, H);
+    }
+    if (H > hostH) {
+        ctx.fillRect(0, hostH, Math.min(W, hostW), H - hostH);
+    }
+
+    // Subtle decorative diagonal hatch lines in off-limits area
+    if (W > hostW || H > hostH) {
+        ctx.save();
+        ctx.beginPath();
+        if (W > hostW) ctx.rect(hostW, 0, W - hostW, H);
+        if (H > hostH) ctx.rect(0, hostH, Math.min(W, hostW), H - hostH);
+        ctx.clip();
+        
+        ctx.strokeStyle = 'rgba(0, 255, 204, 0.05)';
+        ctx.lineWidth = 1.5;
+        const step = 32;
+        ctx.beginPath();
+        for (let x = -H; x < W + H; x += step) {
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x + H, H);
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 2. Smokey teal glowing border line around [0, 0, hostW, hostH]
+    const pulse = 0.70 + 0.30 * Math.sin(now * 0.004);
+    
+    // Outer diffuse smoke glow
+    ctx.save();
+    ctx.strokeStyle = `rgba(0, 230, 200, ${(0.35 * pulse).toFixed(2)})`;
+    ctx.lineWidth = 6;
+    ctx.shadowColor = '#00ffcc';
+    ctx.shadowBlur = 14 + 6 * pulse;
+    ctx.strokeRect(0, 0, hostW, hostH);
+    ctx.restore();
+
+    // Middle smokey teal line
+    ctx.save();
+    ctx.strokeStyle = `rgba(0, 245, 215, ${(0.75 + 0.25 * pulse).toFixed(2)})`;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(0, 0, hostW, hostH);
+    ctx.restore();
+
+    // Futuristic corner brackets at all 4 battlefield corners
+    const cSize = Math.min(28, Math.min(hostW, hostH) * 0.1);
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'square';
+    // Top-Left
+    ctx.beginPath(); ctx.moveTo(0, cSize); ctx.lineTo(0, 0); ctx.lineTo(cSize, 0); ctx.stroke();
+    // Top-Right
+    ctx.beginPath(); ctx.moveTo(hostW - cSize, 0); ctx.lineTo(hostW, 0); ctx.lineTo(hostW, cSize); ctx.stroke();
+    // Bottom-Left
+    ctx.beginPath(); ctx.moveTo(0, hostH - cSize); ctx.lineTo(0, hostH); ctx.lineTo(cSize, hostH); ctx.stroke();
+    // Bottom-Right
+    ctx.beginPath(); ctx.moveTo(hostW - cSize, hostH); ctx.lineTo(hostW, hostH); ctx.lineTo(hostW, hostH - cSize); ctx.stroke();
+
+    ctx.restore();
+}
+
 function draw(now) {
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, W, H);
@@ -19905,6 +20872,9 @@ function draw(now) {
     for (let y = 0; y < H; y += grid) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
+
+    // Draw Smokey Teal Host Battlefield Border
+    drawBattlefieldBorder(now);
 
     // Draw Martyrdom Auras
     for (const p of GAME_STATE.players) {
@@ -19996,7 +20966,9 @@ function draw(now) {
     for (const e of GAME_STATE.enemies) e.draw(now);
     for (const p of GAME_STATE.projectiles) p.draw(now);
     for (const ep of GAME_STATE.enemyProjectiles) ep.draw();
-    for (const p of GAME_STATE.players) p.draw(now);
+    for (const p of GAME_STATE.players) {
+        if (p && !p.disconnected && !p.kicked) p.draw(now);
+    }
 
     // 1. Boss pre-warning banners (5 seconds BEFORE boss minute starts)
     for (const key of Object.keys(BOSS_CONFIGS)) {
@@ -20063,7 +21035,7 @@ function draw(now) {
         ctx.restore();
 
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p || !p.alive || p.disconnected || p.kicked) continue;
 
             // Soft radial spotlight behind player
             ctx.save();
@@ -20088,6 +21060,7 @@ function draw(now) {
 }
 
 function drawPlayerFocusArrow(p, now) {
+    if (!p || !p.alive || p.disconnected || p.kicked) return;
     const bob = Math.sin(performance.now() * 0.008) * 6;
     const pointDown = p.y >= 85;
     const headWidth = 32;
@@ -20260,6 +21233,10 @@ function drawPlayerFocusArrow(p, now) {
 function updateUI() {
     xpBarEl.style.width = ((GAME_STATE.xp / GAME_STATE.nextXp) * 100) + '%';
     const playerRows = GAME_STATE.players.map((p, i) => {
+        if (!p) return '';
+        if (p.disconnected || p.kicked) {
+            return `<div style="margin-top:2px;"><span style="color:${p.color};opacity:0.65">P${i + 1} (Disconnected)</span></div>`;
+        }
         if (p.alive) {
             return `<div style="margin-top:2px;"><span style="color:${p.color}">P${i + 1} ${Math.ceil(p.hp)}/${p.maxHp}</span></div>`;
         }
@@ -20318,10 +21295,15 @@ function sendClientLocalInput() {
     }
     if (!hasJoystick) {
         let dx = 0, dy = 0;
-        if (anyKey(myPlayer.keymap.up)) dy -= 1;
-        if (anyKey(myPlayer.keymap.down)) dy += 1;
-        if (anyKey(myPlayer.keymap.left)) dx -= 1;
-        if (anyKey(myPlayer.keymap.right)) dx += 1;
+        const upKeys = (myPlayer.keymap && myPlayer.keymap.up) ? myPlayer.keymap.up : ['w', 'arrowup'];
+        const downKeys = (myPlayer.keymap && myPlayer.keymap.down) ? myPlayer.keymap.down : ['s', 'arrowdown'];
+        const leftKeys = (myPlayer.keymap && myPlayer.keymap.left) ? myPlayer.keymap.left : ['a', 'arrowleft'];
+        const rightKeys = (myPlayer.keymap && myPlayer.keymap.right) ? myPlayer.keymap.right : ['d', 'arrowright'];
+
+        if (anyKey(upKeys)) dy -= 1;
+        if (anyKey(downKeys)) dy += 1;
+        if (anyKey(leftKeys)) dx -= 1;
+        if (anyKey(rightKeys)) dx += 1;
         if (dx !== 0 || dy !== 0) {
             if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
             moveX = dx; moveY = dy;
@@ -20358,6 +21340,8 @@ function updateLobbyPlayers(dt, dtFactor, now) {
                     selectedWeaponLabel: p.selectedWeaponLabel,
                     isMoving: p.isMoving
                 })),
+                hostW: W,
+                hostH: H,
                 currentGameState: STATES.WEAPON_SELECT
             });
         }
@@ -20385,39 +21369,40 @@ function loop(now) {
     if (GAME_STATE.current === STATES.GAMEPLAY) {
         gameClock += dt; // only the gameplay clock advances; frozen while paused
         SoundEngine.updateMusic(now);
-        update(dt, dtFactor, gameClock);
-        draw(gameClock);
-        
-        // 60 FPS authoritative sync / input streaming
-        if (netManager.isHost && netManager.connections.size > 0) {
-            netManager.broadcastWorldSnapshot({
-                players: GAME_STATE.players.map(p => ({
-                    index: p.index,
-                    x: p.x,
-                    y: p.y,
-                    hp: p.hp,
-                    maxHp: p.maxHp,
-                    alive: p.alive,
-                    facingAngle: p.facingAngle,
-                    selectedWeapon: p.selectedWeapon,
-                    selectedWeaponLabel: p.selectedWeaponLabel,
-                    isMoving: p.isMoving
-                })),
-                elapsed: GAME_STATE.elapsed,
-                level: GAME_STATE.level,
-                xp: GAME_STATE.xp,
-                nextXp: GAME_STATE.nextXp,
-                kills: GAME_STATE.kills,
-                activeBoss: GAME_STATE.activeBoss
-            });
-        } else if (netManager.isClient) {
-            sendClientLocalInput();
-        }
 
-        // Throttle UI DOM layout reflow updates to 10Hz (every 6 frames)
-        GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
-        if (GAME_STATE.uiTick % 6 === 0) {
+        if (netManager.isClient) {
+            // CLIENT-SIDE:
+            // 1. Send local inputs to host at 60 FPS
+            sendClientLocalInput();
+            
+            // 2. Predictively update client's own player movement for 0-latency feel
+            const myPlayer = GAME_STATE.players[netManager.localPlayerIndex];
+            if (myPlayer && myPlayer.alive) {
+                myPlayer.update(dt, dtFactor, gameClock);
+                resolvePlayerTerrainCollisions(myPlayer);
+            }
+            
+            // 3. Update local client particles
+            for (const pa of GAME_STATE.particles) pa.update(dt, dtFactor);
+            
+            // 4. Render authoritative world snapshot from host
+            draw(gameClock);
             updateUI();
+        } else {
+            // HOST / SINGLEPLAYER / LOCAL: Authoritative simulation
+            update(dt, dtFactor, gameClock);
+            draw(gameClock);
+            
+            // 60 FPS authoritative sync broadcast to clients
+            if (netManager.isHost && netManager.connections.size > 0) {
+                netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
+            }
+
+            // Throttle UI DOM layout reflow updates to 10Hz (every 6 frames)
+            GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
+            if (GAME_STATE.uiTick % 6 === 0) {
+                updateUI();
+            }
         }
     } else if (GAME_STATE.current === STATES.WEAPON_SELECT) {
         // Pre-game Starting Weapon selection lobby: update blobs so players can freely move around!
