@@ -260,6 +260,25 @@ class NetworkManager {
                 this.peerLastSeenMap.set(conn.peer, Date.now());
 
                 const connectedSlots = [0, ...this.playerPeerMap.keys()];
+                let upgradesMap = null;
+                let chosenUpgradesMap = null;
+                if (typeof GAME_STATE !== 'undefined' && typeof STATES !== 'undefined' && GAME_STATE.current === STATES.LEVEL_UP && GAME_STATE.players) {
+                    upgradesMap = {};
+                    chosenUpgradesMap = {};
+                    for (const p of GAME_STATE.players) {
+                        if (!p) continue;
+                        if (!p.currentUpgradeOptions && typeof pickThreeFor === 'function') {
+                            p.currentUpgradeOptions = pickThreeFor(p);
+                        }
+                        if (p.currentUpgradeOptions) {
+                            upgradesMap[p.index] = p.currentUpgradeOptions.map(u => u.id);
+                        }
+                        if (p.currentLevelUpgradeName) {
+                            chosenUpgradesMap[p.index] = p.currentLevelUpgradeName;
+                        }
+                    }
+                }
+
                 conn.send({
                     type: 'ASSIGN_SLOT',
                     playerIndex: assignedSlot,
@@ -269,7 +288,10 @@ class NetworkManager {
                     elapsed: (typeof GAME_STATE !== 'undefined') ? GAME_STATE.elapsed : 0,
                     connectedSlots: connectedSlots,
                     hostW: typeof W !== 'undefined' ? W : 1512,
-                    hostH: typeof H !== 'undefined' ? H : 945
+                    hostH: typeof H !== 'undefined' ? H : 945,
+                    upgradesMap: upgradesMap,
+                    chosenUpgradesMap: chosenUpgradesMap,
+                    pendingLevels: (typeof GAME_STATE !== 'undefined') ? (GAME_STATE.pendingLevels || 1) : 1
                 });
 
                 if (typeof onOnlinePlayerJoined === 'function') {
@@ -428,7 +450,7 @@ class NetworkManager {
                 this.localPlayerIndex = data.playerIndex;
                 console.log(`[Net] Successfully joined as Player ${this.localPlayerIndex + 1} (Reconnection: ${!!data.isReconnection})`);
                 if (typeof onAssignedSlot === 'function') {
-                    onAssignedSlot(this.localPlayerIndex, data.difficulty, data.currentGameState, data.connectedSlots, data.hostW, data.hostH, data.isReconnection, data.elapsed);
+                    onAssignedSlot(this.localPlayerIndex, data.difficulty, data.currentGameState, data.connectedSlots, data.hostW, data.hostH, data.isReconnection, data.elapsed, data.upgradesMap, data.chosenUpgradesMap, data.pendingLevels);
                 }
                 break;
 
@@ -464,7 +486,7 @@ class NetworkManager {
             case 'LEVEL_UP_START':
                 // Midgame level up triggered
                 if (typeof onOnlineLevelUpStarted === 'function') {
-                    onOnlineLevelUpStarted(data.pendingLevels, data.playerUpgrades);
+                    onOnlineLevelUpStarted(data.pendingLevels, data.upgradesMap || data.playerUpgrades);
                 }
                 break;
 

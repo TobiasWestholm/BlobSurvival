@@ -4780,6 +4780,14 @@ class Player extends Unit {
             this.weapons.push(new TurretWeapon(this));
         }
     }
+    updateWeapons(now, dt = 16, dtFactor = 1.0) {
+        if (!GAME_STATE.isOnline || GAME_STATE.isHost) {
+            for (const w of this.weapons) w.update(now);
+        } else {
+            const flail = this.weapons.find(w => w.id === 'player_flail');
+            if (flail) flail.update(dt, dtFactor, now);
+        }
+    }
     update(dt, dtFactor, now) {
         if (this.invuln > 0) this.invuln -= dt;
         if (this.spawnInvuln > 0) this.spawnInvuln -= dt;
@@ -4802,7 +4810,7 @@ class Player extends Unit {
             this.lastX = this.x;
             this.lastY = this.y;
 
-            for (const w of this.weapons) w.update(now);
+            this.updateWeapons(now, dt, dtFactor);
 
             if (progress >= 1) {
                 this.airborne = false;
@@ -4816,7 +4824,7 @@ class Player extends Unit {
             this.dashing = false;
             this.lastX = this.x;
             this.lastY = this.y;
-            for (const w of this.weapons) w.update(now);
+            this.updateWeapons(now, dt, dtFactor);
             return;
         }
 
@@ -4856,7 +4864,7 @@ class Player extends Unit {
                 this.dashing = false;
                 this.dashCooldownUntil = now + this.dashCooldown;
             }
-            for (const w of this.weapons) w.update(now);
+            this.updateWeapons(now, dt, dtFactor);
             
             // Handle laser, fire, and ice trails at the end of dash frame
             if (this.lastX !== this.x || this.lastY !== this.y) {
@@ -4982,7 +4990,7 @@ class Player extends Unit {
             return; // In pre-game lobby: do not fire weapons or process combat
         }
 
-        for (const w of this.weapons) w.update(now);
+        this.updateWeapons(now, dt, dtFactor);
 
         this.updateNetworkExpansion(now);
 
@@ -6351,7 +6359,7 @@ class Enemy extends Unit {
             this.tongueAimTargetX = 0;
             this.tongueAimTargetY = 0;
         } else if (type === 'behemoth') {
-            // SC2 Ultralisk / Hive Behemoth: Colossal armored apex final boss (Minute 24:00).
+            // Behemoth final boss (Minute 24:00).
             // Features: Nydus Worm Emergence, Seismic Kaiser Cleave, Bile Mortar Barrage, Burrow & Subterranean Eruption, and Trample Charge.
             this.hp = 500000; this.speed = 1.0; this.damage = 2500; this.color = '#1b4332'; this.r = 65; this.xpValue = MONSTER_BASE_XP.behemoth;
             this.airborne = false;
@@ -9303,7 +9311,7 @@ class Enemy extends Unit {
         ctx.textAlign = 'center';
         ctx.shadowColor = '#000';
         ctx.shadowBlur = 4;
-        ctx.fillText('THE HIVE BEHEMOTH', this.x, by - 5);
+        ctx.fillText('THE BEHEMOTH', this.x, by - 5);
         ctx.restore();
     }
 
@@ -16126,6 +16134,9 @@ function weightedPickIndex(pool, player) {
 }
 
 function pickThreeFor(player) {
+    if (player && player.currentUpgradeOptions && player.currentUpgradeOptions.length === 3) {
+        return player.currentUpgradeOptions;
+    }
     const taken = player.takenOneShots;
     const hasMissile = player.weapons.some(w => w.id === 'magic_missile');
     const hasMine = player.weapons.some(w => w.id === 'proximity_mine');
@@ -16204,6 +16215,7 @@ function pickThreeFor(player) {
         });
         out.push(base[Math.floor(Math.random() * base.length)]);
     }
+    if (player) player.currentUpgradeOptions = out;
     return out;
 }
 
@@ -16911,10 +16923,24 @@ function startLevelUpFlow() {
     SoundEngine.setMuffled(true, 0.5);
     if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
 
-    if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+    // Ensure upgrade options are initialized for active players
+    for (const p of GAME_STATE.players) {
+        if (p && !p.disconnected && !p.kicked) {
+            if (!p.currentUpgradeOptions) p.currentUpgradeOptions = pickThreeFor(p);
+        }
+    }
+
+    if (GAME_STATE.gameMode === 'online' && netManager && netManager.isHost) {
+        const upgradesMap = {};
+        for (const p of GAME_STATE.players) {
+            if (p && p.currentUpgradeOptions) {
+                upgradesMap[p.index] = p.currentUpgradeOptions.map(u => u.id);
+            }
+        }
         netManager.broadcast({
             type: 'LEVEL_UP_START',
-            pendingLevels: GAME_STATE.pendingLevels
+            pendingLevels: GAME_STATE.pendingLevels,
+            upgradesMap: upgradesMap
         });
     }
 
@@ -16933,11 +16959,6 @@ function beginSelectionRound() {
     layer.innerHTML = '';
     const isOnline = (GAME_STATE.gameMode === 'online');
     const myIndex = isOnline ? (netManager ? netManager.localPlayerIndex : 0) : 0;
-
-    // Reset current round chosen upgrade names so they only appear once chosen in this round
-    for (const player of GAME_STATE.players) {
-        if (player) player.currentLevelUpgradeName = null;
-    }
 
     if (isOnline && isMobile) {
         // On mobile in online multiplayer, render only local player's upgrade panel
@@ -17014,13 +17035,31 @@ function kickPlayerByHost(playerIndex) {
             clearTimeout(kickTimeoutId);
             kickTimeoutId = null;
         }
+        for (const pl of GAME_STATE.players) {
+            if (pl) {
+                pl.currentUpgradeOptions = null;
+                pl.currentLevelUpgradeName = null;
+            }
+        }
         document.getElementById('levelUpLayer').classList.remove('show');
         GAME_STATE.pendingLevels--;
         if (GAME_STATE.pendingLevels > 0) {
             if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+                for (const pl of GAME_STATE.players) {
+                    if (pl && !pl.disconnected && !pl.kicked) {
+                        pl.currentUpgradeOptions = pickThreeFor(pl);
+                    }
+                }
+                const upgradesMap = {};
+                for (const pl of GAME_STATE.players) {
+                    if (pl && pl.currentUpgradeOptions) {
+                        upgradesMap[pl.index] = pl.currentUpgradeOptions.map(u => u.id);
+                    }
+                }
                 netManager.broadcast({
                     type: 'LEVEL_UP_START',
-                    pendingLevels: GAME_STATE.pendingLevels
+                    pendingLevels: GAME_STATE.pendingLevels,
+                    upgradesMap: upgradesMap
                 });
             }
             beginSelectionRound();
@@ -17160,6 +17199,11 @@ function buildPlayerPanel(player, count, isInteractive = true) {
         }
         panel.appendChild(btn);
     }
+
+    if (player.currentLevelUpgradeName) {
+        onPlayerChose(panel, player);
+    }
+
     return panel;
 }
 
@@ -17186,13 +17230,31 @@ function onPlayerChose(panel, player) {
         kickTimeoutId = null;
     }
     // everyone has chosen for this level
+    for (const pl of GAME_STATE.players) {
+        if (pl) {
+            pl.currentUpgradeOptions = null;
+            pl.currentLevelUpgradeName = null;
+        }
+    }
     document.getElementById('levelUpLayer').classList.remove('show');
     GAME_STATE.pendingLevels--;
     if (GAME_STATE.pendingLevels > 0) {
         if (GAME_STATE.gameMode === 'online' && netManager.isHost) {
+            for (const pl of GAME_STATE.players) {
+                if (pl && !pl.disconnected && !pl.kicked) {
+                    pl.currentUpgradeOptions = pickThreeFor(pl);
+                }
+            }
+            const upgradesMap = {};
+            for (const pl of GAME_STATE.players) {
+                if (pl && pl.currentUpgradeOptions) {
+                    upgradesMap[pl.index] = pl.currentUpgradeOptions.map(u => u.id);
+                }
+            }
             netManager.broadcast({
                 type: 'LEVEL_UP_START',
-                pendingLevels: GAME_STATE.pendingLevels
+                pendingLevels: GAME_STATE.pendingLevels,
+                upgradesMap: upgradesMap
             });
         }
         beginSelectionRound();
@@ -18277,7 +18339,7 @@ const BOSS_CONFIGS = {
     },
     behemoth: {
         id: 'behemoth',
-        name: 'The Hive Behemoth',
+        name: 'The Behemoth',
         startMs: 1440000,  // 24:00
         durationLimit: 180000, // 27:00 force-resume / final limit
         spawn(now) {
@@ -18960,6 +19022,15 @@ function despawnPlayerEntities(playerIndex) {
         }
     }
 
+    if (player && player.weapons) {
+        for (const w of player.weapons) {
+            if (w.id === 'fire_ring' || w.id === 'projectile_shield') {
+                w.initialized = false;
+                w.orbiters = [];
+            }
+        }
+    }
+
     // 6. Reset any active enemy target referencing this player
     if (GAME_STATE.enemies) {
         for (const e of GAME_STATE.enemies) {
@@ -18985,6 +19056,14 @@ window.onOnlinePlayerJoined = function(assignedSlot, peerId, isReconnection) {
             p.invuln = 3000;
             p.spawnInvuln = 3000;
             p.clampToArena();
+            if (p.weapons) {
+                for (const w of p.weapons) {
+                    if (w.id === 'fire_ring' || w.id === 'projectile_shield') {
+                        w.initialized = false;
+                        w.orbiters = [];
+                    }
+                }
+            }
             if (p.selectedWeapon && (!p.weapons || p.weapons.length === 0)) {
                 p.unlockWeapon(p.selectedWeapon);
             }
@@ -19030,7 +19109,7 @@ window.onOnlinePlayerDisconnected = function(playerIndex, peerId) {
     }
 };
 
-window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState, connectedSlots, hostW, hostH, isReconnection, elapsed) {
+window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState, connectedSlots, hostW, hostH, isReconnection, elapsed, upgradesMap, chosenUpgradesMap, pendingLevels) {
     console.log(`[Game] Joined room! Assigned Player ${assignedSlot + 1} (Reconnection: ${!!isReconnection})`);
     GAME_STATE.gameMode = 'online';
     GAME_STATE.isOnline = true;
@@ -19052,6 +19131,22 @@ window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState,
     for (const s of slots) {
         GAME_STATE.players[s] = new Player(s, PLAYER_DEFS[s]);
     }
+    if (upgradesMap) {
+        for (const idx in upgradesMap) {
+            const p = GAME_STATE.players[idx];
+            if (p) {
+                p.currentUpgradeOptions = upgradesMap[idx].map(id => UPGRADE_POOL.find(u => u.id === id)).filter(Boolean);
+            }
+        }
+    }
+    if (chosenUpgradesMap) {
+        for (const idx in chosenUpgradesMap) {
+            const p = GAME_STATE.players[idx];
+            if (p) {
+                p.currentLevelUpgradeName = chosenUpgradesMap[idx];
+            }
+        }
+    }
     if (isReconnection && GAME_STATE.players[assignedSlot]) {
         GAME_STATE.players[assignedSlot].invuln = 3000;
         GAME_STATE.players[assignedSlot].spawnInvuln = 3000;
@@ -19067,6 +19162,12 @@ window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState,
 
     if (currentGameState === STATES.WEAPON_SELECT || currentGameState === STATES.START_MENU || !isReconnection) {
         startWeaponSelectFlow();
+    } else if (currentGameState === STATES.LEVEL_UP) {
+        GAME_STATE.current = STATES.LEVEL_UP;
+        GAME_STATE.pendingLevels = pendingLevels || 1;
+        SoundEngine.setMuffled(true, 0.5);
+        if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+        beginSelectionRound();
     } else {
         // Reconnecting to active game session
         GAME_STATE.current = currentGameState || STATES.GAMEPLAY;
@@ -19237,16 +19338,18 @@ function serializeWorldForNetwork() {
 
     // 3. Projectiles
     const projectiles = GAME_STATE.projectiles.map(p => ({
-        t: p.type || '',
+        t: (p instanceof OrbitProjectile) ? 'fire_ring' : (p instanceof DeflectorOrbiter ? 'deflector_shield' : (p.type || '')),
         x: Math.round(p.x),
         y: Math.round(p.y),
-        r: p.r || 3,
-        c: p.color || '#00ffcc',
+        r: p.r || (p instanceof OrbitProjectile ? 10 : 3),
+        c: (p instanceof OrbitProjectile) ? '#ff6600' : (p instanceof DeflectorOrbiter ? '#00e5ff' : (p.color || '#00ffcc')),
         a: Math.round((p.angle || 0) * 100) / 100,
         tx: p.targetX !== undefined ? Math.round(p.targetX) : undefined,
         ty: p.targetY !== undefined ? Math.round(p.targetY) : undefined,
         sx: p.startX !== undefined ? Math.round(p.startX) : undefined,
-        sy: p.startY !== undefined ? Math.round(p.startY) : undefined
+        sy: p.startY !== undefined ? Math.round(p.startY) : undefined,
+        mr: (p instanceof OrbitProjectile && p.player && p.player.mineRingEnabled) ? 1 : 0,
+        pi: (p.player && p.player.index !== undefined) ? p.player.index : 0
     }));
 
     // 4. Enemy Projectiles
@@ -19464,13 +19567,36 @@ window.onWorldSnapshotReceived = function(snapshot) {
             targetY: sp.ty,
             startX: sp.sx,
             startY: sp.sy,
+            mineRing: sp.mr === 1,
+            playerIndex: sp.pi || 0,
             dead: false,
             draw: function(now) {
                 ctx.save();
-                ctx.fillStyle = this.color;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-                ctx.fill();
+                if (this.type === 'fire_ring') {
+                    const owner = GAME_STATE.players[this.playerIndex];
+                    if (this.mineRing && owner) {
+                        drawBioMineVesicle(ctx, this.x, this.y, this.r, now, owner, false, 0, false);
+                    } else {
+                        ctx.fillStyle = '#ff6600';
+                        ctx.shadowColor = owner ? owner.color : '#ff9900';
+                        ctx.shadowBlur = 15;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else if (this.type === 'deflector_shield') {
+                    ctx.fillStyle = '#00e5ff';
+                    ctx.shadowColor = '#00e5ff';
+                    ctx.shadowBlur = 12;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
                 ctx.restore();
             }
         }));
@@ -19673,11 +19799,19 @@ window.onWorldSnapshotReceived = function(snapshot) {
     if (snapshot.hordeStartTime !== undefined) GAME_STATE.hordeStartTime = snapshot.hordeStartTime;
 };
 
-window.onOnlineLevelUpStarted = function(pendingLevels) {
+window.onOnlineLevelUpStarted = function(pendingLevels, upgradesMap) {
     GAME_STATE.pendingLevels = pendingLevels || 1;
     GAME_STATE.current = STATES.LEVEL_UP;
     SoundEngine.setMuffled(true, 0.5);
     if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    if (upgradesMap) {
+        for (const idx in upgradesMap) {
+            const p = GAME_STATE.players[idx];
+            if (p) {
+                p.currentUpgradeOptions = upgradesMap[idx].map(id => UPGRADE_POOL.find(u => u.id === id)).filter(Boolean);
+            }
+        }
+    }
     beginSelectionRound();
 };
 
