@@ -1,16 +1,17 @@
 # Blob Survival 🎮
 
-A fast-paced, high-density 2D arcade survival auto-battler built from the ground up in zero-dependency Vanilla JavaScript and HTML5 Canvas. Survive escalating hordes of unique monsters, unlock powerful weapon synergies, and defeat multi-phase bosses in single-player or up to 4-player local co-op.
+A fast-paced, high-density 2D rogue-like survival game built from the ground up in zero-dependency Vanilla JavaScript and HTML5 Canvas. Survive escalating hordes of unique monsters, unlock powerful weapon synergies, and defeat multi-phase bosses in single-player or up to 4-player multiplayer.
 
 ## ***[🎮PLAY GAME🎮](https://tobiaswestholm.github.io/BlobSurvival/)***
 
 ---
 
-https://github.com/user-attachments/assets/eeee864f-14b3-4d8d-a733-a5b2cbea5e85
+https://github.com/user-attachments/assets/e7c3951c-04b9-462f-9d4b-b916a9200d06
+
 
 ## 🌟 Key Features
 
-* **Local Co-Op (1–4 Players):** Simultaneous local multiplayer with shared XP and individual upgrades, and dynamic difficulty scaling based on active player count.
+* **Singleplayer or Online/Local Co-Op (1–4 Players):** Simultaneous multiplayer with shared XP and individual upgrades, and dynamic difficulty scaling based on active player count.
 * **Three different difficulty settings:** Choose Easy, Medium or Hard.
 * **Synergistic Skill Trees:** Auto-firing weapons and passive upgrades, starting out with ranged, melee, explosives, or turrets.
 
@@ -31,10 +32,5 @@ https://github.com/user-attachments/assets/eeee864f-14b3-4d8d-a733-a5b2cbea5e85
 
 ### Systems Architecture & Game Loop Determinism
 * **High-Density Entity Simulation:** Maintains 120 FPS performance handling up to 500 simultaneous active entities (monsters, projectiles, particles, loot gems) using localized array mutation and state recycling.
-* **Deterministic Delta-Time Scaling:** Time-step normalization (`dtFactor`) decouples frame rendering rates from physics and clock intervals, ensuring consistent behavior across variable monitor refresh rates (60Hz–240Hz).
+* **Deterministic Delta-Time Scaling:** Time-step normalization decouples frame rendering rates from physics and clock intervals, ensuring consistent behavior across variable monitor refresh rates (60Hz–240Hz).
 * **Game Balancing Models:** Dynamic mathematical formulas scale enemy health, spawn density, and weapon damage parameters non-linearly based on elapsed time and active player count.
-
----
-
-## How to Run
-Click [here](https://tobiaswestholm.github.io/BlobSurvival/) or open `index.html` in any modern web browser (Chrome, Firefox, Safari, Edge).
