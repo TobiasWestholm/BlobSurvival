@@ -478,6 +478,9 @@ function onOnlinePlayerKicked(playerIndex) {
 }
 
 function getPanelPosition(index, count) {
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        return 'top:50%; left:50%; transform:translate(-50%,-50%);';
+    }
     const M = 15, TOP = 15;
     if (count === 1) return 'top:50%; left:50%; transform:translate(-50%,-50%);';
     if (count === 2) {
@@ -604,6 +607,11 @@ function onPlayerChose(panel, player) {
     tag.textContent = '✓ Ready — Waiting for other players...';
     tag.style.color = player.color;
     panel.appendChild(tag);
+
+    // In online multiplayer, Host is the authoritative coordinator for level-up completion and countdowns
+    if (GAME_STATE.gameMode === 'online' && typeof netManager !== 'undefined' && netManager && netManager.isClient) {
+        return;
+    }
 
     GAME_STATE.pendingPicks--;
     if (GAME_STATE.pendingPicks > 0) return;

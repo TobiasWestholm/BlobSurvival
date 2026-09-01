@@ -55,7 +55,12 @@ function tryStartDash(p) {
     if (p.dashing || curTime < (p.dashCooldownUntil || 0)) return;
     let dx = 0, dy = 0;
 
-    const localIndex = (typeof netManager !== 'undefined' && netManager && netManager.isClient) ? netManager.localPlayerIndex : 0;
+    const isOnline = (typeof netManager !== 'undefined' && netManager && (netManager.isOnline || (typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online')));
+    const localIndex = isOnline ? (typeof netManager !== 'undefined' && netManager ? netManager.localPlayerIndex : 0) : 0;
+
+    // In online mode, local dash key/touch inputs only trigger dash on the local player instance
+    if (isOnline && p.index !== localIndex) return;
+
     if (p.index === localIndex && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
         dx = joystickInstance.vector.x;
         dy = joystickInstance.vector.y;

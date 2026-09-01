@@ -246,69 +246,116 @@ class Player extends Unit {
         let moveX = 0, moveY = 0;
         let hasJoystick = false;
 
-        // Player 1 can use virtual joystick if active; remote peers on host read remoteInput
-        if (typeof netManager !== 'undefined' && netManager && netManager.isHost && this.index > 0 && this.remoteInput) {
-            moveX = this.remoteInput.moveX || 0;
-            moveY = this.remoteInput.moveY || 0;
-            if (this.remoteInput.angle !== undefined) {
-                const targetAngle = this.remoteInput.angle;
-                let angleDiff = targetAngle - this.facingAngle;
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                const angularTurnRate = (Math.abs(angleDiff) > Math.PI * 0.6) ? 0.38 : 0.22;
-                this.facingAngle += angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
-            }
-        } else {
-            const isLocal = (typeof netManager !== 'undefined' && netManager && netManager.isClient)
-                ? (this.index === netManager.localPlayerIndex)
-                : (this.index === 0);
-            if (isLocal && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
-                moveX = joystickInstance.vector.x; // Unit vector Math.cos(angle) -> continuous 360-degree max speed
-                moveY = joystickInstance.vector.y; // Unit vector Math.sin(angle)
-                this.facingAngle = joystickInstance.vector.angle;
-                hasJoystick = true;
-            }
-        }
+        // In online mode: local player reads joystick/local keyboard, remote player reads network remoteInput only
+        const isOnline = (typeof netManager !== 'undefined' && netManager && (netManager.isOnline || (typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online')));
+        const localIndex = (typeof netManager !== 'undefined' && netManager && netManager.localPlayerIndex !== undefined) ? netManager.localPlayerIndex : 0;
+        const isLocalPlayer = isOnline ? (this.index === localIndex) : (this.index === 0);
 
-        if (!hasJoystick) {
-            let dx = 0, dy = 0;
-            const isSinglePlayer = (typeof GAME_STATE !== 'undefined' && GAME_STATE.players && GAME_STATE.players.length === 1);
-            if (anyKey(this.keymap.up) || (isSinglePlayer && anyKey(['arrowup']))) dy -= 1;
-            if (anyKey(this.keymap.down) || (isSinglePlayer && anyKey(['arrowdown']))) dy += 1;
-            if (anyKey(this.keymap.left) || (isSinglePlayer && anyKey(['arrowleft']))) dx -= 1;
-            if (anyKey(this.keymap.right) || (isSinglePlayer && anyKey(['arrowright']))) dx += 1;
+        if (isOnline) {
+            if (isLocalPlayer) {
+                if (typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
+                    moveX = joystickInstance.vector.x;
+                    moveY = joystickInstance.vector.y;
+                    this.facingAngle = joystickInstance.vector.angle;
+                    hasJoystick = true;
+                } else {
+                    let dx = 0, dy = 0;
+                    if (anyKey(this.keymap.up) || anyKey(['arrowup'])) dy -= 1;
+                    if (anyKey(this.keymap.down) || anyKey(['arrowdown'])) dy += 1;
+                    if (anyKey(this.keymap.left) || anyKey(['arrowleft'])) dx -= 1;
+                    if (anyKey(this.keymap.right) || anyKey(['arrowright'])) dx += 1;
 
-            this.inputHistory.push({ dx, dy, time: now });
-            if (this.inputHistory.length > 10) this.inputHistory.shift();
+                    this.inputHistory.push({ dx, dy, time: now });
+                    if (this.inputHistory.length > 10) this.inputHistory.shift();
 
-            if (dx !== 0 || dy !== 0) {
-                let ndx = dx, ndy = dy;
-                if (ndx !== 0 && ndy !== 0) { ndx *= 0.7071; ndy *= 0.7071; }
-                const targetAngle = Math.atan2(ndy, ndx);
+                    if (dx !== 0 || dy !== 0) {
+                        let ndx = dx, ndy = dy;
+                        if (ndx !== 0 && ndy !== 0) { ndx *= 0.7071; ndy *= 0.7071; }
+                        const targetAngle = Math.atan2(ndy, ndx);
 
-                // Smoothly sweep facingAngle towards targetAngle along shortest arc
-                let angleDiff = targetAngle - this.facingAngle;
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-                // Responsive angular turn speed: faster on sharp reversals, silky on curves
-                const angularTurnRate = (Math.abs(angleDiff) > Math.PI * 0.6) ? 0.38 : 0.22;
-                this.facingAngle += angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
-
-                moveX = ndx;
-                moveY = ndy;
-            } else {
-                // Restore diagonal direction if we stopped very recently
-                for (let i = this.inputHistory.length - 1; i >= 0; i--) {
-                    const hist = this.inputHistory[i];
-                    if (now - hist.time > 150) break;
-                    if (hist.dx !== 0 && hist.dy !== 0) {
-                        const targetAngle = Math.atan2(hist.dy, hist.dx);
                         let angleDiff = targetAngle - this.facingAngle;
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                        this.facingAngle += angleDiff * Math.min(1.0, 0.22 * dtFactor);
-                        break;
+
+                        const angularTurnRate = (Math.abs(angleDiff) > Math.PI * 0.6) ? 0.38 : 0.22;
+                        this.facingAngle += angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
+
+                        moveX = ndx;
+                        moveY = ndy;
+                    } else {
+                        for (let i = this.inputHistory.length - 1; i >= 0; i--) {
+                            const hist = this.inputHistory[i];
+                            if (now - hist.time > 150) break;
+                            if (hist.dx !== 0 && hist.dy !== 0) {
+                                const targetAngle = Math.atan2(hist.dy, hist.dx);
+                                let angleDiff = targetAngle - this.facingAngle;
+                                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                                this.facingAngle += angleDiff * Math.min(1.0, 0.22 * dtFactor);
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Remote peer in online mode (Host simulation reads client input; Client ignores remote local keyboard)
+                if (this.remoteInput) {
+                    moveX = this.remoteInput.moveX || 0;
+                    moveY = this.remoteInput.moveY || 0;
+                    if (this.remoteInput.angle !== undefined) {
+                        const targetAngle = this.remoteInput.angle;
+                        let angleDiff = targetAngle - this.facingAngle;
+                        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                        const angularTurnRate = (Math.abs(angleDiff) > Math.PI * 0.6) ? 0.38 : 0.22;
+                        this.facingAngle += angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
+                    }
+                }
+            }
+        } else {
+            // Local singleplayer / local co-op
+            if (this.index === 0 && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
+                moveX = joystickInstance.vector.x;
+                moveY = joystickInstance.vector.y;
+                this.facingAngle = joystickInstance.vector.angle;
+                hasJoystick = true;
+            } else {
+                let dx = 0, dy = 0;
+                const isSinglePlayer = (typeof GAME_STATE !== 'undefined' && GAME_STATE.players && GAME_STATE.players.length === 1);
+                if (anyKey(this.keymap.up) || (isSinglePlayer && anyKey(['arrowup']))) dy -= 1;
+                if (anyKey(this.keymap.down) || (isSinglePlayer && anyKey(['arrowdown']))) dy += 1;
+                if (anyKey(this.keymap.left) || (isSinglePlayer && anyKey(['arrowleft']))) dx -= 1;
+                if (anyKey(this.keymap.right) || (isSinglePlayer && anyKey(['arrowright']))) dx += 1;
+
+                this.inputHistory.push({ dx, dy, time: now });
+                if (this.inputHistory.length > 10) this.inputHistory.shift();
+
+                if (dx !== 0 || dy !== 0) {
+                    let ndx = dx, ndy = dy;
+                    if (ndx !== 0 && ndy !== 0) { ndx *= 0.7071; ndy *= 0.7071; }
+                    const targetAngle = Math.atan2(ndy, ndx);
+
+                    let angleDiff = targetAngle - this.facingAngle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+                    const angularTurnRate = (Math.abs(angleDiff) > Math.PI * 0.6) ? 0.38 : 0.22;
+                    this.facingAngle += angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
+
+                    moveX = ndx;
+                    moveY = ndy;
+                } else {
+                    for (let i = this.inputHistory.length - 1; i >= 0; i--) {
+                        const hist = this.inputHistory[i];
+                        if (now - hist.time > 150) break;
+                        if (hist.dx !== 0 && hist.dy !== 0) {
+                            const targetAngle = Math.atan2(hist.dy, hist.dx);
+                            let angleDiff = targetAngle - this.facingAngle;
+                            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                            this.facingAngle += angleDiff * Math.min(1.0, 0.22 * dtFactor);
+                            break;
+                        }
                     }
                 }
             }

@@ -48,12 +48,40 @@ function resizeCanvas() {
     initCanvasElements();
     if (!canvas) return;
 
+    const rawW = typeof window !== 'undefined' ? (window.innerWidth || document.documentElement.clientWidth || 1512) : 1512;
+    const rawH = typeof window !== 'undefined' ? (window.innerHeight || document.documentElement.clientHeight || 900) : 900;
     const isOnlineClient = (typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online' && typeof netManager !== 'undefined' && netManager && netManager.isClient);
+
     if (isOnlineClient && GAME_STATE.hostW && GAME_STATE.hostH) {
+        // Authoritative virtual arena size from the Host
         W = GAME_STATE.hostW;
         H = GAME_STATE.hostH;
         canvas.width = W;
         canvas.height = H;
+
+        // Scaling principle: The host screen must fit on all client screens without clipping.
+        // Compare ratio of widths (W_host / W_client) and heights (H_host / H_client)
+        const ratioW = W / rawW;
+        const ratioH = H / rawH;
+
+        let displayW, displayH;
+        if (ratioW > ratioH) {
+            // Width is the limiting factor: use full client width, height scales proportionally
+            displayW = rawW;
+            displayH = Math.round(rawW * (H / W));
+        } else {
+            // Height is the limiting factor: use full client height, width scales proportionally
+            displayH = rawH;
+            displayW = Math.round(rawH * (W / H));
+        }
+
+        canvas.style.width = `${displayW}px`;
+        canvas.style.height = `${displayH}px`;
+        canvas.style.position = 'fixed';
+        canvas.style.top = '50%';
+        canvas.style.left = '50%';
+        canvas.style.transform = 'translate(-50%, -50%)';
+
         if (typeof SPATIAL_GRID !== 'undefined' && SPATIAL_GRID.init) {
             SPATIAL_GRID.init(W, H);
         }
@@ -61,16 +89,20 @@ function resizeCanvas() {
         return;
     }
 
-    const rawW = typeof window !== 'undefined' ? window.innerWidth : 1512;
-    const rawH = typeof window !== 'undefined' ? window.innerHeight : 900;
     const isLandscape = rawW >= rawH;
-
     const targetArenaWidth = isMobile ? (isLandscape ? 1512 : 600) : 1512;
     const scale = targetArenaWidth / rawW;
     W = Math.round(rawW * scale);
     H = Math.round(rawH * scale);
     canvas.width = W;
     canvas.height = H;
+
+    canvas.style.width = `${rawW}px`;
+    canvas.style.height = `${rawH}px`;
+    canvas.style.position = 'fixed';
+    canvas.style.top = '50%';
+    canvas.style.left = '50%';
+    canvas.style.transform = 'translate(-50%, -50%)';
 
     if (typeof SPATIAL_GRID !== 'undefined' && SPATIAL_GRID.init) {
         SPATIAL_GRID.init(W, H);
