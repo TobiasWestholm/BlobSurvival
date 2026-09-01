@@ -668,6 +668,18 @@ class NetworkManager {
         this.isOnline = false;
         this.localPlayerIndex = 0;
         this.roomCode = null;
+        if (typeof clientEnemyCache !== 'undefined') clientEnemyCache.clear();
+        if (typeof clientTurretCache !== 'undefined') clientTurretCache.clear();
+        if (typeof clientHazardCache !== 'undefined') clientHazardCache.clear();
+        if (typeof GAME_STATE !== 'undefined') {
+            GAME_STATE.hostW = null;
+            GAME_STATE.hostH = null;
+            GAME_STATE.victoryTriggered = false;
+        }
+        if (typeof resizeCanvas === 'function') resizeCanvas();
+        if (typeof ctx !== 'undefined' && ctx && typeof canvas !== 'undefined' && canvas) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
     }
 }
 
@@ -817,6 +829,7 @@ window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState,
     GAME_STATE.difficulty = DIFFICULTIES[difficultyName] || DIFFICULTIES.normal;
     if (hostW) GAME_STATE.hostW = hostW;
     if (hostH) GAME_STATE.hostH = hostH;
+    if (typeof resizeCanvas === 'function') resizeCanvas();
     if (elapsed !== undefined) {
         GAME_STATE.elapsed = elapsed;
         gameClock = elapsed;
@@ -865,14 +878,16 @@ window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState,
         GAME_STATE.current = STATES.LEVEL_UP;
         GAME_STATE.pendingLevels = pendingLevels || 1;
         SoundEngine.setMuffled(true, 0.5);
-        if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+        const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
+        if (zone) zone.style.display = 'none';
         beginSelectionRound();
     } else {
         // Reconnecting to active game session
         GAME_STATE.current = currentGameState || STATES.GAMEPLAY;
         SoundEngine.stopMusic();
         SoundEngine.setMuffled(false);
-        if (tip) tip.style.display = 'none';
+        const tipEl = document.getElementById('tipText');
+        if (tipEl) tipEl.style.display = 'none';
         const inviteBanner = document.getElementById('inviteCodeBanner');
         if (inviteBanner) inviteBanner.style.display = 'none';
         const pauseBtn = document.getElementById('pauseMenuBtn');
@@ -977,9 +992,41 @@ window.onLobbyStateUpdated = function(playersData, allReady) {
 
 window.onOnlineCountdownStarted = function(isNewGame) {
     document.getElementById('levelUpLayer').classList.remove('show');
-    tip.style.display = 'none';
+    const tipEl = document.getElementById('tipText');
+    if (tipEl) tipEl.style.display = 'none';
     const inviteBanner = document.getElementById('inviteCodeBanner');
     if (inviteBanner) inviteBanner.style.display = 'none';
+    if (isNewGame) {
+        if (typeof GAME_STATE !== 'undefined') {
+            GAME_STATE.enemies = [];
+            GAME_STATE.activeSentries = [];
+            GAME_STATE.shieldBearers = [];
+            GAME_STATE.attractingVipers = [];
+            GAME_STATE.projectiles = [];
+            GAME_STATE.enemyProjectiles = [];
+            GAME_STATE.hazards = [];
+            GAME_STATE.iceTrails = [];
+            GAME_STATE.terrains = [];
+            GAME_STATE.turrets = [];
+            GAME_STATE.gems = [];
+            GAME_STATE.particles = [];
+            GAME_STATE.firstXpGem = null;
+            GAME_STATE.xpArrowDone = false;
+            GAME_STATE.victoryTriggered = false;
+            GAME_STATE.kills = 0;
+            GAME_STATE.activeBoss = null;
+            GAME_STATE.activeBossStartTime = 0;
+            GAME_STATE.hordeStartTime = 0;
+        }
+        if (typeof clientEnemyCache !== 'undefined') clientEnemyCache.clear();
+        if (typeof clientTurretCache !== 'undefined') clientTurretCache.clear();
+        if (typeof clientHazardCache !== 'undefined') clientHazardCache.clear();
+        if (typeof SPATIAL_GRID !== 'undefined' && SPATIAL_GRID.clear) SPATIAL_GRID.clear();
+        if (typeof resizeCanvas === 'function') resizeCanvas();
+        if (typeof ctx !== 'undefined' && ctx && typeof canvas !== 'undefined' && canvas) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    }
     startCountdown(isNewGame);
 };
 
@@ -992,6 +1039,7 @@ function serializeWorldForNetwork() {
     // 1. Players
     const players = GAME_STATE.players.map(p => {
         const flail = p.weapons ? p.weapons.find(w => w.id === 'player_flail') : null;
+        const melee = p.weapons ? p.weapons.find(w => w.id === 'melee_sweep') : null;
         return {
             i: p.index,
             x: Math.round(p.x),
@@ -1010,7 +1058,14 @@ function serializeWorldForNetwork() {
             mp: p.martyrsPresenceEnabled ? 1 : 0,
             dc: (p.disconnected || p.kicked) ? 1 : 0,
             fx: flail ? Math.round(flail.x) : undefined,
-            fy: flail ? Math.round(flail.y) : undefined
+            fy: flail ? Math.round(flail.y) : undefined,
+            mf: (melee && melee.lastFire > 0) ? Math.round(melee.lastFire) : 0,
+            mrm: p.meleeRangeModifier || 1.0,
+            sh: p.sledgeHammerAnimation ? {
+                st: Math.round(p.sledgeHammerAnimation.startTime),
+                du: Math.round(p.sledgeHammerAnimation.duration),
+                a: Math.round(p.sledgeHammerAnimation.angle * 100) / 100
+            } : undefined
         };
     });
 
@@ -1160,8 +1215,14 @@ function serializeWorldForNetwork() {
 window.onWorldSnapshotReceived = function(snapshot) {
     if (!snapshot) return;
 
-    if (snapshot.hostW !== undefined) GAME_STATE.hostW = snapshot.hostW;
-    if (snapshot.hostH !== undefined) GAME_STATE.hostH = snapshot.hostH;
+    if (snapshot.hostW !== undefined && (GAME_STATE.hostW !== snapshot.hostW || W !== snapshot.hostW)) {
+        GAME_STATE.hostW = snapshot.hostW;
+        if (typeof resizeCanvas === 'function') resizeCanvas();
+    }
+    if (snapshot.hostH !== undefined && (GAME_STATE.hostH !== snapshot.hostH || H !== snapshot.hostH)) {
+        GAME_STATE.hostH = snapshot.hostH;
+        if (typeof resizeCanvas === 'function') resizeCanvas();
+    }
 
     // 1. Reconcile Players
     if (snapshot.players) {
@@ -1208,11 +1269,34 @@ window.onWorldSnapshotReceived = function(snapshot) {
                     p.y = sp.y;
                 }
             } else {
-                // Remote player: update position and orientation
+                // Remote player: update position, orientation, and combat visuals
                 p.x = sp.x;
                 p.y = sp.y;
-                p.facingAngle = sp.fa;
+                if (sp.fa !== undefined) {
+                    let angleDiff = sp.fa - p.facingAngle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    p.facingAngle += angleDiff * 0.40;
+                }
                 p.isMoving = (sp.mv === 1);
+                if (sp.mf !== undefined && sp.mf > 0) {
+                    let melee = p.weapons ? p.weapons.find(w => w.id === 'melee_sweep') : null;
+                    if (!melee && sp.w === 'melee_sweep') {
+                        p.unlockWeapon('melee_sweep');
+                        melee = p.weapons ? p.weapons.find(w => w.id === 'melee_sweep') : null;
+                    }
+                    if (melee) {
+                        melee.lastFire = sp.mf;
+                    }
+                }
+                if (sp.mrm !== undefined) p.meleeRangeModifier = sp.mrm;
+                if (sp.sh) {
+                    p.sledgeHammerAnimation = {
+                        startTime: sp.sh.st,
+                        duration: sp.sh.du,
+                        angle: sp.sh.a
+                    };
+                }
             }
         }
     }
@@ -1490,7 +1574,22 @@ window.onWorldSnapshotReceived = function(snapshot) {
         GAME_STATE.terrains = snapshot.terrains.map(st => new ShieldTerrain(st.x, st.y, st.r, st.fa, gameClock + 10000));
     }
 
-    // 7. World Stats
+    // 7. World Stats & State Sync
+    if (snapshot.currentGameState !== undefined && typeof STATES !== 'undefined') {
+        if (snapshot.currentGameState === STATES.GAMEPLAY && (GAME_STATE.current === STATES.WEAPON_SELECT || GAME_STATE.current === STATES.COUNTDOWN)) {
+            GAME_STATE.current = STATES.GAMEPLAY;
+            const tipEl = document.getElementById('tipText');
+            if (tipEl) tipEl.style.display = 'none';
+            const layer = document.getElementById('levelUpLayer');
+            if (layer) layer.classList.remove('show');
+            const countdownEl = document.getElementById('countdown');
+            if (countdownEl) countdownEl.style.display = 'none';
+            const startMenu = document.getElementById('startMenu');
+            if (startMenu) startMenu.classList.remove('show');
+            const inviteBanner = document.getElementById('inviteCodeBanner');
+            if (inviteBanner) inviteBanner.style.display = 'none';
+        }
+    }
     if (snapshot.elapsed !== undefined) {
         GAME_STATE.elapsed = snapshot.elapsed;
         gameClock = snapshot.elapsed;
@@ -1508,7 +1607,10 @@ window.onOnlineLevelUpStarted = function(pendingLevels, upgradesMap) {
     GAME_STATE.pendingLevels = pendingLevels || 1;
     GAME_STATE.current = STATES.LEVEL_UP;
     SoundEngine.setMuffled(true, 0.5);
-    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
+    if (zone) zone.style.display = 'none';
+    const tipEl = document.getElementById('tipText');
+    if (tipEl) tipEl.style.display = 'none';
     if (upgradesMap) {
         for (const idx in upgradesMap) {
             const p = GAME_STATE.players[idx];

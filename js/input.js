@@ -55,7 +55,8 @@ function tryStartDash(p) {
     if (p.dashing || curTime < (p.dashCooldownUntil || 0)) return;
     let dx = 0, dy = 0;
 
-    if (p.index === 0 && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
+    const localIndex = (typeof netManager !== 'undefined' && netManager && netManager.isClient) ? netManager.localPlayerIndex : 0;
+    if (p.index === localIndex && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
         dx = joystickInstance.vector.x;
         dy = joystickInstance.vector.y;
     } else if (p.keymap) {
@@ -202,7 +203,6 @@ function sendClientLocalInput() {
         if (dx !== 0 || dy !== 0) {
             if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
             moveX = dx; moveY = dy;
-            myPlayer.facingAngle = Math.atan2(dy, dx);
         }
     }
     netManager.sendLocalInput(moveX, moveY, myPlayer.facingAngle, myPlayer.dashing);

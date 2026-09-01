@@ -251,14 +251,23 @@ class Player extends Unit {
             moveX = this.remoteInput.moveX || 0;
             moveY = this.remoteInput.moveY || 0;
             if (this.remoteInput.angle !== undefined) {
-                this.facingAngle = this.remoteInput.angle;
+                const targetAngle = this.remoteInput.angle;
+                let angleDiff = targetAngle - this.facingAngle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                const angularTurnRate = (Math.abs(angleDiff) > Math.PI * 0.6) ? 0.38 : 0.22;
+                this.facingAngle += angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
             }
-            hasJoystick = true;
-        } else if (this.index === 0 && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector.active) {
-            moveX = joystickInstance.vector.x; // Unit vector Math.cos(angle) -> continuous 360-degree max speed
-            moveY = joystickInstance.vector.y; // Unit vector Math.sin(angle)
-            this.facingAngle = joystickInstance.vector.angle;
-            hasJoystick = true;
+        } else {
+            const isLocal = (typeof netManager !== 'undefined' && netManager && netManager.isClient)
+                ? (this.index === netManager.localPlayerIndex)
+                : (this.index === 0);
+            if (isLocal && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
+                moveX = joystickInstance.vector.x; // Unit vector Math.cos(angle) -> continuous 360-degree max speed
+                moveY = joystickInstance.vector.y; // Unit vector Math.sin(angle)
+                this.facingAngle = joystickInstance.vector.angle;
+                hasJoystick = true;
+            }
         }
 
         if (!hasJoystick) {
@@ -860,7 +869,7 @@ class Player extends Unit {
     }
     revive() {
         this.alive = true;
-        this.hp = this.maxHp / 2;
+        this.hp = this.maxHp;
         this.invuln = REVIVE_INVULN;
         this.spawnInvuln = REVIVE_INVULN;
         SoundEngine.playerRevived();

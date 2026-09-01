@@ -20,8 +20,10 @@ function startWeaponSelectFlow() {
     GAME_STATE.current = STATES.WEAPON_SELECT;
     const tBtn = document.getElementById('testingBtn');
     if (tBtn) tBtn.style.display = 'none';
-    if (typeof isMobile !== 'undefined' && isMobile && typeof joystickZone !== 'undefined' && joystickZone) {
-        joystickZone.style.display = 'block';
+    const isMobileDevice = (typeof isMobile !== 'undefined') ? isMobile : ((typeof window !== 'undefined' && window.isMobile) || false);
+    const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
+    if (isMobileDevice && zone) {
+        zone.style.display = 'block';
     }
     const uiLayer = document.querySelector('.ui-layer');
     if (uiLayer) uiLayer.style.display = 'block';
@@ -150,7 +152,7 @@ function buildPlaceholderPanel(index, count) {
 
 function buildStartingWeaponPanel(player, count, isInteractive) {
     const panel = document.createElement('div');
-    panel.className = 'player-panel';
+    panel.className = 'player-panel weapon-select-grid';
     panel.id = `playerPanel_${player.index}`;
     panel.style.cssText = getPanelPosition(player.index, count);
     panel.style.borderColor = player.color;
@@ -295,7 +297,10 @@ function startLevelUpFlow() {
     if (typeof SoundEngine !== 'undefined' && SoundEngine.setMuffled) {
         SoundEngine.setMuffled(true, 0.5);
     }
-    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
+    if (zone) zone.style.display = 'none';
+    const tipEl = document.getElementById('tipText');
+    if (tipEl) tipEl.style.display = 'none';
 
     for (const p of GAME_STATE.players) {
         if (p && !p.disconnected && !p.kicked) {
@@ -658,6 +663,8 @@ function startCountdown(isNewGame = false) {
     if (tBtn) tBtn.style.display = 'none';
     const layer = document.getElementById('levelUpLayer');
     if (layer) layer.classList.remove('show');
+    const tipEl = document.getElementById('tipText');
+    if (tipEl) tipEl.style.display = 'none';
     const uiLayer = document.querySelector('.ui-layer');
     if (uiLayer) uiLayer.style.display = 'block';
     
@@ -674,8 +681,10 @@ function startCountdown(isNewGame = false) {
     const pauseBtn = document.getElementById('pauseMenuBtn');
     if (pauseBtn) pauseBtn.style.display = 'flex';
 
-    if (typeof isMobile !== 'undefined' && isMobile && typeof joystickZone !== 'undefined' && joystickZone) {
-        joystickZone.style.display = 'block';
+    const isMobileDevice = (typeof isMobile !== 'undefined') ? isMobile : ((typeof window !== 'undefined' && window.isMobile) || false);
+    const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
+    if (isMobileDevice && zone) {
+        zone.style.display = 'block';
     }
 
     const TICK_MS = 600;
@@ -718,15 +727,31 @@ function startCountdown(isNewGame = false) {
 }
 
 const tips = [
-    "Stick together in co-op! Reviving fallen allies requires standing near them.",
-    "Proximity mines deal huge AoE damage — lure hordes through choke points!",
-    "Turrets inherit your damage upgrades and provide great stationary cover.",
-    "Dasher enemies telegraph their lunge with a bright red charging glow.",
-    "Shooters and Sentries can be dodged by moving perpendicular to their aim.",
-    "Medivacs heal surrounding units — focus them down before they sustain heavy tanks!",
-    "Double-tap any movement key or swipe on mobile to trigger a Phase Dash!",
-    "Upgrades stack! Collect multiple copies to multiply your tactical advantages.",
-    "High difficulty awards extra challenge and tests your mastery of crowd control."
+    "First time playing? Choosing Magic Missile as starting weapon is a good way to keep it simple.",
+    "It's usually a good idea to stick to one weapon type early in the game. Transition to multiple weapons later to unlock more powerful upgrades.",
+    "All turret upgrades are better the more turrets you can manage to have.",
+    "You will eventually need defensive upgrades. Select them while the number of enemies is manageable.",
+    "Melee Sweep requires a good amount of control to maneuver well, but allows you to become very tanky early on.",
+    "Want something different? Choose Melee Sweep and try maximizing the damage you take early on, and take the Second Wind upgrade as often as you can.",
+    "Want something different? Choose Proximity Mine and pick the Volatile Powder upgrade early to unlock Martyrdom, then wipe the board by dying all the time. Only works in multiplayer.",
+    "The Fire Ring upgrade is a solid upgrade that can get you back into the game in rough times.",
+    "Players can't damage each other, and enemies won't damage each other either.",
+    "The quickest way to die is to run into the horde of enemies behind you.",
+    "Cryo Freeze will save your ass from enemies that are faster than you.",
+    "Enemies always pursue the closest player unless something else says otherwise.",
+    "Getting some AoE damage will keep you in the game when the masses of enemies become too large to kill one by one.",
+    "Upgrades are chosen at random from all upgrades available to you. Unlocking more upgrades decreases your chances of getting that one specific upgrade you want.",
+    "The Scourge Flail is the only weapon-like upgrade that is not affected by the Hyper-drive attack speed increase.",
+    "Surviving the Horde Boss wave fully restores your HP and permanently increases your maximum HP.",
+    "Life regeneration is scarce. All weapons have a late stage upgrade unlocking life regen.",
+    "Hit the question mark beside an upgrade to see how it works and what it unlocks. Some upgrades have caveats that are important to know.",
+    "All weapons are fired automatically on an even interval, and all upgrades are applied automatically.",
+    "Phase dash is the only upgrade that requires a key press to activate.",
+    "When a player dies in multiplayer, they respawn after 20 seconds unless all players die during those 20 seconds - then the game is over.",
+    "Cryo Freeze will freeze enemies in place early on, but later on it will only slow them down.",
+    "All players level up together in multiplayer, but select upgrades individually.",
+    "XP needs to be collected from the ground after killing monsters in order to level up.",
+    "The game progression is based on time, not player level."
 ];
 
 function fetchTip() {
@@ -741,7 +766,8 @@ function gameOver() {
     if (typeof SoundEngine !== 'undefined' && SoundEngine.triggerVictoryRamp) {
         SoundEngine.triggerVictoryRamp(3.0);
     }
-    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
+    if (zone) zone.style.display = 'none';
     const pauseBtn0 = document.getElementById('pauseMenuBtn');
     if (pauseBtn0) pauseBtn0.style.display = 'none';
 
@@ -767,7 +793,8 @@ function showVictory() {
     if (typeof SoundEngine !== 'undefined' && SoundEngine.triggerVictoryRamp) {
         SoundEngine.triggerVictoryRamp(3.0);
     }
-    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
+    if (zone) zone.style.display = 'none';
     const pauseBtn1 = document.getElementById('pauseMenuBtn');
     if (pauseBtn1) pauseBtn1.style.display = 'none';
 
@@ -913,11 +940,41 @@ function showStartMenu() {
         GAME_STATE.isOnline = false;
         GAME_STATE.isHost = false;
         GAME_STATE.isClient = false;
+        GAME_STATE.victoryTriggered = false;
+        GAME_STATE.enemies = [];
+        GAME_STATE.activeSentries = [];
+        GAME_STATE.shieldBearers = [];
+        GAME_STATE.attractingVipers = [];
+        GAME_STATE.projectiles = [];
+        GAME_STATE.enemyProjectiles = [];
+        GAME_STATE.hazards = [];
+        GAME_STATE.iceTrails = [];
+        GAME_STATE.terrains = [];
+        GAME_STATE.turrets = [];
+        GAME_STATE.gems = [];
+        GAME_STATE.particles = [];
+        GAME_STATE.firstXpGem = null;
+        GAME_STATE.xpArrowDone = false;
+        GAME_STATE.hostW = null;
+        GAME_STATE.hostH = null;
     }
     if (typeof netManager !== 'undefined' && netManager) netManager.reset();
 
-    if (typeof SoundEngine !== 'undefined' && SoundEngine.startMenuMusic) {
-        SoundEngine.startMenuMusic();
+    if (typeof resizeCanvas === 'function') resizeCanvas();
+    if (typeof SPATIAL_GRID !== 'undefined' && SPATIAL_GRID.init) {
+        SPATIAL_GRID.init(W, H);
+        SPATIAL_GRID.clear();
+    }
+    if (typeof ctx !== 'undefined' && ctx && typeof canvas !== 'undefined' && canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    if (typeof draw === 'function' && typeof W !== 'undefined' && typeof H !== 'undefined') {
+        draw(0);
+    }
+
+    if (typeof SoundEngine !== 'undefined') {
+        if (SoundEngine.setMuffled) SoundEngine.setMuffled(false);
+        if (SoundEngine.startMenuMusic) SoundEngine.startMenuMusic();
     }
     const tBtn = document.getElementById('testingBtn');
     if (tBtn) tBtn.style.display = (typeof ENABLE_TESTING_LAB !== 'undefined' && ENABLE_TESTING_LAB) ? 'block' : 'none';
@@ -933,12 +990,16 @@ function showStartMenu() {
     hideModal('victoryModal');
     hideModal('pauseModal');
 
-    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
+    if (zone) zone.style.display = 'none';
     const tipEl = document.getElementById('tipText') || (typeof tip !== 'undefined' ? tip : null);
     if (tipEl) tipEl.style.display = 'none';
 
     const inviteBanner = document.getElementById('inviteCodeBanner');
     if (inviteBanner) inviteBanner.style.display = 'none';
+    const rotateHint = document.getElementById('rotateHint');
+    if (rotateHint) rotateHint.style.display = 'none';
+    if (typeof window !== 'undefined') window._rotateHintDismissed = false;
     const lobbyStartBtn = document.getElementById('lobbyStartBtn');
     if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
 
@@ -954,6 +1015,8 @@ function togglePause() {
         if (typeof SoundEngine !== 'undefined' && SoundEngine.setMuffled) {
             SoundEngine.setMuffled(true, 0.5);
         }
+        const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
+        if (zone) zone.style.display = 'none';
         const modal = document.getElementById('pauseModal');
         if (modal) modal.classList.add('show');
     } else if (GAME_STATE.current === STATES.PAUSED) {

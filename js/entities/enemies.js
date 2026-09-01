@@ -305,6 +305,19 @@ class Enemy extends Unit {
         return { target, distSq: best, isMine: targetIsMine, isViper: targetIsViperAttractor };
     }
 
+    updateKnockbackAirborne(now) {
+        if (!this.isKnockbackAirborne) return false;
+        const elapsed = now - this.knockbackStart;
+        const progress = Math.min(1, elapsed / this.knockbackDuration);
+        this.x = this.knockbackStartX + (this.knockbackTargetX - this.knockbackStartX) * progress;
+        this.y = this.knockbackStartY + (this.knockbackTargetY - this.knockbackStartY) * progress;
+        if (progress >= 1) {
+            this.airborne = false;
+            this.isKnockbackAirborne = false;
+        }
+        return true;
+    }
+
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
         if (now < (this.attackPauseUntil || 0) && !this.lunging) {
@@ -312,17 +325,7 @@ class Enemy extends Unit {
             this.vy = 0;
             return;
         }
-        if (this.isKnockbackAirborne) {
-            const elapsed = now - this.knockbackStart;
-            const progress = Math.min(1, elapsed / this.knockbackDuration);
-            this.x = this.knockbackStartX + (this.knockbackTargetX - this.knockbackStartX) * progress;
-            this.y = this.knockbackStartY + (this.knockbackTargetY - this.knockbackStartY) * progress;
-            if (progress >= 1) {
-                this.airborne = false;
-                this.isKnockbackAirborne = false;
-            }
-            return;
-        }
+        if (this.updateKnockbackAirborne(now)) return;
         if (this.airborne) {
             if (now >= this.landAt && typeof this.land === 'function') this.land(now);
             return;
@@ -503,14 +506,7 @@ class DasherEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
-        if (this.isKnockbackAirborne) {
-            const elapsed = now - this.knockbackStart;
-            const progress = Math.min(1, elapsed / this.knockbackDuration);
-            this.x = this.knockbackStartX + (this.knockbackTargetX - this.knockbackStartX) * progress;
-            this.y = this.knockbackStartY + (this.knockbackTargetY - this.knockbackStartY) * progress;
-            if (progress >= 1) { this.airborne = false; this.isKnockbackAirborne = false; }
-            return;
-        }
+        if (this.updateKnockbackAirborne(now)) return;
         const info = this.getTarget(now);
         const target = info.target;
         if (!target) return;
@@ -532,14 +528,7 @@ class ShooterEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
-        if (this.isKnockbackAirborne) {
-            const elapsed = now - this.knockbackStart;
-            const progress = Math.min(1, elapsed / this.knockbackDuration);
-            this.x = this.knockbackStartX + (this.knockbackTargetX - this.knockbackStartX) * progress;
-            this.y = this.knockbackStartY + (this.knockbackTargetY - this.knockbackStartY) * progress;
-            if (progress >= 1) { this.airborne = false; this.isKnockbackAirborne = false; }
-            return;
-        }
+        if (this.updateKnockbackAirborne(now)) return;
         const info = this.getTarget(now);
         const target = info.target;
         if (!target) return;
@@ -775,6 +764,7 @@ class BanelingEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
+        if (this.updateKnockbackAirborne(now)) return;
         this.burrowBaneling(now, 0.001);
         if (this.burrowed) {
             const triggerR = this.burrowTriggerRadius || 42;
@@ -968,6 +958,7 @@ class MarauderEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
+        if (this.updateKnockbackAirborne(now)) return;
         const info = this.getTarget(now);
         const target = info.target;
         if (!target) return;
@@ -1111,6 +1102,7 @@ class StalkerEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
+        if (this.updateKnockbackAirborne(now)) return;
         const info = this.getTarget(now);
         const target = info.target;
         if (!target) return;
@@ -1451,6 +1443,7 @@ class SentryEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
+        if (this.updateKnockbackAirborne(now)) return;
         const info = this.getTarget(now);
         const target = info.target;
         if (!target) return;
@@ -1656,6 +1649,7 @@ class MedivacEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
+        if (this.updateKnockbackAirborne(now)) return;
         this.updateMedivac(dtFactor, now);
     }
 
@@ -2048,6 +2042,7 @@ class HellionEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
+        if (this.updateKnockbackAirborne(now)) return;
         const info = this.getTarget(now);
         const target = info.target;
         if (!target) return;
@@ -2242,6 +2237,7 @@ class ShieldBearerEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
+        if (this.updateKnockbackAirborne(now)) return;
         const info = this.getTarget(now);
         const target = info.target;
         if (!target) return;
@@ -2576,6 +2572,7 @@ class ViperEnemy extends Enemy {
 
     update(dtFactor = 1.0, now) {
         if (now < this.frozenUntil && !this.isPhase2Unit()) return;
+        if (this.updateKnockbackAirborne(now)) return;
         const info = this.getTarget(now);
         const target = info.target;
         if (!target) return;
@@ -3065,6 +3062,7 @@ class OctopusBoss extends BossEnemy {
     }
 
     update(dtFactor = 1.0, now) {
+        if (this.updateKnockbackAirborne(now)) return;
         if (this.airborne) {
             if (now >= this.landAt) this.land(now);
             return;
@@ -3331,6 +3329,7 @@ class FelhoundBoss extends BossEnemy {
     }
 
     update(dtFactor = 1.0, now) {
+        if (this.updateKnockbackAirborne(now)) return;
         this.updateFelhound(dtFactor, now);
     }
 
@@ -5125,6 +5124,7 @@ class BehemothBoss extends BossEnemy {
     }
 
     update(dtFactor = 1.0, now) {
+        if (this.updateKnockbackAirborne(now)) return;
         const info = this.getTarget(now);
         const target = info.target;
         if (!target) return;

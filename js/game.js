@@ -14,6 +14,14 @@ function startGame(playerCount, difficultyKey) {
     const diff = DIFFICULTIES[difficultyKey] || DIFFICULTIES.normal;
     GAME_STATE.difficulty = diff;
     GAME_STATE.siphonCellsOwner = null;
+    GAME_STATE.victoryTriggered = false;
+
+    // Reset host dimensions when starting non-client game
+    if (typeof netManager === 'undefined' || !netManager.isClient) {
+        GAME_STATE.hostW = null;
+        GAME_STATE.hostH = null;
+    }
+
     // Co-op base movement speed bonus: 1p = +0% (1.00), 2p = +10% (1.10), 3p = +15% (1.15), 4p = +20% (1.20), then difficulty.
     const coopSpeedBonus = n > 1 ? (1 + 0.05 * n) : 1.0;
     const speedFactor = coopSpeedBonus * diff.speedMult;
@@ -56,8 +64,22 @@ function startGame(playerCount, difficultyKey) {
     GAME_STATE.firstXpGem = null; // Track first gem for tutorial arrow
     GAME_STATE.xpArrowDone = false;
     GAME_STATE.particles = [];
-    SPATIAL_GRID.init(W, H);
-    SPATIAL_GRID.clear();
+
+    // Recalculate canvas and reset canvas rendering context
+    if (typeof resizeCanvas === 'function') {
+        resizeCanvas();
+    }
+    if (typeof SPATIAL_GRID !== 'undefined' && SPATIAL_GRID.init) {
+        SPATIAL_GRID.init(W, H);
+        SPATIAL_GRID.clear();
+    }
+    if (typeof ctx !== 'undefined' && ctx && typeof canvas !== 'undefined' && canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    if (typeof SoundEngine !== 'undefined' && SoundEngine.setMuffled) {
+        SoundEngine.setMuffled(false);
+    }
+
     gameClock = GAME_STATE.testingMode ? (GAME_STATE.testStartMinute * 60000) : 0;
     GAME_STATE.elapsed = GAME_STATE.testingMode ? (GAME_STATE.testStartMinute * 60000) : 0;
     GAME_STATE.lastSpawn = gameClock;
@@ -476,24 +498,8 @@ function updateLobbyPlayers(dt, dtFactor, now) {
         for (const p of GAME_STATE.players) {
             p.update(dt, dtFactor, now);
         }
-        if (netManager.isHost && netManager.connections.size > 0) {
-            netManager.broadcastWorldSnapshot({
-                players: GAME_STATE.players.map(p => ({
-                    index: p.index,
-                    x: p.x,
-                    y: p.y,
-                    hp: p.hp,
-                    maxHp: p.maxHp,
-                    alive: p.alive,
-                    facingAngle: p.facingAngle,
-                    selectedWeapon: p.selectedWeapon,
-                    selectedWeaponLabel: p.selectedWeaponLabel,
-                    isMoving: p.isMoving
-                })),
-                hostW: W,
-                hostH: H,
-                currentGameState: STATES.WEAPON_SELECT
-            });
+        if (netManager.isHost && netManager.connections.size > 0 && typeof serializeWorldForNetwork === 'function') {
+            netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
         }
     }
 }

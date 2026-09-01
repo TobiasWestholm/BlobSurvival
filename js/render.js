@@ -2,11 +2,9 @@
  * BlobSurvival - 2D Canvas Renderer & Viewport Manager
  */
 
-// Mobile device detection
-const isMobile = (typeof window !== 'undefined') && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent));
-if (isMobile && typeof document !== 'undefined' && document.body) {
-    document.body.classList.add('mobile-device');
-}
+// Mobile device detection (defined in config.js)
+const mobileActive = (typeof isMobile !== 'undefined') ? isMobile : ((typeof window !== 'undefined' && window.isMobile) || false);
+
 
 let canvas = (typeof document !== 'undefined') ? document.getElementById('gameCanvas') : null;
 let ctx = canvas ? canvas.getContext('2d') : null;
@@ -25,14 +23,49 @@ function initCanvasElements() {
     }
 }
 
+function dismissRotateHint() {
+    if (typeof window !== 'undefined') window._rotateHintDismissed = true;
+    const hint = (typeof document !== 'undefined') ? document.getElementById('rotateHint') : null;
+    if (hint) hint.style.display = 'none';
+}
+
+function updateRotateHint() {
+    const hint = (typeof document !== 'undefined') ? document.getElementById('rotateHint') : null;
+    if (!hint) return;
+    const isMobileDevice = (typeof isMobile !== 'undefined') ? isMobile : ((typeof window !== 'undefined' && window.isMobile) || false);
+    const isOnlineClient = (typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online' && typeof netManager !== 'undefined' && netManager && netManager.isClient);
+    const isPortrait = (typeof window !== 'undefined') && (window.innerHeight > window.innerWidth);
+    const hostIsWidescreen = (typeof GAME_STATE !== 'undefined') && ((GAME_STATE.hostW || 1512) > (GAME_STATE.hostH || 900));
+
+    if (isMobileDevice && isOnlineClient && hostIsWidescreen && isPortrait && !(typeof window !== 'undefined' && window._rotateHintDismissed)) {
+        hint.style.display = 'flex';
+    } else {
+        hint.style.display = 'none';
+    }
+}
+
 function resizeCanvas() {
     initCanvasElements();
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const rawW = (rect && rect.width > 0) ? rect.width : (typeof window !== 'undefined' ? window.innerWidth : 1512);
-    const rawH = (rect && rect.height > 0) ? rect.height : (typeof window !== 'undefined' ? window.innerHeight : 900);
 
-    const targetArenaWidth = isMobile ? 600 : 1512;
+    const isOnlineClient = (typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online' && typeof netManager !== 'undefined' && netManager && netManager.isClient);
+    if (isOnlineClient && GAME_STATE.hostW && GAME_STATE.hostH) {
+        W = GAME_STATE.hostW;
+        H = GAME_STATE.hostH;
+        canvas.width = W;
+        canvas.height = H;
+        if (typeof SPATIAL_GRID !== 'undefined' && SPATIAL_GRID.init) {
+            SPATIAL_GRID.init(W, H);
+        }
+        updateRotateHint();
+        return;
+    }
+
+    const rawW = typeof window !== 'undefined' ? window.innerWidth : 1512;
+    const rawH = typeof window !== 'undefined' ? window.innerHeight : 900;
+    const isLandscape = rawW >= rawH;
+
+    const targetArenaWidth = isMobile ? (isLandscape ? 1512 : 600) : 1512;
     const scale = targetArenaWidth / rawW;
     W = Math.round(rawW * scale);
     H = Math.round(rawH * scale);
@@ -79,10 +112,20 @@ function resizeCanvas() {
             }
         }
     }
+
+    updateRotateHint();
+
+    // If hosting in multiplayer, broadcast updated dimensions to clients immediately
+    if (typeof netManager !== 'undefined' && netManager && netManager.isHost && netManager.connections && netManager.connections.size > 0 && typeof serializeWorldForNetwork === 'function') {
+        netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
+    }
 }
 
 if (typeof window !== 'undefined') {
     window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', () => {
+        setTimeout(resizeCanvas, 120);
+    });
     if (document.readyState === 'loading') {
         window.addEventListener('DOMContentLoaded', resizeCanvas);
     } else {
@@ -643,6 +686,8 @@ if (typeof window !== 'undefined') {
     window.W = W;
     window.H = H;
     window.resizeCanvas = resizeCanvas;
+    window.dismissRotateHint = dismissRotateHint;
+    window.updateRotateHint = updateRotateHint;
     window.shadeHex = shadeHex;
     window.brightenColor = brightenColor;
     window.drawBattlefieldBorder = drawBattlefieldBorder;
@@ -660,6 +705,8 @@ if (typeof module !== 'undefined' && module.exports) {
         W,
         H,
         resizeCanvas,
+        dismissRotateHint,
+        updateRotateHint,
         shadeHex,
         brightenColor,
         drawBattlefieldBorder,

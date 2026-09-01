@@ -3,6 +3,27 @@
 // Blob Survival Game Engine - js/config.js
 // =========================================================================
 
+// 0. MOBILE PLATFORM DETECTION
+const isMobile = (typeof window !== 'undefined') && (
+    ('ontouchstart' in window) ||
+    (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+    /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test((typeof navigator !== 'undefined' && navigator.userAgent) || '')
+);
+
+if (typeof window !== 'undefined') {
+    window.isMobile = isMobile;
+}
+
+if (isMobile && typeof document !== 'undefined') {
+    if (document.body) {
+        document.body.classList.add('mobile-device');
+    } else {
+        document.addEventListener('DOMContentLoaded', () => {
+            if (document.body) document.body.classList.add('mobile-device');
+        });
+    }
+}
+
 // 1. GAME STATES
 const STATES = {
     START_MENU: 0,
@@ -302,6 +323,7 @@ if (typeof window !== 'undefined') {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        isMobile,
         STATES,
         DIFFICULTIES,
         MONSTER_BASE_XP,
