@@ -671,5 +671,889 @@ class NetworkManager {
     }
 }
 
-window.NetworkManager = NetworkManager;
-window.netManager = new NetworkManager();
+// --- Mid-game Player Entity Despawn & Cleanup ---
+function despawnPlayerEntities(playerIndex) {
+    if (typeof GAME_STATE === 'undefined' || !GAME_STATE.players) return;
+    const player = GAME_STATE.players[playerIndex];
+    if (!player) return;
+
+    // 1. Mark player as disconnected and not alive/targetable
+    player.disconnected = true;
+    player.alive = false;
+
+    // 2. Despawn all turrets owned by this player
+    if (GAME_STATE.turrets) {
+        for (let i = GAME_STATE.turrets.length - 1; i >= 0; i--) {
+            const t = GAME_STATE.turrets[i];
+            if (t.player === player || (t.player && t.player.index === playerIndex)) {
+                t.alive = false;
+                if (typeof t.cleanup === 'function') t.cleanup();
+                GAME_STATE.turrets.splice(i, 1);
+            }
+        }
+    }
+
+    // 3. Despawn all player hazards / mines owned by this player
+    if (GAME_STATE.hazards) {
+        for (let i = GAME_STATE.hazards.length - 1; i >= 0; i--) {
+            const h = GAME_STATE.hazards[i];
+            if (h.player === player || (h.player && h.player.index === playerIndex) || h.owner === player) {
+                h.alive = false;
+                if (typeof h.despawn === 'function') h.despawn();
+                GAME_STATE.hazards.splice(i, 1);
+            }
+        }
+    }
+
+    // 4. Remove magnetic mines tracking
+    if (GAME_STATE.magneticMines) {
+        GAME_STATE.magneticMines = GAME_STATE.magneticMines.filter(m => m.player !== player && (!m.player || m.player.index !== playerIndex));
+    }
+
+    // 5. Despawn projectiles fired by this player
+    if (GAME_STATE.projectiles) {
+        for (let i = GAME_STATE.projectiles.length - 1; i >= 0; i--) {
+            const proj = GAME_STATE.projectiles[i];
+            if (proj.player === player || (proj.player && proj.player.index === playerIndex) || proj.owner === player) {
+                proj.alive = false;
+                GAME_STATE.projectiles.splice(i, 1);
+            }
+        }
+    }
+
+    if (player && player.weapons) {
+        for (const w of player.weapons) {
+            if (w.id === 'fire_ring' || w.id === 'projectile_shield') {
+                w.initialized = false;
+                w.orbiters = [];
+            }
+        }
+    }
+
+    // 6. Reset any active enemy target referencing this player
+    if (GAME_STATE.enemies) {
+        for (const e of GAME_STATE.enemies) {
+            if (e.targetPlayer === player || (e.targetPlayer && e.targetPlayer.index === playerIndex)) {
+                e.targetPlayer = null;
+            }
+        }
+    }
+}
+
+// --- Multiplayer Network Event Handlers ---
+window.onOnlinePlayerJoined = function(assignedSlot, peerId, isReconnection) {
+    console.log(`[Game] Online peer joined as Player ${assignedSlot + 1} (Reconnection: ${!!isReconnection})`);
+    let p = GAME_STATE.players[assignedSlot];
+    if (!p) {
+        GAME_STATE.players[assignedSlot] = new Player(assignedSlot, PLAYER_DEFS[assignedSlot]);
+        p = GAME_STATE.players[assignedSlot];
+    } else {
+        p.disconnected = false;
+        p.alive = true;
+        if (isReconnection) {
+            // User requirement: Respawn in same place, invulnerable for 3 seconds to find safety
+            p.invuln = 3000;
+            p.spawnInvuln = 3000;
+            p.clampToArena();
+            if (p.weapons) {
+                for (const w of p.weapons) {
+                    if (w.id === 'fire_ring' || w.id === 'projectile_shield') {
+                        w.initialized = false;
+                        w.orbiters = [];
+                    }
+                }
+            }
+            if (p.selectedWeapon && (!p.weapons || p.weapons.length === 0)) {
+                p.unlockWeapon(p.selectedWeapon);
+            }
+        }
+    }
+    recalculateDynamicDifficulty();
+
+    if (GAME_STATE.current === STATES.WEAPON_SELECT) {
+        renderLobbyWeaponPanels();
+        netManager.broadcastLobbyState(
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).map(p => ({ index: p.index, selectedWeapon: p.selectedWeapon, selectedWeaponLabel: p.selectedWeaponLabel })),
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).every(p => p.selectedWeapon)
+        );
+    }
+};
+
+window.onOnlinePlayerDisconnected = function(playerIndex, peerId) {
+    console.warn(`[Game] Online peer disconnected: Player ${playerIndex + 1}`);
+    despawnPlayerEntities(playerIndex);
+    recalculateDynamicDifficulty();
+
+    if (GAME_STATE.current === STATES.WEAPON_SELECT) {
+        renderLobbyWeaponPanels();
+        netManager.broadcastLobbyState(
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).map(p => ({ index: p.index, selectedWeapon: p.selectedWeapon, selectedWeaponLabel: p.selectedWeaponLabel })),
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).every(p => p.selectedWeapon)
+        );
+    } else if (GAME_STATE.current === STATES.LEVEL_UP && netManager && netManager.isHost) {
+        // Disconnected player in level up: immediately offer Kick button to host
+        const panel = document.getElementById(`levelPanel_${playerIndex}`);
+        if (panel && panel.dataset.pickDone !== 'true' && !panel.querySelector('.kick-player-btn')) {
+            const kickBtn = document.createElement('button');
+            kickBtn.className = 'kick-player-btn';
+            kickBtn.innerHTML = `⚠️ Kick Player ${playerIndex + 1} (Disconnected)`;
+            kickBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (confirm(`Permanently kick Player ${playerIndex + 1} from this game session?`)) {
+                    kickPlayerByHost(playerIndex);
+                }
+            };
+            panel.appendChild(kickBtn);
+        }
+    }
+};
+
+window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState, connectedSlots, hostW, hostH, isReconnection, elapsed, upgradesMap, chosenUpgradesMap, pendingLevels) {
+    console.log(`[Game] Joined room! Assigned Player ${assignedSlot + 1} (Reconnection: ${!!isReconnection})`);
+    GAME_STATE.gameMode = 'online';
+    GAME_STATE.isOnline = true;
+    GAME_STATE.isHost = false;
+    GAME_STATE.isClient = true;
+    GAME_STATE.difficulty = DIFFICULTIES[difficultyName] || DIFFICULTIES.normal;
+    if (hostW) GAME_STATE.hostW = hostW;
+    if (hostH) GAME_STATE.hostH = hostH;
+    if (elapsed !== undefined) {
+        GAME_STATE.elapsed = elapsed;
+        gameClock = elapsed;
+    }
+
+    // Initialize ONLY the actual connected player slots
+    GAME_STATE.players = [];
+    const slots = (Array.isArray(connectedSlots) && connectedSlots.length > 0)
+        ? connectedSlots
+        : [0, assignedSlot];
+    for (const s of slots) {
+        GAME_STATE.players[s] = new Player(s, PLAYER_DEFS[s]);
+    }
+    if (upgradesMap) {
+        for (const idx in upgradesMap) {
+            const p = GAME_STATE.players[idx];
+            if (p) {
+                p.currentUpgradeOptions = upgradesMap[idx].map(id => UPGRADE_POOL.find(u => u.id === id)).filter(Boolean);
+            }
+        }
+    }
+    if (chosenUpgradesMap) {
+        for (const idx in chosenUpgradesMap) {
+            const p = GAME_STATE.players[idx];
+            if (p) {
+                p.currentLevelUpgradeName = chosenUpgradesMap[idx];
+            }
+        }
+    }
+    if (isReconnection && GAME_STATE.players[assignedSlot]) {
+        GAME_STATE.players[assignedSlot].invuln = 3000;
+        GAME_STATE.players[assignedSlot].spawnInvuln = 3000;
+    }
+    recalculateDynamicDifficulty();
+
+    const startMenu = document.getElementById('startMenu');
+    if (startMenu) startMenu.classList.remove('show');
+    const joinStep = document.getElementById('joinRoomStep');
+    if (joinStep) joinStep.style.display = 'none';
+    const tBtn = document.getElementById('testingBtn');
+    if (tBtn) tBtn.style.display = 'none';
+
+    if (currentGameState === STATES.WEAPON_SELECT || currentGameState === STATES.START_MENU || !isReconnection) {
+        startWeaponSelectFlow();
+    } else if (currentGameState === STATES.LEVEL_UP) {
+        GAME_STATE.current = STATES.LEVEL_UP;
+        GAME_STATE.pendingLevels = pendingLevels || 1;
+        SoundEngine.setMuffled(true, 0.5);
+        if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+        beginSelectionRound();
+    } else {
+        // Reconnecting to active game session
+        GAME_STATE.current = currentGameState || STATES.GAMEPLAY;
+        SoundEngine.stopMusic();
+        SoundEngine.setMuffled(false);
+        if (tip) tip.style.display = 'none';
+        const inviteBanner = document.getElementById('inviteCodeBanner');
+        if (inviteBanner) inviteBanner.style.display = 'none';
+        const pauseBtn = document.getElementById('pauseMenuBtn');
+        if (pauseBtn) pauseBtn.style.display = 'none';
+    }
+};
+
+window.onRemoteInputReceived = function(playerIndex, moveX, moveY, angle, dashing) {
+    const p = GAME_STATE.players[playerIndex];
+    if (p) {
+        p.remoteInput = { moveX, moveY, angle, dashing };
+        p.facingAngle = angle || p.facingAngle;
+        if (dashing && !p.dashing && p.dashEnabled && performance.now() >= p.dashCooldownUntil) {
+            p.dashVx = (moveX || Math.cos(p.facingAngle)) * 14;
+            p.dashVy = (moveY || Math.sin(p.facingAngle)) * 14;
+            p.dashing = true;
+            p.dashUntil = performance.now() + 180;
+        }
+    }
+};
+
+window.onRemoteWeaponSelected = function(playerIndex, weaponId) {
+    const p = GAME_STATE.players[playerIndex];
+    if (p) {
+        p.selectedWeapon = weaponId;
+        p.selectedWeaponLabel = WEAPON_LABELS[weaponId];
+        p.weapons = [];
+        p.unlockWeapon(weaponId);
+
+        renderLobbyWeaponPanels();
+
+        const allReady = GAME_STATE.players.length > 0 && GAME_STATE.players.filter(pl => pl && !pl.disconnected).every(pl => pl.selectedWeapon);
+        const lobbyStartBtn = document.getElementById('lobbyStartBtn');
+        if (lobbyStartBtn) lobbyStartBtn.disabled = !allReady;
+
+        netManager.broadcastLobbyState(
+            GAME_STATE.players.filter(pl => pl && !pl.disconnected).map(pl => ({ index: pl.index, selectedWeapon: pl.selectedWeapon, selectedWeaponLabel: pl.selectedWeaponLabel })),
+            allReady
+        );
+    }
+};
+
+window.onRemoteUpgradeSelected = function(playerIndex, upgradeId) {
+    const p = GAME_STATE.players[playerIndex];
+    if (p) {
+        const upgrade = UPGRADE_POOL.find(item => item.id === upgradeId);
+        if (upgrade) {
+            p.currentLevelUpgradeName = upgrade.name;
+            upgrade.effect(p);
+            if (upgrade.oneShot) p.takenOneShots.add(upgrade.id);
+        }
+        netManager.broadcast({
+            type: 'UPGRADE_CHOSEN_SYNC',
+            playerIndex: playerIndex,
+            upgradeId: upgradeId,
+            upgradeName: upgrade ? upgrade.name : 'Upgrade'
+        });
+        const panel = document.getElementById(`levelPanel_${playerIndex}`);
+        if (panel) onPlayerChose(panel, p);
+    }
+};
+
+window.onUpgradeChosenSync = function(playerIndex, upgradeId, upgradeName) {
+    const p = GAME_STATE.players[playerIndex];
+    if (p) {
+        p.currentLevelUpgradeName = upgradeName;
+        if (upgradeId) {
+            const upgrade = UPGRADE_POOL.find(item => item.id === upgradeId);
+            if (upgrade && (!netManager.isClient || playerIndex !== netManager.localPlayerIndex)) {
+                upgrade.effect(p);
+                if (upgrade.oneShot) p.takenOneShots.add(upgrade.id);
+            }
+        }
+        const panel = document.getElementById(`levelPanel_${playerIndex}`);
+        if (panel) onPlayerChose(panel, p);
+    }
+};
+
+window.onLobbyStateUpdated = function(playersData, allReady) {
+    if (!playersData) return;
+    const activeIndices = new Set(playersData.map(pd => pd.index));
+    // Clear slots that are no longer connected
+    for (let i = 0; i < 4; i++) {
+        if (!activeIndices.has(i) && (typeof netManager === 'undefined' || i !== netManager.localPlayerIndex)) {
+            delete GAME_STATE.players[i];
+        }
+    }
+    for (const pd of playersData) {
+        if (!GAME_STATE.players[pd.index]) {
+            GAME_STATE.players[pd.index] = new Player(pd.index, PLAYER_DEFS[pd.index]);
+        }
+        const p = GAME_STATE.players[pd.index];
+        if (p.selectedWeapon !== pd.selectedWeapon) {
+            p.selectedWeapon = pd.selectedWeapon;
+            p.selectedWeaponLabel = pd.selectedWeaponLabel;
+            p.weapons = [];
+            if (pd.selectedWeapon) p.unlockWeapon(pd.selectedWeapon);
+        }
+    }
+    renderLobbyWeaponPanels();
+};
+
+window.onOnlineCountdownStarted = function(isNewGame) {
+    document.getElementById('levelUpLayer').classList.remove('show');
+    tip.style.display = 'none';
+    const inviteBanner = document.getElementById('inviteCodeBanner');
+    if (inviteBanner) inviteBanner.style.display = 'none';
+    startCountdown(isNewGame);
+};
+
+let netEntityCounter = 1;
+const clientEnemyCache = new Map(); // id -> Enemy instance
+const clientTurretCache = new Map(); // id -> TurretEntity instance
+const clientHazardCache = new Map(); // id -> Hazard instance
+
+function serializeWorldForNetwork() {
+    // 1. Players
+    const players = GAME_STATE.players.map(p => {
+        const flail = p.weapons ? p.weapons.find(w => w.id === 'player_flail') : null;
+        return {
+            i: p.index,
+            x: Math.round(p.x),
+            y: Math.round(p.y),
+            hp: Math.round(p.hp * 10) / 10,
+            mhp: p.maxHp,
+            al: p.alive ? 1 : 0,
+            fa: Math.round(p.facingAngle * 100) / 100,
+            mv: p.isMoving ? 1 : 0,
+            w: p.selectedWeapon || '',
+            wl: p.selectedWeaponLabel || '',
+            up: p.currentLevelUpgradeName || '',
+            cv: p.campervanUntil > gameClock ? Math.round(p.campervanUntil) : 0,
+            iv: p.invuln > 0 ? Math.round(p.invuln) : (p.spawnInvuln > 0 ? Math.round(p.spawnInvuln) : 0),
+            ma: p.martyrdomAuraEnabled ? 1 : 0,
+            mp: p.martyrsPresenceEnabled ? 1 : 0,
+            dc: (p.disconnected || p.kicked) ? 1 : 0,
+            fx: flail ? Math.round(flail.x) : undefined,
+            fy: flail ? Math.round(flail.y) : undefined
+        };
+    });
+
+    // 2. Enemies (all active monsters with unique IDs)
+    const enemies = GAME_STATE.enemies.filter(e => e.alive && e.hp > 0).map(e => {
+        if (!e._nid) e._nid = ++netEntityCounter;
+        return {
+            id: e._nid,
+            t: e.type,
+            x: Math.round(e.x),
+            y: Math.round(e.y),
+            hp: Math.round(e.hp),
+            mhp: e.maxHp,
+            fa: Math.round(e.facingAngle * 100) / 100,
+            r: e.r,
+            c: e.color,
+            st: e.viperState || e.stalkerState || '',
+            sr: e.shieldRadius || 0,
+            ab: e.airborne ? 1 : 0,
+            ly: e.landY ? Math.round(e.landY) : 0,
+            la: e.landAt ? Math.round(e.landAt) : 0
+        };
+    });
+
+    // 3. Projectiles
+    const projectiles = GAME_STATE.projectiles.map(p => ({
+        t: (p instanceof OrbitProjectile) ? 'fire_ring' : (p instanceof DeflectorOrbiter ? 'deflector_shield' : (p.type || '')),
+        x: Math.round(p.x),
+        y: Math.round(p.y),
+        r: p.r || (p instanceof OrbitProjectile ? 10 : 3),
+        c: (p instanceof OrbitProjectile) ? '#ff6600' : (p instanceof DeflectorOrbiter ? '#00e5ff' : (p.color || '#00ffcc')),
+        a: Math.round((p.angle || 0) * 100) / 100,
+        tx: p.targetX !== undefined ? Math.round(p.targetX) : undefined,
+        ty: p.targetY !== undefined ? Math.round(p.targetY) : undefined,
+        sx: p.startX !== undefined ? Math.round(p.startX) : undefined,
+        sy: p.startY !== undefined ? Math.round(p.startY) : undefined,
+        mr: (p instanceof OrbitProjectile && p.player && p.player.mineRingEnabled) ? 1 : 0,
+        pi: (p.player && p.player.index !== undefined) ? p.player.index : 0
+    }));
+
+    // 4. Enemy Projectiles
+    const enemyProjectiles = GAME_STATE.enemyProjectiles.map(ep => ({
+        x: Math.round(ep.x),
+        y: Math.round(ep.y),
+        r: ep.r || 4,
+        c: ep.color || '#ff3344'
+    }));
+
+    // 5. Gems, Health Packs & Supply Drops
+    const gems = GAME_STATE.gems.map(g => ({
+        x: Math.round(g.x),
+        y: Math.round(g.y),
+        v: g.value || 5,
+        hp: (g instanceof HealthPack) ? 1 : 0,
+        sd: (g instanceof SupplyDrop) ? g.type : undefined
+    }));
+
+    // 6. Turrets
+    const turrets = GAME_STATE.turrets.map(t => {
+        if (!t._nid) t._nid = ++netEntityCounter;
+        return {
+            id: t._nid,
+            x: Math.round(t.x),
+            y: Math.round(t.y),
+            a: Math.round((t.angle || 0) * 100) / 100,
+            fa: Math.round((t.flameAngle || 0) * 100) / 100,
+            hp: Math.round(t.hp),
+            mhp: t.maxHp,
+            pi: (t.player && t.player.index !== undefined) ? t.player.index : (t.playerIndex || 0),
+            st: t.spawnTime || 0,
+            fl: t.isFlamethrower ? 1 : 0,
+            faU: t.flameActiveUntil ? Math.round(t.flameActiveUntil) : 0,
+            fcA: t.flameCenterAngle ? Math.round(t.flameCenterAngle * 100) / 100 : 0
+        };
+    });
+
+    // 7. Hazards, Mines & Visual Explosion FX
+    const hazards = GAME_STATE.hazards.map(h => {
+        if (!h._nid) h._nid = ++netEntityCounter;
+        let type = 'hazard';
+        if (h instanceof PlayerMine) type = 'mine';
+        else if (h instanceof MineExplosion) type = 'mine_explosion';
+        else if (h instanceof NukeExplosion) type = 'nuke_explosion';
+        else if (h instanceof FreezeBlastVisual) type = 'freeze_explosion';
+        else if (h instanceof SledgeHitVisual) type = 'sledge_hit';
+        else if (h instanceof InstantMuzzleFlash) type = 'muzzle_flash';
+        else if (h instanceof InstantHitImpact) type = 'hit_impact';
+        else if (h instanceof BurningSurface) type = 'burning_surface';
+        else if (h instanceof BurningTrailSegment) type = 'burning_trail';
+        else if (h instanceof LaserTrailSegment) type = 'laser_trail';
+        else if (h instanceof IceTrailSegment) type = 'ice_trail';
+        else if (h instanceof BileMortarPod) type = 'bile_mortar';
+        else if (h instanceof AcidPoolHazard) type = 'acid_pool';
+        else if (h instanceof WhiteHolePush) type = 'white_hole';
+        else if (h instanceof BlackHolePull) type = 'black_hole';
+        else if (h.type) type = h.type;
+
+        return {
+            id: h._nid,
+            t: type,
+            x: Math.round(h.x !== undefined ? h.x : (h.x1 || 0)),
+            y: Math.round(h.y !== undefined ? h.y : (h.y1 || 0)),
+            x2: h.x2 !== undefined ? Math.round(h.x2) : (h.targetX !== undefined ? Math.round(h.targetX) : undefined),
+            y2: h.y2 !== undefined ? Math.round(h.y2) : (h.targetY !== undefined ? Math.round(h.targetY) : undefined),
+            r: Math.round(h.r || h.radius || 15),
+            a: Math.round((h.angle || h.facingAngle || 0) * 100) / 100,
+            ca: h.coneAngle !== undefined ? Math.round(h.coneAngle * 100) / 100 : undefined,
+            c: h.color || undefined,
+            st: h.spawnTime || 0,
+            dur: h.duration || undefined,
+            lt: h.landTime || undefined,
+            tr: h.triggeredTime ? 1 : 0,
+            pi: (h.player && h.player.index !== undefined) ? h.player.index : 0
+        };
+    });
+
+    const terrains = (GAME_STATE.terrains || []).map(t => ({
+        x: Math.round(t.x),
+        y: Math.round(t.y),
+        r: Math.round(t.radius || t.r || 0),
+        fa: Math.round((t.facingAngle || 0) * 100) / 100
+    }));
+
+    return {
+        players,
+        enemies,
+        projectiles,
+        enemyProjectiles,
+        gems,
+        turrets,
+        hazards,
+        terrains,
+        elapsed: GAME_STATE.elapsed,
+        level: GAME_STATE.level,
+        xp: GAME_STATE.xp,
+        nextXp: GAME_STATE.nextXp,
+        kills: GAME_STATE.kills,
+        activeBoss: GAME_STATE.activeBoss,
+        activeBossStartTime: GAME_STATE.activeBossStartTime,
+        hordeStartTime: GAME_STATE.hordeStartTime,
+        hostW: W,
+        hostH: H,
+        currentGameState: GAME_STATE.current
+    };
+}
+
+window.onWorldSnapshotReceived = function(snapshot) {
+    if (!snapshot) return;
+
+    if (snapshot.hostW !== undefined) GAME_STATE.hostW = snapshot.hostW;
+    if (snapshot.hostH !== undefined) GAME_STATE.hostH = snapshot.hostH;
+
+    // 1. Reconcile Players
+    if (snapshot.players) {
+        for (const sp of snapshot.players) {
+            let p = GAME_STATE.players[sp.i];
+            if (!p) {
+                p = new Player(sp.i, PLAYER_DEFS[sp.i] || { keysText: 'WASD', color: '#00ffcc', ring: 'rgba(0,255,204,0.3)', keys: {} });
+                GAME_STATE.players[sp.i] = p;
+            }
+            p.hp = sp.hp;
+            p.maxHp = sp.mhp;
+            p.alive = (sp.al === 1);
+            if (p.selectedWeapon !== sp.w) {
+                p.selectedWeapon = sp.w;
+                p.selectedWeaponLabel = sp.wl;
+                p.weapons = [];
+                if (sp.w) p.unlockWeapon(sp.w);
+            }
+            if (sp.fx !== undefined && sp.fy !== undefined) {
+                let flail = p.weapons ? p.weapons.find(w => w.id === 'player_flail') : null;
+                if (!flail) {
+                    p.unlockWeapon('player_flail');
+                    flail = p.weapons ? p.weapons.find(w => w.id === 'player_flail') : null;
+                }
+                if (flail) {
+                    flail.x = sp.fx;
+                    flail.y = sp.fy;
+                }
+            } else if (p.weapons && p.index !== netManager.localPlayerIndex) {
+                p.weapons = p.weapons.filter(w => w.id !== 'player_flail');
+            }
+            p.currentLevelUpgradeName = sp.up;
+            p.campervanUntil = sp.cv || 0;
+            p.invuln = sp.iv || 0;
+            p.martyrdomAuraEnabled = (sp.ma === 1);
+            p.martyrsPresenceEnabled = (sp.mp === 1);
+            p.disconnected = (sp.dc === 1);
+
+            if (sp.i === netManager.localPlayerIndex) {
+                // Client's own player: reconcile position if desynced by > 45px
+                const dist2 = (p.x - sp.x) ** 2 + (p.y - sp.y) ** 2;
+                if (dist2 > 2025) {
+                    p.x = sp.x;
+                    p.y = sp.y;
+                }
+            } else {
+                // Remote player: update position and orientation
+                p.x = sp.x;
+                p.y = sp.y;
+                p.facingAngle = sp.fa;
+                p.isMoving = (sp.mv === 1);
+            }
+        }
+    }
+
+    // 2. Reconcile Enemies
+    if (snapshot.enemies) {
+        const seenIds = new Set();
+        const activeEnemies = [];
+        for (const se of snapshot.enemies) {
+            if (se.hp <= 0) continue;
+            seenIds.add(se.id);
+            let e = clientEnemyCache.get(se.id);
+            if (!e) {
+                e = new Enemy(se.x, se.y, se.t, gameClock);
+                e._nid = se.id;
+                clientEnemyCache.set(se.id, e);
+            }
+            e.alive = true;
+            e.x = se.x;
+            e.y = se.y;
+            e.hp = se.hp;
+            e.maxHp = se.mhp;
+            e.facingAngle = se.fa;
+            if (se.r) e.r = se.r;
+            if (se.c) e.color = se.c;
+            if (se.st) {
+                e.viperState = se.st;
+                e.stalkerState = se.st;
+            }
+            if (se.sr) e.shieldRadius = se.sr;
+            if (se.ab !== undefined) e.airborne = (se.ab === 1);
+            if (se.ly) e.landY = se.ly;
+            if (se.la) e.landAt = se.la;
+            activeEnemies.push(e);
+        }
+        for (const [id] of clientEnemyCache.entries()) {
+            if (!seenIds.has(id)) {
+                clientEnemyCache.delete(id);
+            }
+        }
+        GAME_STATE.enemies = activeEnemies;
+    }
+
+    // 3. Reconcile Projectiles & Enemy Projectiles
+    if (snapshot.projectiles) {
+        GAME_STATE.projectiles = snapshot.projectiles.map(sp => ({
+            type: sp.t,
+            x: sp.x,
+            y: sp.y,
+            r: sp.r || 3,
+            color: sp.c || '#00ffcc',
+            angle: sp.a || 0,
+            targetX: sp.tx,
+            targetY: sp.ty,
+            startX: sp.sx,
+            startY: sp.sy,
+            mineRing: sp.mr === 1,
+            playerIndex: sp.pi || 0,
+            alive: true,
+            draw: function(now) {
+                ctx.save();
+                if (this.type === 'fire_ring') {
+                    const owner = GAME_STATE.players[this.playerIndex];
+                    if (this.mineRing && owner) {
+                        drawBioMineVesicle(ctx, this.x, this.y, this.r, now, owner, false, 0, false);
+                    } else {
+                        ctx.fillStyle = '#ff6600';
+                        ctx.shadowColor = owner ? owner.color : '#ff9900';
+                        ctx.shadowBlur = 15;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else if (this.type === 'deflector_shield') {
+                    ctx.fillStyle = '#00e5ff';
+                    ctx.shadowColor = '#00e5ff';
+                    ctx.shadowBlur = 12;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }));
+    }
+
+    if (snapshot.enemyProjectiles) {
+        GAME_STATE.enemyProjectiles = snapshot.enemyProjectiles.map(sep => ({
+            x: sep.x,
+            y: sep.y,
+            r: sep.r || 4,
+            color: sep.c || '#ff3344',
+            alive: true,
+            draw: function() {
+                ctx.save();
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }));
+    }
+
+    // 4. Reconcile Gems, Health Packs & Supply Drops
+    if (snapshot.gems) {
+        GAME_STATE.gems = snapshot.gems.map(sg => {
+            if (sg.hp) {
+                return new HealthPack(sg.x, sg.y, gameClock);
+            }
+            if (sg.sd) {
+                return new SupplyDrop(sg.x, sg.y, sg.sd, gameClock);
+            }
+            return new XPGem(sg.x, sg.y, sg.v);
+        });
+    }
+
+    // 5. Reconcile Turrets (with spawnTime and flame angles preserved)
+    if (snapshot.turrets) {
+        const seenTurretIds = new Set();
+        const activeTurrets = [];
+        for (const st of snapshot.turrets) {
+            seenTurretIds.add(st.id);
+            let turret = clientTurretCache.get(st.id);
+            const owner = GAME_STATE.players[st.pi] || GAME_STATE.players[0];
+            if (!turret) {
+                turret = new TurretEntity(st.x, st.y, owner, st.st || gameClock);
+                turret._nid = st.id;
+                turret.spawnTime = st.st || gameClock;
+                clientTurretCache.set(st.id, turret);
+            }
+            turret.x = st.x;
+            turret.y = st.y;
+            turret.angle = st.a || 0;
+            turret.flameAngle = st.fa || 0;
+            turret.hp = st.hp;
+            turret.maxHp = st.mhp;
+            turret.isFlamethrower = (st.fl === 1);
+            turret.flameActiveUntil = st.faU || 0;
+            turret.flameCenterAngle = st.fcA || 0;
+            turret.player = owner;
+            activeTurrets.push(turret);
+        }
+        for (const [id] of clientTurretCache.entries()) {
+            if (!seenTurretIds.has(id)) {
+                clientTurretCache.delete(id);
+            }
+        }
+        GAME_STATE.turrets = activeTurrets;
+
+        // Re-link laser/energy walls between turrets on client
+        for (const t of GAME_STATE.turrets) {
+            if (t.player && (t.player.laserWallsEnabled || t.player.slowWallsEnabled)) {
+                t.connections = [];
+                t.linkWalls();
+            }
+        }
+    }
+
+    // 6. Reconcile Hazards, Mines & Visual Explosions (preserving original animations)
+    if (snapshot.hazards) {
+        const seenHazardIds = new Set();
+        const activeHazards = [];
+        for (const sh of snapshot.hazards) {
+            seenHazardIds.add(sh.id);
+            let hazard = clientHazardCache.get(sh.id);
+            const owner = GAME_STATE.players[sh.pi] || GAME_STATE.players[0];
+
+            if (!hazard) {
+                switch (sh.t) {
+                    case 'mine':
+                        hazard = new PlayerMine(sh.x, sh.y, sh.r || 8, 50, owner, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        if (sh.tr) hazard.triggeredTime = gameClock;
+                        break;
+                    case 'mine_explosion':
+                        hazard = new MineExplosion(sh.x, sh.y, sh.r, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'nuke_explosion':
+                        hazard = new NukeExplosion(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'freeze_explosion':
+                        hazard = new FreezeBlastVisual(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'sledge_hit':
+                        hazard = new SledgeHitVisual(sh.x, sh.y, sh.r, sh.ca || 1.2, sh.a || 0, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'muzzle_flash':
+                        hazard = new InstantMuzzleFlash(sh.x, sh.y, sh.a || 0, sh.c || (owner ? owner.color : '#00ffcc'), sh.st || gameClock, owner, sh.r || 16);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'hit_impact':
+                        hazard = new InstantHitImpact(sh.x, sh.y, sh.a || 0, sh.c || '#ffcc00', sh.st || gameClock, sh.r || 20);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'burning_surface':
+                        hazard = new BurningSurface(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'burning_trail':
+                        hazard = new BurningTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'laser_trail':
+                        hazard = new LaserTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'ice_trail':
+                        hazard = new IceTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, owner);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'bile_mortar':
+                        hazard = new BileMortarPod(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, sh.lt || (sh.st + 1500));
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'acid_pool':
+                        hazard = new AcidPoolHazard(sh.x, sh.y, sh.r, sh.st || gameClock, sh.dur || 5000);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'white_hole':
+                        hazard = new WhiteHolePush(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    case 'black_hole':
+                        hazard = new BlackHolePull(sh.x, sh.y, sh.r, sh.st || gameClock);
+                        hazard.spawnTime = sh.st || gameClock;
+                        break;
+                    default:
+                        hazard = {
+                            type: sh.t,
+                            x: sh.x,
+                            y: sh.y,
+                            r: sh.r || 15,
+                            angle: sh.a || 0,
+                            alive: true,
+                            draw: function(now) {
+                                ctx.save();
+                                ctx.fillStyle = 'rgba(255, 68, 68, 0.4)';
+                                ctx.beginPath();
+                                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                                ctx.fill();
+                                ctx.restore();
+                            }
+                        };
+                        break;
+                }
+                hazard._nid = sh.id;
+                clientHazardCache.set(sh.id, hazard);
+            } else {
+                // Update position / state of ongoing hazard
+                if (hazard.x !== undefined) hazard.x = sh.x;
+                if (hazard.y !== undefined) hazard.y = sh.y;
+                if (sh.tr && hazard.triggeredTime === 0) hazard.triggeredTime = gameClock;
+            }
+            activeHazards.push(hazard);
+        }
+        for (const [id] of clientHazardCache.entries()) {
+            if (!seenHazardIds.has(id)) {
+                clientHazardCache.delete(id);
+            }
+        }
+        GAME_STATE.hazards = activeHazards;
+    }
+
+    if (snapshot.terrains) {
+        GAME_STATE.terrains = snapshot.terrains.map(st => new ShieldTerrain(st.x, st.y, st.r, st.fa, gameClock + 10000));
+    }
+
+    // 7. World Stats
+    if (snapshot.elapsed !== undefined) {
+        GAME_STATE.elapsed = snapshot.elapsed;
+        gameClock = snapshot.elapsed;
+    }
+    if (snapshot.level !== undefined) GAME_STATE.level = snapshot.level;
+    if (snapshot.xp !== undefined) GAME_STATE.xp = snapshot.xp;
+    if (snapshot.nextXp !== undefined) GAME_STATE.nextXp = snapshot.nextXp;
+    if (snapshot.kills !== undefined) GAME_STATE.kills = snapshot.kills;
+    if (snapshot.activeBoss !== undefined) GAME_STATE.activeBoss = snapshot.activeBoss;
+    if (snapshot.activeBossStartTime !== undefined) GAME_STATE.activeBossStartTime = snapshot.activeBossStartTime;
+    if (snapshot.hordeStartTime !== undefined) GAME_STATE.hordeStartTime = snapshot.hordeStartTime;
+};
+
+window.onOnlineLevelUpStarted = function(pendingLevels, upgradesMap) {
+    GAME_STATE.pendingLevels = pendingLevels || 1;
+    GAME_STATE.current = STATES.LEVEL_UP;
+    SoundEngine.setMuffled(true, 0.5);
+    if (typeof joystickZone !== 'undefined' && joystickZone) joystickZone.style.display = 'none';
+    if (upgradesMap) {
+        for (const idx in upgradesMap) {
+            const p = GAME_STATE.players[idx];
+            if (p) {
+                p.currentUpgradeOptions = upgradesMap[idx].map(id => UPGRADE_POOL.find(u => u.id === id)).filter(Boolean);
+            }
+        }
+    }
+    beginSelectionRound();
+};
+
+window.onOnlineGameOver = function() {
+    gameOver();
+};
+
+window.onOnlineVictory = function() {
+    showVictory();
+};
+
+function recalculateDynamicDifficulty() {
+    if (typeof GAME_STATE === 'undefined' || !GAME_STATE.players) return;
+    const activePlayers = GAME_STATE.players.filter(p => !p.disconnected).length || 1;
+    const diff = GAME_STATE.difficulty || DIFFICULTIES.normal;
+    GAME_STATE.dmgFactor = (1.5 / (activePlayers + 0.5)) * (diff.dmgMult || 1.0);
+    const coopSpeedBonus = activePlayers > 1 ? (1 + 0.05 * activePlayers) : 1.0;
+    const speedFactor = coopSpeedBonus * (diff.speedMult || 1.0);
+    for (const p of GAME_STATE.players) {
+        if (p) p.speed = 1.0 * speedFactor;
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.NetworkManager = NetworkManager;
+    window.netManager = new NetworkManager();
+    window.serializeWorldForNetwork = serializeWorldForNetwork;
+    window.despawnPlayerEntities = despawnPlayerEntities;
+    window.recalculateDynamicDifficulty = recalculateDynamicDifficulty;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        NetworkManager,
+        netManager: (typeof window !== 'undefined' && window.netManager) ? window.netManager : new NetworkManager(),
+        serializeWorldForNetwork,
+        despawnPlayerEntities,
+        recalculateDynamicDifficulty
+    };
+}
