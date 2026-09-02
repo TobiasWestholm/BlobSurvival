@@ -443,6 +443,13 @@ class NetworkManager {
     }
 
     handleClientReceivedData(data) {
+        if (data instanceof ArrayBuffer || (data && data.buffer instanceof ArrayBuffer && data.byteLength !== undefined)) {
+            const snapshot = unpackWorldSnapshotBinary(data);
+            if (snapshot && typeof onWorldSnapshotReceived === 'function') {
+                onWorldSnapshotReceived(snapshot);
+            }
+            return;
+        }
         if (!data || !data.type) return;
 
         switch (data.type) {
@@ -578,16 +585,15 @@ class NetworkManager {
         showStartMenu();
     }
 
-    // Host sends 60fps game world snapshot to all connected clients
+    // Host sends 20fps game world snapshot to all connected clients (packed binary DataView / ArrayBuffer)
     broadcastWorldSnapshot(snapshot) {
         if (!this.isHost || this.connections.size === 0) return;
-        const msg = {
-            type: 'WORLD_SNAPSHOT',
-            ...snapshot
-        };
+        const payload = (snapshot instanceof ArrayBuffer || (snapshot && snapshot.buffer instanceof ArrayBuffer))
+            ? snapshot
+            : (typeof packWorldSnapshotBinary === 'function' ? packWorldSnapshotBinary() : { type: 'WORLD_SNAPSHOT', ...snapshot });
         for (const conn of this.connections.values()) {
             if (conn.open) {
-                conn.send(msg);
+                conn.send(payload);
             }
         }
     }
@@ -1041,7 +1047,671 @@ const clientEnemyCache = new Map(); // id -> Enemy instance
 const clientTurretCache = new Map(); // id -> TurretEntity instance
 const clientHazardCache = new Map(); // id -> Hazard instance
 
+// =========================================================================
+// HIGH PERFORMANCE BINARY SNAPSHOT CODEC (ArrayBuffer / DataView)
+// Zero-allocation serializer & deserializer for low-bandwidth 60fps streaming
+// =========================================================================
+
+const BINARY_MAGIC = 0xBF; // 'Blob Format' identifier
+const BINARY_VERSION = 1;
+
+let sharedBinaryBuffer = new ArrayBuffer(131072); // Pre-allocated 128 KB buffer
+let sharedDataView = new DataView(sharedBinaryBuffer);
+let sharedUint8 = new Uint8Array(sharedBinaryBuffer);
+
+function ensureBinaryBufferSize(neededBytes) {
+    if (sharedBinaryBuffer.byteLength < neededBytes) {
+        let newSize = sharedBinaryBuffer.byteLength * 2;
+        while (newSize < neededBytes) newSize *= 2;
+        sharedBinaryBuffer = new ArrayBuffer(newSize);
+        sharedDataView = new DataView(sharedBinaryBuffer);
+        sharedUint8 = new Uint8Array(sharedBinaryBuffer);
+    }
+}
+
+const ENEMY_TYPE_TO_ID = {
+    'swarm': 1, 'brute': 2, 'mega_brute': 3, 'brute_lord': 4,
+    'speeder': 5, 'meteor': 6, 'dasher': 7, 'shooter': 8,
+    'spiky': 9, 'baneling': 10, 'marauder': 11, 'stalker': 12,
+    'zergling': 13, 'spine_crawler': 14, 'sentry': 15, 'medivac': 16,
+    'warp_anomaly': 17, 'hellion': 18, 'shield_bearer': 19, 'viper': 20,
+    'octopus': 21, 'boss': 21, 'felhound': 22, 'behemoth': 23
+};
+const ID_TO_ENEMY_TYPE = [
+    'swarm', 'swarm', 'brute', 'mega_brute', 'brute_lord',
+    'speeder', 'meteor', 'dasher', 'shooter',
+    'spiky', 'baneling', 'marauder', 'stalker',
+    'zergling', 'spine_crawler', 'sentry', 'medivac',
+    'warp_anomaly', 'hellion', 'shield_bearer', 'viper',
+    'octopus', 'felhound', 'behemoth'
+];
+
+const PROJECTILE_TYPE_TO_ID = {
+    'missile': 1, 'fire_ring': 2, 'deflector_shield': 3, 'laser': 4,
+    'flail': 5, 'needle': 6, 'acid': 7, 'bullet': 8
+};
+const ID_TO_PROJECTILE_TYPE = [
+    '', 'missile', 'fire_ring', 'deflector_shield', 'laser',
+    'flail', 'needle', 'acid', 'bullet'
+];
+
+const HAZARD_TYPE_TO_ID = {
+    'hazard': 1, 'mine': 2, 'mine_explosion': 3, 'nuke_explosion': 4,
+    'freeze_explosion': 5, 'sledge_hit': 6, 'muzzle_flash': 7, 'hit_impact': 8,
+    'burning_surface': 9, 'burning_trail': 10, 'laser_trail': 11, 'ice_trail': 12,
+    'bile_mortar': 13, 'acid_pool': 14, 'white_hole': 15, 'black_hole': 16
+};
+const ID_TO_HAZARD_TYPE = [
+    'hazard', 'hazard', 'mine', 'mine_explosion', 'nuke_explosion',
+    'freeze_explosion', 'sledge_hit', 'muzzle_flash', 'hit_impact',
+    'burning_surface', 'burning_trail', 'laser_trail', 'ice_trail',
+    'bile_mortar', 'acid_pool', 'white_hole', 'black_hole'
+];
+
+const WEAPON_TYPE_TO_ID = {
+    'magic_missile': 1, 'orbiting_flames': 2, 'deflector_shield': 3,
+    'player_mine': 4, 'player_flail': 5, 'laser_beam': 6,
+    'burning_trail': 7, 'ice_trail': 8, 'nuke_strike': 9,
+    'turret': 10, 'freeze_blast': 11, 'sledgehammer': 12,
+    'acid_flask': 13, 'black_hole': 14, 'white_hole': 15,
+    'melee_sweep': 16
+};
+const ID_TO_WEAPON_TYPE = [
+    '', 'magic_missile', 'orbiting_flames', 'deflector_shield',
+    'player_mine', 'player_flail', 'laser_beam',
+    'burning_trail', 'ice_trail', 'nuke_strike',
+    'turret', 'freeze_blast', 'sledgehammer',
+    'acid_flask', 'black_hole', 'white_hole',
+    'melee_sweep'
+];
+
+const BOSS_ID_TO_BYTE = {
+    'octopus': 1, 'horde': 2, 'felhound': 3, 'behemoth': 4
+};
+const BYTE_TO_BOSS_ID = ['', 'octopus', 'horde', 'felhound', 'behemoth'];
+
+const STATE_TO_BYTE = {
+    'START_MENU': 0, 'WEAPON_SELECT': 1, 'GAMEPLAY': 2,
+    'LEVEL_UP': 3, 'PAUSED': 4, 'GAME_OVER': 5, 'COUNTDOWN': 6
+};
+const BYTE_TO_STATE = [
+    'START_MENU', 'WEAPON_SELECT', 'GAMEPLAY',
+    'LEVEL_UP', 'PAUSED', 'GAME_OVER', 'COUNTDOWN'
+];
+
+function angleToUint8(a) {
+    if (!a) return 0;
+    const norm = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    return Math.round((norm / (Math.PI * 2)) * 255) & 0xFF;
+}
+
+function uint8ToAngle(u) {
+    return (u / 255) * (Math.PI * 2);
+}
+
+function packWorldSnapshotBinary() {
+    ensureBinaryBufferSize(65536);
+    const view = sharedDataView;
+    let offset = 0;
+
+    // Header (32 bytes)
+    view.setUint8(offset, BINARY_MAGIC); offset += 1;
+    view.setUint8(offset, BINARY_VERSION); offset += 1;
+
+    netGemSyncTick = (netGemSyncTick + 1) % 6;
+    const includeGems = (netGemSyncTick === 0 || GAME_STATE.activeBoss);
+    let flags = 0;
+    if (includeGems) flags |= 1;
+    view.setUint8(offset, flags); offset += 1;
+
+    const stateByte = (typeof GAME_STATE !== 'undefined' && STATE_TO_BYTE[GAME_STATE.current] !== undefined) ? STATE_TO_BYTE[GAME_STATE.current] : 2;
+    view.setUint8(offset, stateByte); offset += 1;
+
+    view.setUint32(offset, (typeof GAME_STATE !== 'undefined' ? (GAME_STATE.elapsed || 0) : 0), true); offset += 4;
+    view.setUint16(offset, (typeof GAME_STATE !== 'undefined' ? (GAME_STATE.level || 1) : 1), true); offset += 2;
+    view.setUint32(offset, (typeof GAME_STATE !== 'undefined' ? (GAME_STATE.xp || 0) : 0), true); offset += 4;
+    view.setUint32(offset, (typeof GAME_STATE !== 'undefined' ? (GAME_STATE.nextXp || 100) : 100), true); offset += 4;
+    view.setUint16(offset, (typeof GAME_STATE !== 'undefined' ? (GAME_STATE.kills || 0) : 0), true); offset += 2;
+    view.setUint16(offset, (typeof W !== 'undefined' ? W : 1562), true); offset += 2;
+    view.setUint16(offset, (typeof H !== 'undefined' ? H : 950), true); offset += 2;
+
+    const bossByte = (typeof GAME_STATE !== 'undefined' && GAME_STATE.activeBoss) ? (BOSS_ID_TO_BYTE[GAME_STATE.activeBoss] || 0) : 0;
+    view.setUint8(offset, bossByte); offset += 1;
+    view.setUint32(offset, (typeof GAME_STATE !== 'undefined' ? (GAME_STATE.activeBossStartTime || 0) : 0), true); offset += 4;
+    view.setUint32(offset, (typeof GAME_STATE !== 'undefined' ? (GAME_STATE.hordeStartTime || 0) : 0), true); offset += 4;
+
+    // 1. Players
+    const players = (typeof GAME_STATE !== 'undefined' && GAME_STATE.players) ? GAME_STATE.players : [];
+    view.setUint8(offset, players.length); offset += 1;
+    for (let i = 0; i < players.length; i++) {
+        const p = players[i];
+        const flail = p.weapons ? p.weapons.find(w => w.id === 'player_flail') : null;
+        const melee = p.weapons ? p.weapons.find(w => w.id === 'melee_sweep') : null;
+
+        view.setUint8(offset, p.index !== undefined ? p.index : i); offset += 1;
+        view.setInt16(offset, Math.round(p.x || 0), true); offset += 2;
+        view.setInt16(offset, Math.round(p.y || 0), true); offset += 2;
+        view.setUint16(offset, Math.min(65535, Math.round((p.hp || 0) * 10)), true); offset += 2;
+        view.setUint16(offset, Math.min(65535, Math.round(p.maxHp || 100)), true); offset += 2;
+        view.setUint8(offset, angleToUint8(p.facingAngle)); offset += 1;
+
+        let pFlags = 0;
+        if (p.alive) pFlags |= (1 << 0);
+        if (p.isMoving) pFlags |= (1 << 1);
+        if (p.martyrdomAuraEnabled) pFlags |= (1 << 2);
+        if (p.martyrsPresenceEnabled) pFlags |= (1 << 3);
+        if (p.disconnected || p.kicked) pFlags |= (1 << 4);
+        if (flail) pFlags |= (1 << 5);
+        if (p.sledgeHammerAnimation) pFlags |= (1 << 6);
+        const upName = p.currentLevelUpgradeName || '';
+        if (upName.length > 0) pFlags |= (1 << 7);
+        view.setUint8(offset, pFlags); offset += 1;
+
+        const weaponId = WEAPON_TYPE_TO_ID[p.selectedWeapon] || 0;
+        view.setUint8(offset, weaponId); offset += 1;
+
+        const curTime = (typeof gameClock !== 'undefined' ? gameClock : (typeof performance !== 'undefined' ? performance.now() : 0));
+        const cv = (p.campervanUntil > curTime) ? Math.round(p.campervanUntil) : 0;
+        view.setUint32(offset, cv, true); offset += 4;
+
+        const iv = p.invuln > 0 ? Math.round(p.invuln) : (p.spawnInvuln > 0 ? Math.round(p.spawnInvuln) : 0);
+        view.setUint16(offset, Math.min(65535, iv), true); offset += 2;
+
+        const mf = (melee && melee.lastFire > 0) ? Math.round(melee.lastFire) : 0;
+        view.setUint32(offset, mf, true); offset += 4;
+
+        const mrm = Math.min(255, Math.round((p.meleeRangeModifier || 1.0) * 50));
+        view.setUint8(offset, mrm); offset += 1;
+
+        if (flail) {
+            view.setInt16(offset, Math.round(flail.x || 0), true); offset += 2;
+            view.setInt16(offset, Math.round(flail.y || 0), true); offset += 2;
+        }
+        if (p.sledgeHammerAnimation) {
+            view.setUint32(offset, Math.round(p.sledgeHammerAnimation.startTime || 0), true); offset += 4;
+            view.setUint16(offset, Math.min(65535, Math.round(p.sledgeHammerAnimation.duration || 0)), true); offset += 2;
+            view.setUint8(offset, angleToUint8(p.sledgeHammerAnimation.angle)); offset += 1;
+        }
+        if (upName.length > 0) {
+            const upLen = Math.min(64, upName.length);
+            view.setUint8(offset, upLen); offset += 1;
+            for (let j = 0; j < upLen; j++) {
+                sharedUint8[offset++] = upName.charCodeAt(j) & 0xFF;
+            }
+        }
+    }
+
+    // 2. Enemies
+    const aliveEnemies = (typeof GAME_STATE !== 'undefined' && GAME_STATE.enemies) ? GAME_STATE.enemies.filter(e => e.alive && e.hp > 0) : [];
+    view.setUint16(offset, aliveEnemies.length, true); offset += 2;
+    for (let i = 0; i < aliveEnemies.length; i++) {
+        const e = aliveEnemies[i];
+        if (!e._nid) e._nid = ++netEntityCounter;
+
+        view.setUint16(offset, e._nid, true); offset += 2;
+        const typeId = ENEMY_TYPE_TO_ID[e.type] || 1;
+        view.setUint8(offset, typeId); offset += 1;
+        view.setInt16(offset, Math.round(e.x || 0), true); offset += 2;
+        view.setInt16(offset, Math.round(e.y || 0), true); offset += 2;
+        view.setUint16(offset, Math.min(65535, Math.round(e.hp || 0)), true); offset += 2;
+        view.setUint16(offset, Math.min(65535, Math.round(e.maxHp || 100)), true); offset += 2;
+        view.setUint8(offset, angleToUint8(e.facingAngle)); offset += 1;
+
+        let eFlags = 0;
+        if (e.airborne) eFlags |= (1 << 0);
+        if (e.r && e.r !== 15) eFlags |= (1 << 1);
+        if (e.shieldRadius) eFlags |= (1 << 2);
+        if (e.landY || e.landAt) eFlags |= (1 << 3);
+        view.setUint8(offset, eFlags); offset += 1;
+
+        if (eFlags & (1 << 1)) {
+            view.setUint8(offset, Math.min(255, Math.round(e.r))); offset += 1;
+        }
+        if (eFlags & (1 << 2)) {
+            view.setUint8(offset, Math.min(255, Math.round(e.shieldRadius))); offset += 1;
+        }
+        if (eFlags & (1 << 3)) {
+            view.setInt16(offset, Math.round(e.landY || 0), true); offset += 2;
+            view.setUint32(offset, Math.round(e.landAt || 0), true); offset += 4;
+        }
+    }
+
+    // 3. Projectiles
+    const projectiles = (typeof GAME_STATE !== 'undefined' && GAME_STATE.projectiles) ? GAME_STATE.projectiles : [];
+    view.setUint16(offset, projectiles.length, true); offset += 2;
+    for (let i = 0; i < projectiles.length; i++) {
+        const p = projectiles[i];
+        const t = (p instanceof OrbitProjectile) ? 'fire_ring' : (p instanceof DeflectorOrbiter ? 'deflector_shield' : (p.type || 'missile'));
+        const typeId = PROJECTILE_TYPE_TO_ID[t] || 1;
+        view.setUint8(offset, typeId); offset += 1;
+        view.setInt16(offset, Math.round(p.x || 0), true); offset += 2;
+        view.setInt16(offset, Math.round(p.y || 0), true); offset += 2;
+        view.setUint8(offset, Math.min(255, Math.round(p.r || 3))); offset += 1;
+        view.setUint8(offset, angleToUint8(p.angle)); offset += 1;
+
+        let pFlags = 0;
+        if (p instanceof OrbitProjectile && p.player && p.player.mineRingEnabled) pFlags |= (1 << 0);
+        if (p.targetX !== undefined || p.targetY !== undefined) pFlags |= (1 << 1);
+        if (p.startX !== undefined || p.startY !== undefined) pFlags |= (1 << 2);
+        const pIndex = (p.player && p.player.index !== undefined) ? (p.player.index & 3) : 0;
+        pFlags |= (pIndex << 3);
+        view.setUint8(offset, pFlags); offset += 1;
+
+        if (pFlags & (1 << 1)) {
+            view.setInt16(offset, Math.round(p.targetX || 0), true); offset += 2;
+            view.setInt16(offset, Math.round(p.targetY || 0), true); offset += 2;
+        }
+        if (pFlags & (1 << 2)) {
+            view.setInt16(offset, Math.round(p.startX || 0), true); offset += 2;
+            view.setInt16(offset, Math.round(p.startY || 0), true); offset += 2;
+        }
+    }
+
+    // 4. Enemy Projectiles
+    const enemyProjectiles = (typeof GAME_STATE !== 'undefined' && GAME_STATE.enemyProjectiles) ? GAME_STATE.enemyProjectiles : [];
+    view.setUint16(offset, enemyProjectiles.length, true); offset += 2;
+    for (let i = 0; i < enemyProjectiles.length; i++) {
+        const ep = enemyProjectiles[i];
+        view.setInt16(offset, Math.round(ep.x || 0), true); offset += 2;
+        view.setInt16(offset, Math.round(ep.y || 0), true); offset += 2;
+        view.setUint8(offset, Math.min(255, Math.round(ep.r || 4))); offset += 1;
+    }
+
+    // 5. Gems (if flag bit 0)
+    if (includeGems) {
+        const gems = (typeof GAME_STATE !== 'undefined' && GAME_STATE.gems) ? GAME_STATE.gems : [];
+        view.setUint16(offset, gems.length, true); offset += 2;
+        for (let i = 0; i < gems.length; i++) {
+            const g = gems[i];
+            view.setInt16(offset, Math.round(g.x || 0), true); offset += 2;
+            view.setInt16(offset, Math.round(g.y || 0), true); offset += 2;
+            view.setUint8(offset, Math.min(255, Math.round(g.value || 5))); offset += 1;
+
+            let spType = 0;
+            if (g instanceof HealthPack) spType = 1;
+            else if (g instanceof SupplyDrop) spType = (g.type || 1) + 1;
+            view.setUint8(offset, spType); offset += 1;
+        }
+    }
+
+    // 6. Turrets
+    const turrets = (typeof GAME_STATE !== 'undefined' && GAME_STATE.turrets) ? GAME_STATE.turrets : [];
+    view.setUint8(offset, turrets.length); offset += 1;
+    for (let i = 0; i < turrets.length; i++) {
+        const t = turrets[i];
+        if (!t._nid) t._nid = ++netEntityCounter;
+        view.setUint16(offset, t._nid, true); offset += 2;
+        view.setInt16(offset, Math.round(t.x || 0), true); offset += 2;
+        view.setInt16(offset, Math.round(t.y || 0), true); offset += 2;
+        view.setUint8(offset, angleToUint8(t.angle)); offset += 1;
+        view.setUint8(offset, angleToUint8(t.flameAngle)); offset += 1;
+        view.setUint16(offset, Math.min(65535, Math.round(t.hp || 0)), true); offset += 2;
+        view.setUint16(offset, Math.min(65535, Math.round(t.maxHp || 100)), true); offset += 2;
+        view.setUint8(offset, (t.player && t.player.index !== undefined) ? t.player.index : (t.playerIndex || 0)); offset += 1;
+        view.setUint32(offset, Math.round(t.spawnTime || 0), true); offset += 4;
+
+        let tFlags = 0;
+        if (t.isFlamethrower) tFlags |= (1 << 0);
+        if (t.flameActiveUntil) tFlags |= (1 << 1);
+        view.setUint8(offset, tFlags); offset += 1;
+
+        if (tFlags & (1 << 1)) {
+            view.setUint32(offset, Math.round(t.flameActiveUntil || 0), true); offset += 4;
+            view.setUint8(offset, angleToUint8(t.flameCenterAngle)); offset += 1;
+        }
+    }
+
+    // 7. Hazards
+    const hazards = (typeof GAME_STATE !== 'undefined' && GAME_STATE.hazards) ? GAME_STATE.hazards : [];
+    view.setUint16(offset, hazards.length, true); offset += 2;
+    for (let i = 0; i < hazards.length; i++) {
+        const h = hazards[i];
+        if (!h._nid) h._nid = ++netEntityCounter;
+
+        let type = 'hazard';
+        if (h instanceof PlayerMine) type = 'mine';
+        else if (h instanceof MineExplosion) type = 'mine_explosion';
+        else if (h instanceof NukeExplosion) type = 'nuke_explosion';
+        else if (h instanceof FreezeBlastVisual) type = 'freeze_explosion';
+        else if (h instanceof SledgeHitVisual) type = 'sledge_hit';
+        else if (h instanceof InstantMuzzleFlash) type = 'muzzle_flash';
+        else if (h instanceof InstantHitImpact) type = 'hit_impact';
+        else if (h instanceof BurningSurface) type = 'burning_surface';
+        else if (h instanceof BurningTrailSegment) type = 'burning_trail';
+        else if (h instanceof LaserTrailSegment) type = 'laser_trail';
+        else if (h instanceof IceTrailSegment) type = 'ice_trail';
+        else if (h instanceof BileMortarPod) type = 'bile_mortar';
+        else if (h instanceof AcidPoolHazard) type = 'acid_pool';
+        else if (h instanceof WhiteHolePush) type = 'white_hole';
+        else if (h instanceof BlackHolePull) type = 'black_hole';
+        else if (h.type) type = h.type;
+
+        view.setUint16(offset, h._nid, true); offset += 2;
+        const typeId = HAZARD_TYPE_TO_ID[type] || 1;
+        view.setUint8(offset, typeId); offset += 1;
+
+        const hx = Math.round(h.x !== undefined ? h.x : (h.x1 || 0));
+        const hy = Math.round(h.y !== undefined ? h.y : (h.y1 || 0));
+        view.setInt16(offset, hx, true); offset += 2;
+        view.setInt16(offset, hy, true); offset += 2;
+        view.setUint8(offset, Math.min(255, Math.round(h.r || h.radius || 15))); offset += 1;
+        view.setUint8(offset, angleToUint8(h.angle || h.facingAngle || 0)); offset += 1;
+        view.setUint8(offset, (h.player && h.player.index !== undefined) ? h.player.index : 0); offset += 1;
+        view.setUint32(offset, Math.round(h.spawnTime || 0), true); offset += 4;
+
+        const hasX2Y2 = (h.x2 !== undefined || h.targetX !== undefined);
+        let hFlags = 0;
+        if (hasX2Y2) hFlags |= (1 << 0);
+        if (h.coneAngle !== undefined) hFlags |= (1 << 1);
+        if (h.duration !== undefined) hFlags |= (1 << 2);
+        if (h.landTime !== undefined) hFlags |= (1 << 3);
+        if (h.triggeredTime) hFlags |= (1 << 4);
+        view.setUint8(offset, hFlags); offset += 1;
+
+        if (hFlags & (1 << 0)) {
+            const hx2 = Math.round(h.x2 !== undefined ? h.x2 : (h.targetX || 0));
+            const hy2 = Math.round(h.y2 !== undefined ? h.y2 : (h.targetY || 0));
+            view.setInt16(offset, hx2, true); offset += 2;
+            view.setInt16(offset, hy2, true); offset += 2;
+        }
+        if (hFlags & (1 << 1)) {
+            view.setUint8(offset, Math.min(255, Math.round((h.coneAngle || 0) * 50))); offset += 1;
+        }
+        if (hFlags & (1 << 2)) {
+            view.setUint16(offset, Math.min(65535, Math.round(h.duration || 0)), true); offset += 2;
+        }
+        if (hFlags & (1 << 3)) {
+            view.setUint32(offset, Math.round(h.landTime || 0), true); offset += 4;
+        }
+    }
+
+    // 8. Terrains
+    const terrains = (typeof GAME_STATE !== 'undefined' && GAME_STATE.terrains) ? GAME_STATE.terrains : [];
+    view.setUint8(offset, terrains.length); offset += 1;
+    for (let i = 0; i < terrains.length; i++) {
+        const t = terrains[i];
+        view.setInt16(offset, Math.round(t.x || 0), true); offset += 2;
+        view.setInt16(offset, Math.round(t.y || 0), true); offset += 2;
+        view.setUint8(offset, Math.min(255, Math.round(t.radius || t.r || 0))); offset += 1;
+        view.setUint8(offset, angleToUint8(t.facingAngle)); offset += 1;
+    }
+
+    return sharedBinaryBuffer.slice(0, offset);
+}
+
+function unpackWorldSnapshotBinary(buffer) {
+    if (!buffer) return null;
+    const view = (buffer instanceof DataView) ? buffer : new DataView(buffer.buffer || buffer, buffer.byteOffset || 0, buffer.byteLength);
+    const u8 = new Uint8Array(buffer.buffer || buffer, buffer.byteOffset || 0, buffer.byteLength);
+    let offset = 0;
+
+    const magic = view.getUint8(offset); offset += 1;
+    if (magic !== BINARY_MAGIC) return null;
+    const version = view.getUint8(offset); offset += 1;
+    const flags = view.getUint8(offset); offset += 1;
+    const hasGems = (flags & 1) !== 0;
+
+    const stateByte = view.getUint8(offset); offset += 1;
+    const currentGameState = (typeof STATES !== 'undefined' && BYTE_TO_STATE[stateByte] && STATES[BYTE_TO_STATE[stateByte]]) ? STATES[BYTE_TO_STATE[stateByte]] : (typeof STATES !== 'undefined' ? STATES.GAMEPLAY : 'gameplay');
+
+    const elapsed = view.getUint32(offset, true); offset += 4;
+    const level = view.getUint16(offset, true); offset += 2;
+    const xp = view.getUint32(offset, true); offset += 4;
+    const nextXp = view.getUint32(offset, true); offset += 4;
+    const kills = view.getUint16(offset, true); offset += 2;
+    const hostW = view.getUint16(offset, true); offset += 2;
+    const hostH = view.getUint16(offset, true); offset += 2;
+
+    const bossByte = view.getUint8(offset); offset += 1;
+    const activeBoss = BYTE_TO_BOSS_ID[bossByte] || null;
+    const activeBossStartTime = view.getUint32(offset, true); offset += 4;
+    const hordeStartTime = view.getUint32(offset, true); offset += 4;
+
+    // 1. Players
+    const playerCount = view.getUint8(offset); offset += 1;
+    const players = [];
+    for (let i = 0; i < playerCount; i++) {
+        const idx = view.getUint8(offset); offset += 1;
+        const x = view.getInt16(offset, true); offset += 2;
+        const y = view.getInt16(offset, true); offset += 2;
+        const hp = view.getUint16(offset, true) / 10; offset += 2;
+        const mhp = view.getUint16(offset, true); offset += 2;
+        const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+
+        const pFlags = view.getUint8(offset); offset += 1;
+        const al = (pFlags & (1 << 0)) ? 1 : 0;
+        const mv = (pFlags & (1 << 1)) ? 1 : 0;
+        const ma = (pFlags & (1 << 2)) ? 1 : 0;
+        const mp = (pFlags & (1 << 3)) ? 1 : 0;
+        const dc = (pFlags & (1 << 4)) ? 1 : 0;
+        const hasFlail = (pFlags & (1 << 5)) !== 0;
+        const hasSledge = (pFlags & (1 << 6)) !== 0;
+        const hasUpName = (pFlags & (1 << 7)) !== 0;
+
+        const weaponIdByte = view.getUint8(offset); offset += 1;
+        const w = ID_TO_WEAPON_TYPE[weaponIdByte] || '';
+        const wl = (typeof WEAPON_LABELS !== 'undefined' && WEAPON_LABELS[w]) ? WEAPON_LABELS[w] : '';
+
+        const cv = view.getUint32(offset, true); offset += 4;
+        const iv = view.getUint16(offset, true); offset += 2;
+        const mf = view.getUint32(offset, true); offset += 4;
+        const mrm = view.getUint8(offset) / 50; offset += 1;
+
+        let fx = undefined, fy = undefined;
+        if (hasFlail) {
+            fx = view.getInt16(offset, true); offset += 2;
+            fy = view.getInt16(offset, true); offset += 2;
+        }
+        let sh = undefined;
+        if (hasSledge) {
+            const st = view.getUint32(offset, true); offset += 4;
+            const du = view.getUint16(offset, true); offset += 2;
+            const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+            sh = { st, du, a };
+        }
+        let up = '';
+        if (hasUpName) {
+            const upLen = view.getUint8(offset); offset += 1;
+            for (let j = 0; j < upLen; j++) {
+                up += String.fromCharCode(u8[offset++]);
+            }
+        }
+
+        players.push({
+            i: idx, x, y, hp, mhp, al, fa, mv, w, wl, up, cv, iv, ma, mp, dc, fx, fy, mf, mrm, sh
+        });
+    }
+
+    // 2. Enemies (compact flat tuples: [id, type, x, y, hp, mhp, fa, r, color, state, shieldRadius, airborne, landY, landAt])
+    const enemyCount = view.getUint16(offset, true); offset += 2;
+    const enemies = [];
+    for (let i = 0; i < enemyCount; i++) {
+        const id = view.getUint16(offset, true); offset += 2;
+        const typeId = view.getUint8(offset); offset += 1;
+        const type = ID_TO_ENEMY_TYPE[typeId] || 'swarm';
+        const x = view.getInt16(offset, true); offset += 2;
+        const y = view.getInt16(offset, true); offset += 2;
+        const hp = view.getUint16(offset, true); offset += 2;
+        const mhp = view.getUint16(offset, true); offset += 2;
+        const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+
+        const eFlags = view.getUint8(offset); offset += 1;
+        const ab = (eFlags & (1 << 0)) ? 1 : 0;
+        let r = 0, sr = 0, ly = 0, la = 0;
+        if (eFlags & (1 << 1)) {
+            r = view.getUint8(offset); offset += 1;
+        }
+        if (eFlags & (1 << 2)) {
+            sr = view.getUint8(offset); offset += 1;
+        }
+        if (eFlags & (1 << 3)) {
+            ly = view.getInt16(offset, true); offset += 2;
+            la = view.getUint32(offset, true); offset += 4;
+        }
+
+        enemies.push([id, type, x, y, hp, mhp, fa, r, '', '', sr, ab, ly, la]);
+    }
+
+    // 3. Projectiles (compact flat tuples)
+    const projectileCount = view.getUint16(offset, true); offset += 2;
+    const projectiles = [];
+    for (let i = 0; i < projectileCount; i++) {
+        const typeId = view.getUint8(offset); offset += 1;
+        const t = ID_TO_PROJECTILE_TYPE[typeId] || 'missile';
+        const x = view.getInt16(offset, true); offset += 2;
+        const y = view.getInt16(offset, true); offset += 2;
+        const r = view.getUint8(offset); offset += 1;
+        const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+
+        const pFlags = view.getUint8(offset); offset += 1;
+        const mr = (pFlags & (1 << 0)) ? 1 : 0;
+        const hasTarget = (pFlags & (1 << 1)) !== 0;
+        const hasStart = (pFlags & (1 << 2)) !== 0;
+        const pi = (pFlags >> 3) & 3;
+
+        let tx = 0, ty = 0, sx = 0, sy = 0;
+        if (hasTarget) {
+            tx = view.getInt16(offset, true); offset += 2;
+            ty = view.getInt16(offset, true); offset += 2;
+        }
+        if (hasStart) {
+            sx = view.getInt16(offset, true); offset += 2;
+            sy = view.getInt16(offset, true); offset += 2;
+        }
+
+        const c = (t === 'fire_ring') ? '#ff6600' : (t === 'deflector_shield' ? '#00e5ff' : '#00ffcc');
+        projectiles.push([t, x, y, r, c, a, tx, ty, sx, sy, mr, pi]);
+    }
+
+    // 4. Enemy Projectiles
+    const enemyProjectileCount = view.getUint16(offset, true); offset += 2;
+    const enemyProjectiles = [];
+    for (let i = 0; i < enemyProjectileCount; i++) {
+        const x = view.getInt16(offset, true); offset += 2;
+        const y = view.getInt16(offset, true); offset += 2;
+        const r = view.getUint8(offset); offset += 1;
+        enemyProjectiles.push([x, y, r, '#ff3344']);
+    }
+
+    // 5. Gems
+    let gems = undefined;
+    if (hasGems) {
+        const gemCount = view.getUint16(offset, true); offset += 2;
+        gems = [];
+        for (let i = 0; i < gemCount; i++) {
+            const x = view.getInt16(offset, true); offset += 2;
+            const y = view.getInt16(offset, true); offset += 2;
+            const v = view.getUint8(offset); offset += 1;
+            const spType = view.getUint8(offset); offset += 1;
+
+            const isHp = (spType === 1) ? 1 : 0;
+            const isSd = (spType >= 2) ? (spType - 1) : 0;
+            if (isHp || isSd) {
+                gems.push([x, y, v, isHp, isSd]);
+            } else {
+                gems.push([x, y, v]);
+            }
+        }
+    }
+
+    // 6. Turrets
+    const turretCount = view.getUint8(offset); offset += 1;
+    const turrets = [];
+    for (let i = 0; i < turretCount; i++) {
+        const id = view.getUint16(offset, true); offset += 2;
+        const x = view.getInt16(offset, true); offset += 2;
+        const y = view.getInt16(offset, true); offset += 2;
+        const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+        const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+        const hp = view.getUint16(offset, true); offset += 2;
+        const mhp = view.getUint16(offset, true); offset += 2;
+        const pi = view.getUint8(offset); offset += 1;
+        const st = view.getUint32(offset, true); offset += 4;
+
+        const tFlags = view.getUint8(offset); offset += 1;
+        const fl = (tFlags & (1 << 0)) ? 1 : 0;
+        let faU = 0, fcA = 0;
+        if (tFlags & (1 << 1)) {
+            faU = view.getUint32(offset, true); offset += 4;
+            fcA = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+        }
+
+        turrets.push({ id, x, y, a, fa, hp, mhp, pi, st, fl, faU, fcA });
+    }
+
+    // 7. Hazards
+    const hazardCount = view.getUint16(offset, true); offset += 2;
+    const hazards = [];
+    for (let i = 0; i < hazardCount; i++) {
+        const id = view.getUint16(offset, true); offset += 2;
+        const typeId = view.getUint8(offset); offset += 1;
+        const t = ID_TO_HAZARD_TYPE[typeId] || 'hazard';
+        const x = view.getInt16(offset, true); offset += 2;
+        const y = view.getInt16(offset, true); offset += 2;
+        const r = view.getUint8(offset); offset += 1;
+        const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+        const pi = view.getUint8(offset); offset += 1;
+        const st = view.getUint32(offset, true); offset += 4;
+
+        const hFlags = view.getUint8(offset); offset += 1;
+        let x2 = undefined, y2 = undefined, ca = undefined, dur = undefined, lt = undefined;
+        if (hFlags & (1 << 0)) {
+            x2 = view.getInt16(offset, true); offset += 2;
+            y2 = view.getInt16(offset, true); offset += 2;
+        }
+        if (hFlags & (1 << 1)) {
+            ca = view.getUint8(offset) / 50; offset += 1;
+        }
+        if (hFlags & (1 << 2)) {
+            dur = view.getUint16(offset, true); offset += 2;
+        }
+        if (hFlags & (1 << 3)) {
+            lt = view.getUint32(offset, true); offset += 4;
+        }
+        const tr = (hFlags & (1 << 4)) ? 1 : 0;
+
+        hazards.push({ id, t, x, y, x2, y2, r, a, ca, st, dur, lt, tr, pi });
+    }
+
+    // 8. Terrains
+    const terrainCount = view.getUint8(offset); offset += 1;
+    const terrains = [];
+    for (let i = 0; i < terrainCount; i++) {
+        const x = view.getInt16(offset, true); offset += 2;
+        const y = view.getInt16(offset, true); offset += 2;
+        const r = view.getUint8(offset); offset += 1;
+        const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+        terrains.push({ x, y, r, fa });
+    }
+
+    return {
+        players,
+        enemies,
+        projectiles,
+        enemyProjectiles,
+        gems,
+        turrets,
+        hazards,
+        terrains,
+        elapsed,
+        level,
+        xp,
+        nextXp,
+        kills,
+        activeBoss,
+        activeBossStartTime,
+        hordeStartTime,
+        hostW,
+        hostH,
+        currentGameState
+    };
+}
+
 function serializeWorldForNetwork() {
+    return packWorldSnapshotBinary();
+}
+
+function serializeWorldForNetworkJSON() {
     // 1. Players
     const players = GAME_STATE.players.map(p => {
         const flail = p.weapons ? p.weapons.find(w => w.id === 'player_flail') : null;
@@ -1058,7 +1728,7 @@ function serializeWorldForNetwork() {
             w: p.selectedWeapon || '',
             wl: p.selectedWeaponLabel || '',
             up: p.currentLevelUpgradeName || '',
-            cv: (typeof gameClock !== 'undefined' && p.campervanUntil > gameClock) ? Math.round(p.campervanUntil) : 0,
+            cv: (p.campervanUntil > (typeof gameClock !== 'undefined' ? gameClock : (typeof performance !== 'undefined' ? performance.now() : 0))) ? Math.round(p.campervanUntil) : 0,
             iv: p.invuln > 0 ? Math.round(p.invuln) : (p.spawnInvuln > 0 ? Math.round(p.spawnInvuln) : 0),
             ma: p.martyrdomAuraEnabled ? 1 : 0,
             mp: p.martyrsPresenceEnabled ? 1 : 0,
@@ -1774,6 +2444,9 @@ if (typeof window !== 'undefined') {
     window.NetworkManager = NetworkManager;
     window.netManager = new NetworkManager();
     window.serializeWorldForNetwork = serializeWorldForNetwork;
+    window.serializeWorldForNetworkJSON = serializeWorldForNetworkJSON;
+    window.packWorldSnapshotBinary = packWorldSnapshotBinary;
+    window.unpackWorldSnapshotBinary = unpackWorldSnapshotBinary;
     window.despawnPlayerEntities = despawnPlayerEntities;
     window.recalculateDynamicDifficulty = recalculateDynamicDifficulty;
 }
@@ -1783,6 +2456,9 @@ if (typeof module !== 'undefined' && module.exports) {
         NetworkManager,
         netManager: (typeof window !== 'undefined' && window.netManager) ? window.netManager : new NetworkManager(),
         serializeWorldForNetwork,
+        serializeWorldForNetworkJSON,
+        packWorldSnapshotBinary,
+        unpackWorldSnapshotBinary,
         despawnPlayerEntities,
         recalculateDynamicDifficulty
     };
