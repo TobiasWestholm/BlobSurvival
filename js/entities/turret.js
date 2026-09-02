@@ -235,7 +235,7 @@ class TurretEntity extends Unit {
                 this.angle = targetAngle; // Head 1 independently tracks closest enemy
 
                 const dmg = this.baseDamage * this.player.damageModifier * GAME_STATE.dmgFactor;
-                SoundEngine.missileFire(0.20);
+                SoundEngine.missileFire(0.20, true);
 
                 if (this.player && this.player.instantMissileEnabled) {
                     fireInstantMissile(this.x, this.y, closestMissile, dmg, false, 0, now, this.player, this.unitType, true, this);

@@ -40,7 +40,7 @@
         width: 92%;
         max-width: 1400px;
         pointer-events: none;
-        z-index: 60;
+        z-index: 50;
     }
     .xp-bar-container { width: 100%; height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
     .xp-bar { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s ease; }
@@ -61,7 +61,7 @@
         font-weight: bold;
         text-shadow: 1px 1px 3px #000, 0 0 6px #000;
         pointer-events: none;
-        z-index: 60;
+        z-index: 50;
     }
     .pause-audio-controls {
         display: flex;
@@ -225,23 +225,26 @@
         border-color: #aaa !important;
     }
     #gameOverModal h2 { color: #ff4444; }
-    #countdown { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: clamp(80px, 7.9vw, 160px); font-weight: bold; color: #00ffcc; text-shadow: 0 0 25px #000, 0 0 12px #00ffcc; pointer-events: none; }
-    #levelUpLayer { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 80; }
+    #countdown { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: clamp(80px, 7.9vw, 160px); font-weight: bold; color: #00ffcc; text-shadow: 0 0 25px #000, 0 0 12px #00ffcc; pointer-events: none; z-index: 200; }
+    #levelUpLayer { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 140; }
     #levelUpLayer.show { display: block; }
     .player-panel {
         position: absolute;
         pointer-events: auto;
-        background: rgba(14, 16, 22, 0.78);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
+        background: rgba(14, 16, 22, 0.88);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
         border: 2px solid #00ffcc;
         border-radius: clamp(8px, 0.7vw, 14px);
-        padding: clamp(8px, 0.8vw, 18px);
+        padding: clamp(6px, 0.5vw, 10px) clamp(8px, 0.65vw, 12px);
         width: clamp(280px, 24.5vw, 540px);
+        max-height: calc(100vh - 70px);
+        overflow-y: auto;
         box-sizing: border-box;
         text-align: center;
         box-shadow: 0 0 25px rgba(0, 255, 204, 0.18);
         transition: opacity 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+        z-index: 142;
     }
     .player-panel.chosen {
         opacity: 0.28;
@@ -253,15 +256,16 @@
         background: rgba(14, 16, 22, 0.85);
         box-shadow: 0 0 20px rgba(0, 255, 204, 0.25);
     }
-    .panel-title { margin: 0 0 2px; font-size: clamp(15px, 1.25vw, 26px); }
-    .panel-sub { font-size: clamp(10px, 0.73vw, 16px); color: #bbb; margin-bottom: 6px; }
-    .panel-done { margin-top: 4px; font-weight: bold; font-size: clamp(11px, 0.86vw, 18px); }
+    .panel-title { margin: 0 0 1px; font-size: clamp(14px, 1.15vw, 24px); }
+    .panel-sub { font-size: clamp(9px, 0.70vw, 15px); color: #bbb; margin-bottom: 4px; }
+    .panel-done { margin-top: 3px; font-weight: bold; font-size: clamp(11px, 0.86vw, 18px); }
     .player-panel .upgrade-btn {
-        margin: clamp(4px, 0.35vw, 8px) auto;
-        padding: clamp(6px, 0.5vw, 12px) clamp(85px, 6.5vw, 105px) clamp(6px, 0.5vw, 12px) clamp(10px, 0.8vw, 16px);
+        margin: clamp(2px, 0.18vw, 4px) 0;
+        padding: clamp(5px, 0.42vw, 9px) clamp(85px, 6.5vw, 105px) clamp(5px, 0.42vw, 9px) clamp(8px, 0.6vw, 12px);
         font-size: clamp(10px, 0.8vw, 16px);
-        width: 94%;
-        line-height: 1.35;
+        width: 100%;
+        box-sizing: border-box;
+        line-height: 1.3;
         background: rgba(28, 30, 38, 0.75);
         border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 8px;
@@ -272,7 +276,7 @@
     }
     .upgrade-btn-top-right {
         position: absolute;
-        top: 6px;
+        top: 5px;
         right: 6px;
         display: flex;
         align-items: center;
@@ -314,7 +318,7 @@
         font-size: clamp(12px, 0.93vw, 19px);
         color: #00ffcc;
         font-weight: bold;
-        margin-bottom: 2px;
+        margin-bottom: 1px;
         display: block;
     }
     .upgrade-tag {
@@ -342,19 +346,20 @@
     .controls-help {
         font-size: clamp(10px, 0.78vw, 15px);
         color: #ccc;
-        line-height: 1.6;
-        margin-top: clamp(12px, 1.1vw, 22px);
-        padding: clamp(10px, 0.8vw, 16px);
+        line-height: 1.45;
+        margin-top: clamp(4px, 0.35vw, 8px);
+        padding: clamp(4px, 0.35vw, 8px);
         background: rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 8px;
         text-align: left;
+        box-sizing: border-box;
     }
     .controls-title {
         font-weight: bold;
         color: #00ffcc;
         font-size: clamp(11px, 0.82vw, 16px);
-        margin-bottom: 6px;
+        margin-bottom: 3px;
         text-transform: uppercase;
         letter-spacing: 1px;
     }
@@ -369,26 +374,31 @@
     #tipText {
         display: none;
         position: fixed;
-        top: calc(max(16px, env(safe-area-inset-top, 16px)) + 58px);
+        top: calc(max(16px, env(safe-area-inset-top, 16px)) + 52px);
         left: 50%;
         transform: translateX(-50%);
-        font-size: clamp(12px, 0.92vw, 15px);
+        font-size: clamp(11px, 0.82vw, 14px);
         font-weight: 500;
         text-align: center;
         color: #e0e0e0;
-        background: rgba(10, 14, 20, 0.92);
+        background: rgba(10, 14, 20, 0.94);
         border: 1px solid rgba(0, 255, 204, 0.45);
         border-radius: 20px;
-        padding: 7px 22px;
+        padding: 6px 18px;
         box-shadow: 0 4px 25px rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 255, 204, 0.25);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         pointer-events: none;
         z-index: 150;
         width: auto;
-        max-width: min(75vw, 820px);
-        line-height: 1.4;
+        max-width: min(44vw, 480px);
+        line-height: 1.35;
         box-sizing: border-box;
+        opacity: 1;
+        transition: opacity 0.6s ease;
+    }
+    #tipText.fade-out {
+        opacity: 0;
     }
     
     /* Phone / Mobile device styling: proportional, clean, and touch-friendly */
@@ -456,35 +466,38 @@
         color: #ccc !important;
     }
     body.mobile-device .player-panel {
-        width: min(92vw, 350px) !important;
-        max-width: 350px !important;
-        top: 48% !important;
+        position: fixed !important;
+        width: 90vw !important;
+        max-width: 380px !important;
+        min-width: 0 !important;
+        top: 50% !important;
         left: 50% !important;
         transform: translate(-50%, -50%) !important;
-        padding: 8px 10px !important;
+        padding: 5px 8px !important;
         border-radius: 10px !important;
         border-width: 2px !important;
         box-sizing: border-box !important;
-        max-height: 58vh !important;
+        max-height: 76vh !important;
         overflow-y: auto !important;
         -webkit-overflow-scrolling: touch !important;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), 0 0 15px rgba(0, 255, 204, 0.2) !important;
+        z-index: 142 !important;
     }
     body.mobile-device .panel-title {
-        font-size: 15px !important;
-        margin: 0 0 2px 0 !important;
+        font-size: 14px !important;
+        margin: 0 0 1px 0 !important;
     }
     body.mobile-device .panel-sub {
-        font-size: 11px !important;
+        font-size: 10px !important;
         color: #aaa !important;
-        margin-bottom: 4px !important;
+        margin-bottom: 3px !important;
     }
     body.mobile-device .player-panel .upgrade-btn {
         width: 100% !important;
-        padding: 5px 36px 5px 8px !important;
+        padding: 4px 36px 4px 8px !important;
         font-size: 10px !important;
-        line-height: 1.25 !important;
-        margin: 3px 0 !important;
+        line-height: 1.2 !important;
+        margin: 2px 0 !important;
         background: rgba(26, 28, 36, 0.9) !important;
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
         border-radius: 6px !important;
@@ -493,14 +506,14 @@
         text-align: left !important;
     }
     body.mobile-device .player-panel .upgrade-btn .name {
-        font-size: 12px !important;
+        font-size: 11px !important;
         margin-bottom: 1px !important;
         font-weight: bold !important;
         color: #00ffcc !important;
         display: block !important;
     }
     body.mobile-device .upgrade-btn-top-right {
-        top: 4px !important;
+        top: 3px !important;
         right: 4px !important;
         gap: 3px !important;
     }
@@ -516,8 +529,8 @@
         line-height: 16px !important;
     }
     body.mobile-device .panel-status {
-        margin-top: 4px !important;
-        font-size: 12px !important;
+        margin-top: 3px !important;
+        font-size: 11px !important;
     }
     body.mobile-device #gameOverModal h2,
     body.mobile-device #victoryModal h2 {
@@ -529,9 +542,7 @@
         line-height: 1.5 !important;
     }
     body.mobile-device .controls-help {
-        font-size: 11px !important;
-        margin-top: 10px !important;
-        padding: 8px !important;
+        display: none !important;
     }
     body.mobile-device .controls-title {
         font-size: 11px !important;
@@ -547,7 +558,7 @@
         width: auto !important;
         transform: none !important;
         pointer-events: none !important;
-        z-index: 60 !important;
+        z-index: 50 !important;
     }
     body.mobile-device .xp-bar-container {
         width: 100% !important;
@@ -571,7 +582,7 @@
         font-size: 15px !important;
         font-weight: bold !important;
         text-shadow: 1px 1px 3px #000, 0 0 4px #000 !important;
-        z-index: 60 !important;
+        z-index: 50 !important;
     }
     body.mobile-device #pauseMenuBtn {
         width: 36px !important;
@@ -601,7 +612,7 @@
         -webkit-backdrop-filter: blur(8px) !important;
         text-align: center !important;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5) !important;
-        z-index: 120 !important;
+        z-index: 150 !important;
         pointer-events: none !important;
     }
     body.mobile-device #countdown {
@@ -671,6 +682,39 @@
         margin-top: -15px !important;
         margin-left: -15px !important;
     }
+    body.mobile-device #inviteCodeBanner {
+        position: fixed !important;
+        bottom: calc(max(14px, env(safe-area-inset-bottom, 14px)) + 148px) !important;
+        left: 50% !important;
+        right: auto !important;
+        top: auto !important;
+        transform: translateX(-50%) !important;
+        padding: 5px 12px !important;
+        font-size: 11px !important;
+        z-index: 140 !important;
+    }
+    body.mobile-device #inviteCodeBanner .code-text {
+        font-size: 14px !important;
+    }
+    body.mobile-device #lobbyStartBtn {
+        position: fixed !important;
+        bottom: calc(max(14px, env(safe-area-inset-bottom, 14px)) + 92px) !important;
+        left: 50% !important;
+        top: auto !important;
+        transform: translateX(-50%) !important;
+        padding: 9px 26px !important;
+        font-size: 14px !important;
+        z-index: 160 !important;
+    }
+    body.mobile-device #lobbyStartBtn:disabled {
+        background: rgba(14, 16, 22, 0.75) !important;
+        border: 2px solid rgba(255, 255, 255, 0.2) !important;
+        color: #777 !important;
+        box-shadow: none !important;
+        backdrop-filter: blur(8px) !important;
+        -webkit-backdrop-filter: blur(8px) !important;
+        transform: translateX(-50%) scale(0.96) !important;
+    }
     
     /* Mobile Landscape Ergonomics */
     @media (orientation: landscape) and (max-height: 520px) {
@@ -701,11 +745,30 @@
             grid-column: 1 / -1 !important;
         }
         body.mobile-device #tipText {
-            top: calc(max(8px, env(safe-area-inset-top, 8px)) + 28px) !important;
+            top: max(6px, env(safe-area-inset-top, 6px)) !important;
             left: 50% !important;
             transform: translateX(-50%) !important;
             font-size: 10px !important;
             padding: 2px 10px !important;
+            max-width: min(88vw, 440px) !important;
+        }
+        body.mobile-device #lobbyStartBtn {
+            bottom: max(10px, env(safe-area-inset-bottom, 10px)) !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            padding: 7px 22px !important;
+            font-size: 13px !important;
+            z-index: 160 !important;
+        }
+        body.mobile-device #inviteCodeBanner {
+            bottom: max(10px, env(safe-area-inset-bottom, 10px)) !important;
+            right: calc(50% + 94px) !important;
+            left: auto !important;
+            top: auto !important;
+            transform: none !important;
+            padding: 4px 10px !important;
+            font-size: 10px !important;
+            z-index: 140 !important;
         }
         .modal {
             max-height: 92vh !important;
@@ -911,16 +974,58 @@
     }
     
     /* Multiplayer & Lobby UI Styles */
+    #lobbyStartBtn {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        bottom: auto;
+        right: auto;
+        transform: translate(-50%, -50%);
+        z-index: 160;
+        padding: 14px 42px;
+        font-size: 18px;
+        font-weight: bold;
+        color: #000;
+        background: #00ffcc;
+        border: 2px solid #ffffff;
+        border-radius: 30px;
+        cursor: pointer;
+        box-shadow: 0 0 28px rgba(0, 255, 204, 0.7);
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+    #lobbyStartBtn:hover:not(:disabled) {
+        transform: translate(-50%, -50%) scale(1.06);
+        box-shadow: 0 0 38px rgba(0, 255, 204, 0.95);
+    }
+    #lobbyStartBtn:disabled {
+        background: rgba(14, 16, 22, 0.75);
+        color: #777;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        box-shadow: none;
+        cursor: not-allowed;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        transform: translate(-50%, -50%) scale(0.96);
+    }
+
     #inviteCodeBanner {
         display: none;
         position: fixed;
-        bottom: max(14px, env(safe-area-inset-bottom, 14px));
-        left: max(14px, env(safe-area-inset-left, 14px));
-        z-index: 130;
+        bottom: calc(max(16px, env(safe-area-inset-bottom, 16px)) + 14px);
+        left: 50%;
+        right: auto;
+        top: auto;
+        transform: translateX(-50%);
+        z-index: 155;
         background: rgba(14, 14, 22, 0.94);
         border: 1.5px solid #00ffcc;
         border-radius: 8px;
-        padding: 8px 14px;
+        padding: 8px 18px;
         color: #fff;
         font-size: 13px;
         font-weight: 500;
@@ -930,6 +1035,7 @@
         -webkit-user-select: none;
         touch-action: manipulation;
         transition: all 0.15s ease;
+        white-space: nowrap;
     }
     #inviteCodeBanner:hover {
         background: rgba(0, 255, 204, 0.15);
@@ -944,40 +1050,6 @@
     #inviteCodeBanner.copied {
         border-color: #76ff03;
         background: rgba(118, 255, 3, 0.18);
-    }
-
-    #lobbyStartBtn {
-        display: none;
-        position: fixed;
-        bottom: calc(max(16px, env(safe-area-inset-bottom, 16px)) + 14px);
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 135;
-        padding: 13px 38px;
-        font-size: 17px;
-        font-weight: bold;
-        color: #000;
-        background: #00ffcc;
-        border: 2px solid #ffffff;
-        border-radius: 30px;
-        cursor: pointer;
-        box-shadow: 0 0 25px rgba(0, 255, 204, 0.7);
-        user-select: none;
-        -webkit-user-select: none;
-        touch-action: manipulation;
-        transition: all 0.2s ease;
-    }
-    #lobbyStartBtn:hover:not(:disabled) {
-        transform: translateX(-50%) scale(1.06);
-        box-shadow: 0 0 35px rgba(0, 255, 204, 0.9);
-    }
-    #lobbyStartBtn:disabled {
-        background: #333;
-        color: #777;
-        border-color: #555;
-        box-shadow: none;
-        cursor: not-allowed;
-        transform: translateX(-50%) scale(0.96);
     }
 
     .player-panel.placeholder-panel {
@@ -1048,12 +1120,12 @@
     <div id="joystickThumb"></div>
 </div>
 
-<div class="ui-layer">
+<div class="ui-layer" style="display: none;">
     <div class="xp-bar-container"><div id="xpBar" class="xp-bar"></div></div>
     <div id="stats">Level: 1 | HP: 100/100</div>
 </div>
-<div id="timer">0:00</div>
-<div id="fpsCounter">60 FPS</div>
+<div id="timer" style="display: none;">0:00</div>
+<div id="fpsCounter" style="display: none;">60 FPS</div>
 <button id="pauseMenuBtn" title="Pause (P)" aria-label="Pause">☰</button>
 
 <div id="startMenu" class="modal show">
@@ -1098,7 +1170,7 @@
     <div id="joinRoomStep" style="display:none">
         <p>Join Online Game</p>
         <div style="margin: 15px 0;">
-            <input id="joinCodeInput" type="text" placeholder="e.g. BLOB-4821" maxlength="12" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" style="width: 85%; max-width: 320px; padding: 12px 16px; font-size: 20px; font-weight: bold; text-transform: uppercase; text-align: center; background: #1a1a24; color: #00ffcc; border: 2px solid #00ffcc; border-radius: 8px; box-sizing: border-box; outline: none;">
+            <input id="joinCodeInput" type="text" placeholder="e.g. 4821" maxlength="8" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" style="width: 85%; max-width: 320px; padding: 12px 16px; font-size: 20px; font-weight: bold; text-transform: uppercase; text-align: center; background: #1a1a24; color: #00ffcc; border: 2px solid #00ffcc; border-radius: 8px; box-sizing: border-box; outline: none;">
             <div id="joinStatus" style="font-size: 13px; color: #ffaa00; margin-top: 8px; min-height: 18px;"></div>
         </div>
         <button class="upgrade-btn" id="btnSubmitJoin"><span class="name">CONNECT TO ROOM</span></button>
@@ -1153,14 +1225,14 @@
     <button class="rotate-hint-close" onclick="dismissRotateHint()" aria-label="Dismiss">✕</button>
 </div>
 
-<!-- Floating Invite Code Banner (Bottom Left during Online Host) -->
+<!-- Floating Invite Code Banner (Hosted Online Multiplayer) -->
 <div id="inviteCodeBanner">
     <div style="font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px;">Invite Code</div>
-    <div class="code-text" id="inviteCodeText">BLOB-XXXX</div>
+    <div class="code-text" id="inviteCodeText">XXXX</div>
     <div id="inviteCopyHint" style="font-size: 10px; color: #00ffcc; opacity: 0.85; margin-top: 2px;">Click to copy link</div>
 </div>
 
-<!-- Floating Lobby Start Button (Host in Local & Online Multiplayer) -->
+<!-- Floating Lobby Start Button (Host in Local & Online Multiplayer, Centered) -->
 <button id="lobbyStartBtn" disabled>START GAME</button>
 <button id="testingBtn" style="display: none; position: fixed; bottom: 20px; left: 20px; z-index: 10; background: #222; color: #00ffcc; border: 1px solid #00ffcc; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 0 10px rgba(0,255,200,0.3); pointer-events: auto;">TESTING</button>
 

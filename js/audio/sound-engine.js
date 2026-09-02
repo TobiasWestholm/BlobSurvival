@@ -941,8 +941,15 @@ const SoundEngine = {
         this.musicFilter.frequency.exponentialRampToValueAtTime(Math.max(100, targetFreq), now + Math.max(0.05, durationSeconds));
     },
 
-    startMenuMusic() {
+    startMenuMusic(forceReset = false) {
         this.init();
+        if (!forceReset && this.isMusicPlaying && !this.isMusicPaused && this.musicMode === 'menu') {
+            // Menu music is already actively playing, keep it playing seamlessly without restarting
+            if (this.isMuffled && this.setMuffled) {
+                this.setMuffled(false);
+            }
+            return;
+        }
         this.isVictoryRamping = false;
         this.musicMode = 'menu';
         this.isMusicPlaying = true;
@@ -1815,11 +1822,14 @@ const SoundEngine = {
         }
     },
 
-    // 14. MEDIUM: Magic Missile (SFXR preset)
-    missileFire(soundVolumeFactor = 1.0) {
-        if (!this.throttle('missile_fire', 35)) return;
+    // 14. MEDIUM: Magic Missile (Player: MEDIUM, Turret: LOW)
+    missileFire(soundVolumeFactor = 1.0, isTurret = false) {
+        const throttleKey = isTurret ? 'turret_missile_fire' : 'missile_fire';
+        const throttleMs = isTurret ? 50 : 35;
+        if (!this.throttle(throttleKey, throttleMs)) return;
         const duration = 0.10;
-        const v = this.allocateVoice(this.PRIORITY.MEDIUM, 'missile_fire', duration);
+        const priority = isTurret ? this.PRIORITY.LOW : this.PRIORITY.MEDIUM;
+        const v = this.allocateVoice(priority, throttleKey, duration);
         if (!v) return;
         const { ctx, now, voiceGain } = v;
 

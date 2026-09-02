@@ -350,6 +350,11 @@ function endBossWave(bossId, now, isCleared, enemy = null) {
     GAME_STATE.activeBoss = null;
     GAME_STATE.completedBosses.add(bossId);
 
+    // Play supply drop sound when a boss monster is killed and when the horde wave is survived
+    if (typeof SoundEngine !== 'undefined' && SoundEngine && SoundEngine.supplyDrop) {
+        SoundEngine.supplyDrop();
+    }
+
     // Automatically revive all downed players at the end of the boss wave
     for (const p of GAME_STATE.players) {
         if (!p.alive) {

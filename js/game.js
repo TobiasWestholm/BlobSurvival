@@ -97,26 +97,29 @@ function startGame(playerCount, difficultyKey) {
     GAME_STATE.hordeLastWave = 0;
     GAME_STATE.hordeStartTime = 0;
 
-    // In testing mode, pre-complete previous bosses
+    // In testing mode, pre-complete previous bosses and award boss completion bonuses
     if (GAME_STATE.testingMode) {
         const testMin = GAME_STATE.testStartMinute || 0;
         const testMs = testMin * 60000;
-        if (testMs > 480000) {
+        if (testMin > 8 || (testMin >= 8 && testMin !== 7.9 && testMs > 480000)) {
             GAME_STATE.completedBosses.add('octopus');
             for (let i = 0; i < 4; i++) GAME_STATE.bossWarningsFired.add('octopus_warn_' + i);
         }
-        if (testMs > 660000) {
+        if (testMin >= 12 || testMs >= 719000) {
             GAME_STATE.completedBosses.add('horde');
             for (let i = 0; i < 4; i++) GAME_STATE.bossWarningsFired.add('horde_warn_' + i);
-            const p = GAME_STATE.players[0];
-            p.maxHp += 300;
-            p.hp = p.maxHp;
+            for (const p of GAME_STATE.players) {
+                if (p) {
+                    p.maxHp += 300;
+                    p.hp = p.maxHp;
+                }
+            }
         }
-        if (testMs > 960000) {
+        if (testMin > 16 || testMs > 960000) {
             GAME_STATE.completedBosses.add('felhound');
             for (let i = 0; i < 4; i++) GAME_STATE.bossWarningsFired.add('felhound_warn_' + i);
         }
-        if (testMs > 1440000) {
+        if (testMin > 24 || (testMin >= 24 && testMin !== 23.9 && testMs > 1440000)) {
             GAME_STATE.completedBosses.add('behemoth');
             for (let i = 0; i < 4; i++) GAME_STATE.bossWarningsFired.add('behemoth_warn_' + i);
         }
@@ -443,20 +446,44 @@ function loop(now) {
                 myPlayer.update(dt, dtFactor, gameClock);
                 resolvePlayerTerrainCollisions(myPlayer);
             }
+
+            // Smoothly interpolate remote entities towards latest snapshot target positions (smooth 60fps)
+            const lerpRate = Math.min(1.0, 0.45 * dtFactor);
+            for (let i = 0; i < GAME_STATE.players.length; i++) {
+                if (i !== netManager.localPlayerIndex) {
+                    const rp = GAME_STATE.players[i];
+                    if (rp && rp.targetX !== undefined) {
+                        rp.x += (rp.targetX - rp.x) * lerpRate;
+                        rp.y += (rp.targetY - rp.y) * lerpRate;
+                    }
+                }
+            }
+            for (const e of GAME_STATE.enemies) {
+                if (e && e.targetX !== undefined) {
+                    e.x += (e.targetX - e.x) * lerpRate;
+                    e.y += (e.targetY - e.y) * lerpRate;
+                }
+            }
             
             // 3. Update local client particles
             for (const pa of GAME_STATE.particles) pa.update(dt, dtFactor);
             
             // 4. Render authoritative world snapshot from host
             draw(gameClock);
-            updateUI();
+
+            // Throttle UI DOM updates to 10Hz (every 6 frames) to prevent layout thrashing
+            GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
+            if (GAME_STATE.uiTick % 6 === 0) {
+                updateUI();
+            }
         } else {
             // HOST / SINGLEPLAYER / LOCAL: Authoritative simulation
             update(dt, dtFactor, gameClock);
             draw(gameClock);
             
-            // 60 FPS authoritative sync broadcast to clients
-            if (netManager.isHost && netManager.connections.size > 0) {
+            // 30 Hz authoritative sync broadcast to clients (every 2nd frame) to cut bandwidth & SCTP queuing by 50%
+            GAME_STATE.netTick = (GAME_STATE.netTick || 0) + 1;
+            if (netManager.isHost && netManager.connections.size > 0 && GAME_STATE.netTick % 2 === 0) {
                 netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
             }
 

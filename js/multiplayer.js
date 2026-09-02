@@ -59,14 +59,14 @@ class NetworkManager {
         this.isReconnecting = false;
     }
 
-    // Generate a clean 6-character room code (e.g. BLOB-4821)
+    // Generate a clean 4-character room code (e.g. 4821 or 7K9X)
     static generateRoomCode() {
         const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
         let code = '';
         for (let i = 0; i < 4; i++) {
             code += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        return 'BLOB-' + code;
+        return code;
     }
 
     static getJoinUrl(roomCode) {
@@ -888,6 +888,7 @@ window.onAssignedSlot = function(assignedSlot, difficultyName, currentGameState,
         SoundEngine.setMuffled(false);
         const tipEl = document.getElementById('tipText');
         if (tipEl) tipEl.style.display = 'none';
+        if (typeof stopTipRotation === 'function') stopTipRotation();
         const inviteBanner = document.getElementById('inviteCodeBanner');
         if (inviteBanner) inviteBanner.style.display = 'none';
         const pauseBtn = document.getElementById('pauseMenuBtn');
@@ -946,7 +947,11 @@ window.onRemoteUpgradeSelected = function(playerIndex, upgradeId) {
             upgradeName: upgrade ? upgrade.name : 'Upgrade'
         });
         const panel = document.getElementById(`levelPanel_${playerIndex}`);
-        if (panel) onPlayerChose(panel, p);
+        if (panel) {
+            onPlayerChose(panel, p);
+        } else if (typeof onPlayerChoseVirtual === 'function') {
+            onPlayerChoseVirtual(p);
+        }
     }
 };
 
@@ -1069,25 +1074,26 @@ function serializeWorldForNetwork() {
         };
     });
 
-    // 2. Enemies (all active monsters with unique IDs)
+    // 2. Enemies (compact serialization omitting empty/static keys)
     const enemies = GAME_STATE.enemies.filter(e => e.alive && e.hp > 0).map(e => {
         if (!e._nid) e._nid = ++netEntityCounter;
-        return {
+        const obj = {
             id: e._nid,
             t: e.type,
             x: Math.round(e.x),
             y: Math.round(e.y),
             hp: Math.round(e.hp),
             mhp: e.maxHp,
-            fa: Math.round(e.facingAngle * 100) / 100,
-            r: e.r,
-            c: e.color,
-            st: e.viperState || e.stalkerState || '',
-            sr: e.shieldRadius || 0,
-            ab: e.airborne ? 1 : 0,
-            ly: e.landY ? Math.round(e.landY) : 0,
-            la: e.landAt ? Math.round(e.landAt) : 0
+            fa: Math.round(e.facingAngle * 100) / 100
         };
+        if (e.r) obj.r = e.r;
+        if (e.color) obj.c = e.color;
+        if (e.viperState || e.stalkerState) obj.st = e.viperState || e.stalkerState;
+        if (e.shieldRadius) obj.sr = e.shieldRadius;
+        if (e.airborne) obj.ab = 1;
+        if (e.landY) obj.ly = Math.round(e.landY);
+        if (e.landAt) obj.la = Math.round(e.landAt);
+        return obj;
     });
 
     // 3. Projectiles
@@ -1114,14 +1120,15 @@ function serializeWorldForNetwork() {
         c: ep.color || '#ff3344'
     }));
 
-    // 5. Gems, Health Packs & Supply Drops
-    const gems = GAME_STATE.gems.map(g => ({
-        x: Math.round(g.x),
-        y: Math.round(g.y),
-        v: g.value || 5,
-        hp: (g instanceof HealthPack) ? 1 : 0,
-        sd: (g instanceof SupplyDrop) ? g.type : undefined
-    }));
+    // 5. Gems, Health Packs & Supply Drops (Compact Array Tuples [x, y, v, hp, sd])
+    const gems = GAME_STATE.gems.map(g => {
+        const isHp = (g instanceof HealthPack) ? 1 : 0;
+        const isSd = (g instanceof SupplyDrop) ? g.type : 0;
+        if (isHp || isSd) {
+            return [Math.round(g.x), Math.round(g.y), g.value || 5, isHp, isSd];
+        }
+        return [Math.round(g.x), Math.round(g.y), g.value || 5];
+    });
 
     // 6. Turrets
     const turrets = GAME_STATE.turrets.map(t => {
@@ -1212,6 +1219,53 @@ function serializeWorldForNetwork() {
     };
 }
 
+const NetworkProjectileProto = {
+    alive: true,
+    draw(now) {
+        if (!ctx) return;
+        ctx.save();
+        if (this.type === 'fire_ring') {
+            const owner = GAME_STATE.players[this.playerIndex];
+            if (this.mineRing && owner && typeof drawBioMineVesicle === 'function') {
+                drawBioMineVesicle(ctx, this.x, this.y, this.r, now, owner, false, 0, false);
+            } else {
+                ctx.fillStyle = '#ff6600';
+                ctx.shadowColor = owner ? owner.color : '#ff9900';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (this.type === 'deflector_shield') {
+            ctx.fillStyle = '#00e5ff';
+            ctx.shadowColor = '#00e5ff';
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+};
+
+const NetworkEnemyProjectileProto = {
+    alive: true,
+    draw() {
+        if (!ctx) return;
+        ctx.save();
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+};
+
 window.onWorldSnapshotReceived = function(snapshot) {
     if (!snapshot) return;
 
@@ -1262,16 +1316,25 @@ window.onWorldSnapshotReceived = function(snapshot) {
             p.disconnected = (sp.dc === 1);
 
             if (sp.i === netManager.localPlayerIndex) {
-                // Client's own player: reconcile position if desynced by > 45px
+                // Client's own player: reconcile position without hard rubberbanding
                 const dist2 = (p.x - sp.x) ** 2 + (p.y - sp.y) ** 2;
-                if (dist2 > 2025) {
+                if (dist2 > 14400) {
+                    // Hard snap only if desynced by > 120px
+                    p.x = sp.x;
+                    p.y = sp.y;
+                } else if (dist2 > 900) {
+                    // Smooth exponential decay towards authoritative position (no teleport)
+                    p.x += (sp.x - p.x) * 0.15;
+                    p.y += (sp.y - p.y) * 0.15;
+                }
+            } else {
+                // Remote player: update target position and state for smooth 60fps interpolation
+                p.targetX = sp.x;
+                p.targetY = sp.y;
+                if (p.x === undefined || (p.x - sp.x) ** 2 + (p.y - sp.y) ** 2 > 32400) {
                     p.x = sp.x;
                     p.y = sp.y;
                 }
-            } else {
-                // Remote player: update position, orientation, and combat visuals
-                p.x = sp.x;
-                p.y = sp.y;
                 if (sp.fa !== undefined) {
                     let angleDiff = sp.fa - p.facingAngle;
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -1279,29 +1342,31 @@ window.onWorldSnapshotReceived = function(snapshot) {
                     p.facingAngle += angleDiff * 0.40;
                 }
                 p.isMoving = (sp.mv === 1);
-                if (sp.mf !== undefined && sp.mf > 0) {
-                    let melee = p.weapons ? p.weapons.find(w => w.id === 'melee_sweep') : null;
-                    if (!melee && sp.w === 'melee_sweep') {
-                        p.unlockWeapon('melee_sweep');
-                        melee = p.weapons ? p.weapons.find(w => w.id === 'melee_sweep') : null;
-                    }
-                    if (melee) {
-                        melee.lastFire = sp.mf;
-                    }
+            }
+
+            // Sync Melee Sweep and Sledgehammer animations for ALL players (local & remote)
+            if (sp.mf !== undefined && sp.mf > 0) {
+                let melee = p.weapons ? p.weapons.find(w => w.id === 'melee_sweep') : null;
+                if (!melee && (sp.w === 'melee_sweep' || p.selectedWeapon === 'melee_sweep')) {
+                    p.unlockWeapon('melee_sweep');
+                    melee = p.weapons ? p.weapons.find(w => w.id === 'melee_sweep') : null;
                 }
-                if (sp.mrm !== undefined) p.meleeRangeModifier = sp.mrm;
-                if (sp.sh) {
-                    p.sledgeHammerAnimation = {
-                        startTime: sp.sh.st,
-                        duration: sp.sh.du,
-                        angle: sp.sh.a
-                    };
+                if (melee) {
+                    melee.lastFire = sp.mf;
                 }
+            }
+            if (sp.mrm !== undefined) p.meleeRangeModifier = sp.mrm;
+            if (sp.sh) {
+                p.sledgeHammerAnimation = {
+                    startTime: sp.sh.st,
+                    duration: sp.sh.du,
+                    angle: sp.sh.a
+                };
             }
         }
     }
 
-    // 2. Reconcile Enemies
+    // 2. Reconcile Enemies (setting targetX/targetY for smooth 60fps interpolation)
     if (snapshot.enemies) {
         const seenIds = new Set();
         const activeEnemies = [];
@@ -1312,11 +1377,21 @@ window.onWorldSnapshotReceived = function(snapshot) {
             if (!e) {
                 e = new Enemy(se.x, se.y, se.t, gameClock);
                 e._nid = se.id;
+                e.x = se.x;
+                e.y = se.y;
+                e.targetX = se.x;
+                e.targetY = se.y;
                 clientEnemyCache.set(se.id, e);
+            } else {
+                e.targetX = se.x;
+                e.targetY = se.y;
+                const d2 = (e.x - se.x) ** 2 + (e.y - se.y) ** 2;
+                if (d2 > 32400) {
+                    e.x = se.x;
+                    e.y = se.y;
+                }
             }
             e.alive = true;
-            e.x = se.x;
-            e.y = se.y;
             e.hp = se.hp;
             e.maxHp = se.mhp;
             e.facingAngle = se.fa;
@@ -1340,83 +1415,100 @@ window.onWorldSnapshotReceived = function(snapshot) {
         GAME_STATE.enemies = activeEnemies;
     }
 
-    // 3. Reconcile Projectiles & Enemy Projectiles
+    // 3. Reconcile Projectiles & Enemy Projectiles (Zero-allocation object pooling)
     if (snapshot.projectiles) {
-        GAME_STATE.projectiles = snapshot.projectiles.map(sp => ({
-            type: sp.t,
-            x: sp.x,
-            y: sp.y,
-            r: sp.r || 3,
-            color: sp.c || '#00ffcc',
-            angle: sp.a || 0,
-            targetX: sp.tx,
-            targetY: sp.ty,
-            startX: sp.sx,
-            startY: sp.sy,
-            mineRing: sp.mr === 1,
-            playerIndex: sp.pi || 0,
-            alive: true,
-            draw: function(now) {
-                ctx.save();
-                if (this.type === 'fire_ring') {
-                    const owner = GAME_STATE.players[this.playerIndex];
-                    if (this.mineRing && owner) {
-                        drawBioMineVesicle(ctx, this.x, this.y, this.r, now, owner, false, 0, false);
-                    } else {
-                        ctx.fillStyle = '#ff6600';
-                        ctx.shadowColor = owner ? owner.color : '#ff9900';
-                        ctx.shadowBlur = 15;
-                        ctx.beginPath();
-                        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                } else if (this.type === 'deflector_shield') {
-                    ctx.fillStyle = '#00e5ff';
-                    ctx.shadowColor = '#00e5ff';
-                    ctx.shadowBlur = 12;
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-                    ctx.fill();
-                } else {
-                    ctx.fillStyle = this.color;
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                ctx.restore();
+        const count = snapshot.projectiles.length;
+        if (GAME_STATE.projectiles.length > count) {
+            GAME_STATE.projectiles.length = count;
+        }
+        for (let i = 0; i < count; i++) {
+            const sp = snapshot.projectiles[i];
+            let p = GAME_STATE.projectiles[i];
+            if (!p) {
+                p = Object.create(NetworkProjectileProto);
+                GAME_STATE.projectiles[i] = p;
             }
-        }));
+            p.type = sp.t;
+            p.x = sp.x;
+            p.y = sp.y;
+            p.r = sp.r || 3;
+            p.color = sp.c || '#00ffcc';
+            p.angle = sp.a || 0;
+            p.targetX = sp.tx;
+            p.targetY = sp.ty;
+            p.startX = sp.sx;
+            p.startY = sp.sy;
+            p.mineRing = (sp.mr === 1);
+            p.playerIndex = sp.pi || 0;
+            p.alive = true;
+        }
     }
 
     if (snapshot.enemyProjectiles) {
-        GAME_STATE.enemyProjectiles = snapshot.enemyProjectiles.map(sep => ({
-            x: sep.x,
-            y: sep.y,
-            r: sep.r || 4,
-            color: sep.c || '#ff3344',
-            alive: true,
-            draw: function() {
-                ctx.save();
-                ctx.fillStyle = this.color;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
+        const count = snapshot.enemyProjectiles.length;
+        if (GAME_STATE.enemyProjectiles.length > count) {
+            GAME_STATE.enemyProjectiles.length = count;
+        }
+        for (let i = 0; i < count; i++) {
+            const sep = snapshot.enemyProjectiles[i];
+            let ep = GAME_STATE.enemyProjectiles[i];
+            if (!ep) {
+                ep = Object.create(NetworkEnemyProjectileProto);
+                GAME_STATE.enemyProjectiles[i] = ep;
             }
-        }));
+            ep.x = sep.x;
+            ep.y = sep.y;
+            ep.r = sep.r || 4;
+            ep.color = sep.c || '#ff3344';
+            ep.alive = true;
+        }
     }
 
-    // 4. Reconcile Gems, Health Packs & Supply Drops
+    // 4. Reconcile Gems, Health Packs & Supply Drops (In-place update supporting compact tuples)
     if (snapshot.gems) {
-        GAME_STATE.gems = snapshot.gems.map(sg => {
-            if (sg.hp) {
-                return new HealthPack(sg.x, sg.y, gameClock);
+        const count = snapshot.gems.length;
+        if (GAME_STATE.gems.length > count) {
+            GAME_STATE.gems.length = count;
+        }
+        for (let i = 0; i < count; i++) {
+            const sg = snapshot.gems[i];
+            let g = GAME_STATE.gems[i];
+            const gx = Array.isArray(sg) ? sg[0] : sg.x;
+            const gy = Array.isArray(sg) ? sg[1] : sg.y;
+            const gv = Array.isArray(sg) ? (sg[2] || 5) : (sg.v || 5);
+            const ghp = Array.isArray(sg) ? (sg[3] || 0) : (sg.hp || 0);
+            const gsd = Array.isArray(sg) ? (sg[4] || 0) : (sg.sd || 0);
+
+            if (ghp) {
+                if (!(g instanceof HealthPack)) {
+                    g = new HealthPack(gx, gy, gameClock);
+                    GAME_STATE.gems[i] = g;
+                } else {
+                    g.x = gx;
+                    g.y = gy;
+                    g.alive = true;
+                }
+            } else if (gsd) {
+                if (!(g instanceof SupplyDrop) || g.type !== gsd) {
+                    g = new SupplyDrop(gx, gy, gsd, gameClock);
+                    GAME_STATE.gems[i] = g;
+                } else {
+                    g.x = gx;
+                    g.y = gy;
+                    g.alive = true;
+                }
+            } else {
+                if (!(g instanceof XPGem)) {
+                    g = new XPGem(gx, gy, gv);
+                    GAME_STATE.gems[i] = g;
+                } else {
+                    g.x = gx;
+                    g.y = gy;
+                    g.value = gv;
+                    g.alive = true;
+                }
             }
-            if (sg.sd) {
-                return new SupplyDrop(sg.x, sg.y, sg.sd, gameClock);
-            }
-            return new XPGem(sg.x, sg.y, sg.v);
-        });
+        }
     }
 
     // 5. Reconcile Turrets (with spawnTime and flame angles preserved)
@@ -1580,6 +1672,7 @@ window.onWorldSnapshotReceived = function(snapshot) {
             GAME_STATE.current = STATES.GAMEPLAY;
             const tipEl = document.getElementById('tipText');
             if (tipEl) tipEl.style.display = 'none';
+            if (typeof stopTipRotation === 'function') stopTipRotation();
             const layer = document.getElementById('levelUpLayer');
             if (layer) layer.classList.remove('show');
             const countdownEl = document.getElementById('countdown');

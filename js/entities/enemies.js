@@ -2887,6 +2887,20 @@ class OctopusBoss extends BossEnemy {
             const a = Math.random() * Math.PI * 2, s = 2.0 + Math.random() * 5.0;
             GAME_STATE.particles.push(new Particle(this.x, this.y, Math.cos(a) * s, Math.sin(a) * s, '#9b5de5', 600));
         }
+
+        // Destroy all other monsters on the battlefield instantly, just like the Behemoth
+        for (const e of GAME_STATE.enemies) {
+            if (e !== this) {
+                e.hp = 0;
+                if (typeof spawnHitParticles === 'function') {
+                    spawnHitParticles(e.x, e.y, '#9b5de5');
+                }
+            }
+        }
+        GAME_STATE.enemies = [this];
+        GAME_STATE.activeSentries = [];
+        GAME_STATE.shieldBearers = [];
+        GAME_STATE.attractingVipers = [];
     }
 
     triggerSpikeExplosion(now) {

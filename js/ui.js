@@ -26,13 +26,11 @@ function startWeaponSelectFlow() {
         zone.style.display = 'block';
     }
     const uiLayer = document.querySelector('.ui-layer');
-    if (uiLayer) uiLayer.style.display = 'block';
+    if (uiLayer) uiLayer.style.display = 'none';
+    const timerEl = document.getElementById('timer');
+    if (timerEl) timerEl.style.display = 'none';
     
-    const tipEl = document.getElementById('tipText') || (typeof tip !== 'undefined' ? tip : null);
-    if (tipEl) {
-        tipEl.textContent = 'Tip: ' + fetchTip();
-        tipEl.style.display = 'block';
-    }
+    startTipRotation();
 
     renderLobbyWeaponPanels();
 }
@@ -75,7 +73,7 @@ function renderLobbyWeaponPanels() {
         if (inviteBanner) {
             inviteBanner.style.display = 'block';
             const codeEl = document.getElementById('inviteCodeText');
-            if (codeEl) codeEl.textContent = (netManager && netManager.roomCode) ? netManager.roomCode : 'BLOB-XXXX';
+            if (codeEl) codeEl.textContent = (netManager && netManager.roomCode) ? netManager.roomCode : 'XXXX';
         }
         if (lobbyStartBtn) {
             lobbyStartBtn.style.display = 'block';
@@ -124,6 +122,10 @@ function renderLobbyWeaponPanels() {
         }
     }
     layer.classList.add('show');
+    adjustTipTextLayout();
+    if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => adjustTipTextLayout());
+    }
 }
 
 function buildPlaceholderPanel(index, count) {
@@ -338,15 +340,19 @@ function beginSelectionRound() {
     layer.innerHTML = '';
     const isOnline = (GAME_STATE.gameMode === 'online');
     const myIndex = isOnline ? (typeof netManager !== 'undefined' && netManager ? netManager.localPlayerIndex : 0) : 0;
+    const isHost = isOnline && typeof netManager !== 'undefined' && netManager && netManager.isHost;
+
+    const activePlayers = (GAME_STATE.players || []).filter(p => p && !p.disconnected && !p.kicked);
+    for (const p of activePlayers) {
+        p._virtualPickDone = false;
+    }
+    GAME_STATE.pendingPicks = activePlayers.length;
 
     if (isOnline && typeof isMobile !== 'undefined' && isMobile) {
         const player = (GAME_STATE.players && GAME_STATE.players[myIndex]) || (GAME_STATE.players && GAME_STATE.players[0]);
-        GAME_STATE.pendingPicks = 1;
         if (player) layer.appendChild(buildPlayerPanel(player, 1, true));
     } else {
-        const activePlayers = (GAME_STATE.players || []).filter(p => p && !p.disconnected && !p.kicked);
         const count = Math.max(activePlayers.length, 1);
-        GAME_STATE.pendingPicks = activePlayers.length;
         for (const player of (GAME_STATE.players || [])) {
             if (!player || player.disconnected || player.kicked) continue;
             const isInteractive = !isOnline || (player.index === myIndex);
@@ -354,8 +360,13 @@ function beginSelectionRound() {
         }
     }
     layer.classList.add('show');
+    adjustTipTextLayout();
+    if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => adjustTipTextLayout());
+    }
+    if (typeof updateUI === 'function') updateUI();
 
-    if (isOnline && typeof netManager !== 'undefined' && netManager && netManager.isHost) {
+    if (isHost) {
         kickTimeoutId = setTimeout(() => {
             showKickButtonsForUnpickedPlayers();
         }, 60000);
@@ -481,7 +492,7 @@ function getPanelPosition(index, count) {
     if (typeof isMobile !== 'undefined' && isMobile) {
         return 'top:50%; left:50%; transform:translate(-50%,-50%);';
     }
-    const M = 15, TOP = 15;
+    const M = 24, TOP = 24, BOTTOM = 24;
     if (count === 1) return 'top:50%; left:50%; transform:translate(-50%,-50%);';
     if (count === 2) {
         return index === 0
@@ -491,13 +502,13 @@ function getPanelPosition(index, count) {
     if (count === 3) {
         if (index === 0) return `top:${TOP}px; left:${M}px;`;
         if (index === 1) return `top:${TOP}px; right:${M}px;`;
-        return `bottom:${M}px; left:${M}px;`;
+        return `bottom:${BOTTOM}px; left:${M}px;`;
     }
     return [
         `top:${TOP}px; left:${M}px;`,
         `top:${TOP}px; right:${M}px;`,
-        `bottom:${M}px; left:${M}px;`,
-        `bottom:${M}px; right:${M}px;`
+        `bottom:${BOTTOM}px; left:${M}px;`,
+        `bottom:${BOTTOM}px; right:${M}px;`
     ][index] || `top:${TOP}px; left:${M}px;`;
 }
 
@@ -592,6 +603,20 @@ function buildPlayerPanel(player, count, isInteractive = true) {
     return panel;
 }
 
+function onPlayerChoseVirtual(player) {
+    if (!player || player._virtualPickDone) return;
+    player._virtualPickDone = true;
+
+    // In online multiplayer, Host is the authoritative coordinator for level-up completion and countdowns
+    if (GAME_STATE.gameMode === 'online' && typeof netManager !== 'undefined' && netManager && netManager.isClient) {
+        return;
+    }
+
+    GAME_STATE.pendingPicks--;
+    if (GAME_STATE.pendingPicks > 0) return;
+    finishSelectionRound();
+}
+
 function onPlayerChose(panel, player) {
     if (panel.dataset.pickDone === 'true') return;
     panel.dataset.pickDone = 'true';
@@ -615,6 +640,10 @@ function onPlayerChose(panel, player) {
 
     GAME_STATE.pendingPicks--;
     if (GAME_STATE.pendingPicks > 0) return;
+    finishSelectionRound();
+}
+
+function finishSelectionRound() {
     if (kickTimeoutId) {
         clearTimeout(kickTimeoutId);
         kickTimeoutId = null;
@@ -624,6 +653,7 @@ function onPlayerChose(panel, player) {
         if (pl) {
             pl.currentUpgradeOptions = null;
             pl.currentLevelUpgradeName = null;
+            pl._virtualPickDone = false;
         }
     }
     const layer = document.getElementById('levelUpLayer');
@@ -673,8 +703,11 @@ function startCountdown(isNewGame = false) {
     if (layer) layer.classList.remove('show');
     const tipEl = document.getElementById('tipText');
     if (tipEl) tipEl.style.display = 'none';
+    stopTipRotation();
     const uiLayer = document.querySelector('.ui-layer');
     if (uiLayer) uiLayer.style.display = 'block';
+    const timerEl = document.getElementById('timer');
+    if (timerEl) timerEl.style.display = 'block';
     
     if (typeof GAME_STATE !== 'undefined') {
         GAME_STATE.current = STATES.COUNTDOWN;
@@ -759,11 +792,131 @@ const tips = [
     "Cryo Freeze will freeze enemies in place early on, but later on it will only slow them down.",
     "All players level up together in multiplayer, but select upgrades individually.",
     "XP needs to be collected from the ground after killing monsters in order to level up.",
-    "The game progression is based on time, not player level."
+    "The game progression is based on time, not player level.",
+    "Explosives and the melee Sledge Hammer and Flail can destroy burrowed enemies.",
+    "Harder difficulties also give you less time to dodge enemy projectiles, dashes, and other hazards.",
+    "Invisible enemies can still be damaged, but your weapons won't shoot at them.",
+    "Normal projectiles cannot shoot through walls or shields. The the seeking rocket is an exception to this, as well as any large enough explosions.",
+    "Want something different? Try maxing sticking to movement speed upgrades and phase dash upgrades only.",
+    "Becoming overwhelmed by enemies when using Magic Missile or Turrets? AOE damage is the only way to catch up. Try Buckshot volley or hybrid upgrades from the Melee or Explosives weapons."
 ];
 
+let tipRotationTimer = null;
+let tipFadeTimer = null;
+let lastTipIndex = -1;
+
 function fetchTip() {
-    return tips[Math.floor(Math.random() * tips.length)];
+    if (!tips || tips.length === 0) return '';
+    if (tips.length === 1) return tips[0];
+    let newIndex;
+    do {
+        newIndex = Math.floor(Math.random() * tips.length);
+    } while (newIndex === lastTipIndex);
+    lastTipIndex = newIndex;
+    return tips[newIndex];
+}
+
+function adjustTipTextLayout() {
+    const tipEl = document.getElementById('tipText');
+    if (!tipEl || tipEl.style.display === 'none') return;
+    const isMobileDevice = (typeof isMobile !== 'undefined') ? isMobile : ((typeof window !== 'undefined' && window.isMobile) || false);
+    if (isMobileDevice) return;
+
+    const layer = document.getElementById('levelUpLayer');
+    if (!layer) return;
+
+    const panels = Array.from(layer.querySelectorAll('.player-panel')).filter(p => p.offsetParent !== null);
+    if (panels.length === 0) {
+        tipEl.style.maxWidth = 'min(44vw, 480px)';
+        return;
+    }
+
+    if (panels.length === 1) {
+        tipEl.style.maxWidth = 'min(44vw, 480px)';
+        const panelRect = panels[0].getBoundingClientRect();
+        const tipRect = tipEl.getBoundingClientRect();
+        if (panelRect.top < tipRect.bottom + 10) {
+            tipEl.style.top = Math.max(8, panelRect.top - tipRect.height - 10) + 'px';
+        } else {
+            tipEl.style.top = 'calc(max(16px, env(safe-area-inset-top, 16px)) + 52px)';
+        }
+        return;
+    }
+
+    // Multi-panel layout (2, 3, or 4 players on PC)
+    const midX = window.innerWidth / 2;
+    const leftPanels = panels.filter(p => {
+        const r = p.getBoundingClientRect();
+        return (r.left + r.width / 2) < midX;
+    });
+    const rightPanels = panels.filter(p => {
+        const r = p.getBoundingClientRect();
+        return (r.left + r.width / 2) >= midX;
+    });
+
+    let maxLeftEdge = 0;
+    for (const p of leftPanels) {
+        const r = p.getBoundingClientRect();
+        if (r.right > maxLeftEdge) maxLeftEdge = r.right;
+    }
+
+    let minRightEdge = window.innerWidth;
+    for (const p of rightPanels) {
+        const r = p.getBoundingClientRect();
+        if (r.left < minRightEdge) minRightEdge = r.left;
+    }
+
+    const corridorWidth = minRightEdge - maxLeftEdge;
+    const safeWidth = Math.max(140, Math.floor(corridorWidth - 28));
+    tipEl.style.maxWidth = `${safeWidth}px`;
+    tipEl.style.boxSizing = 'border-box';
+}
+
+function startTipRotation() {
+    stopTipRotation();
+    const tipEl = document.getElementById('tipText') || (typeof tip !== 'undefined' ? tip : null);
+    if (!tipEl) return;
+
+    tipEl.textContent = 'Tip: ' + fetchTip();
+    tipEl.classList.remove('fade-out');
+    tipEl.style.display = 'block';
+    adjustTipTextLayout();
+    if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => adjustTipTextLayout());
+    }
+
+    function scheduleNextTip() {
+        tipRotationTimer = setTimeout(() => {
+            const el = document.getElementById('tipText');
+            if (!el || el.style.display === 'none') return;
+            el.classList.add('fade-out');
+            tipFadeTimer = setTimeout(() => {
+                const el2 = document.getElementById('tipText');
+                if (!el2 || el2.style.display === 'none') return;
+                el2.textContent = 'Tip: ' + fetchTip();
+                el2.classList.remove('fade-out');
+                adjustTipTextLayout();
+                scheduleNextTip();
+            }, 600); // 600ms fade transition
+        }, 20000); // 20 seconds visible
+    }
+
+    scheduleNextTip();
+}
+
+function stopTipRotation() {
+    if (tipRotationTimer) {
+        clearTimeout(tipRotationTimer);
+        tipRotationTimer = null;
+    }
+    if (tipFadeTimer) {
+        clearTimeout(tipFadeTimer);
+        tipFadeTimer = null;
+    }
+    const tipEl = document.getElementById('tipText');
+    if (tipEl) {
+        tipEl.classList.remove('fade-out');
+    }
 }
 
 // ---------------- 4. Game Over, Victory & Scores ----------------
@@ -900,9 +1053,9 @@ let pendingPlayerCount = 1;
 
 async function joinOnlineRoom(code) {
     const statusEl = document.getElementById('joinStatus');
-    const cleanCode = (code || '').trim().toUpperCase();
+    const cleanCode = (code || '').trim().toUpperCase().replace(/^BLOB-/i, '');
     if (!cleanCode) {
-        if (statusEl) statusEl.textContent = 'Please enter a valid room code (e.g. BLOB-4821)';
+        if (statusEl) statusEl.textContent = 'Please enter a valid 4-character room code (e.g. 4821)';
         return;
     }
     if (statusEl) statusEl.textContent = `Connecting to room ${cleanCode}...`;
@@ -1002,6 +1155,11 @@ function showStartMenu() {
     if (zone) zone.style.display = 'none';
     const tipEl = document.getElementById('tipText') || (typeof tip !== 'undefined' ? tip : null);
     if (tipEl) tipEl.style.display = 'none';
+    stopTipRotation();
+    const uiLayer = document.querySelector('.ui-layer');
+    if (uiLayer) uiLayer.style.display = 'none';
+    const timerEl = document.getElementById('timer');
+    if (timerEl) timerEl.style.display = 'none';
 
     const inviteBanner = document.getElementById('inviteCodeBanner');
     if (inviteBanner) inviteBanner.style.display = 'none';
@@ -1102,6 +1260,9 @@ function updateUI() {
 
 function initUISystem() {
     if (typeof document === 'undefined') return;
+
+    // Dynamically adjust tip text width whenever window is resized
+    window.addEventListener('resize', adjustTipTextLayout);
 
     // UI Click sound hook for all interactive buttons and upgrade options
     document.addEventListener('click', (e) => {
@@ -1326,6 +1487,9 @@ if (typeof window !== 'undefined') {
     window.startCountdown = startCountdown;
     window.tips = tips;
     window.fetchTip = fetchTip;
+    window.adjustTipTextLayout = adjustTipTextLayout;
+    window.startTipRotation = startTipRotation;
+    window.stopTipRotation = stopTipRotation;
     window.gameOver = gameOver;
     window.showVictory = showVictory;
     window.formatTime = formatTime;
@@ -1359,6 +1523,9 @@ if (typeof module !== 'undefined' && module.exports) {
         startCountdown,
         tips,
         fetchTip,
+        adjustTipTextLayout,
+        startTipRotation,
+        stopTipRotation,
         gameOver,
         showVictory,
         formatTime,
