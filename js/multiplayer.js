@@ -33,32 +33,11 @@ class NetworkManager {
     sendConn(target, payload) {
         if (!target) return;
         try {
-            const dc = target.dataChannel || target._dc;
-            const isDcOpen = (dc && (dc.readyState === 'open' || dc.open));
-
-            if (payload instanceof ArrayBuffer || (payload && payload.buffer instanceof ArrayBuffer)) {
-                const buffer = (payload instanceof ArrayBuffer) ? payload : payload.buffer;
-                if (isDcOpen) {
-                    dc.send(buffer);
-                } else if (typeof target.send === 'function' && target.open) {
-                    target.send(buffer);
-                }
-            } else if (typeof payload === 'object') {
-                const str = JSON.stringify(payload);
-                if (isDcOpen) {
-                    dc.send(str);
-                } else if (typeof target.send === 'function' && target.open) {
-                    target.send(str);
-                }
-            } else {
-                if (isDcOpen) {
-                    dc.send(payload);
-                } else if (typeof target.send === 'function' && target.open) {
-                    target.send(payload);
-                }
+            if (target.open) {
+                target.send(payload);
             }
         } catch (e) {
-            // Socket / datachannel closed
+            // Socket / connection closed
         }
     }
 
@@ -175,9 +154,6 @@ class NetworkManager {
                 });
 
                 this.peer.on('connection', (conn) => {
-                    conn.serialization = 'none';
-                    if (conn.dataChannel) conn.dataChannel.binaryType = 'arraybuffer';
-                    if (conn._dc) conn._dc.binaryType = 'arraybuffer';
                     this.handleIncomingConnection(conn);
                 });
 
@@ -239,7 +215,7 @@ class NetworkManager {
                     console.log('[Net] Client peer initialized:', myPeerId, 'sessionToken:', this.sessionToken);
                     const conn = this.peer.connect(this.roomCode, {
                         reliable: true,
-                        serialization: 'none',
+                        serialization: 'json',
                         metadata: { sessionToken: this.sessionToken }
                     });
 
@@ -247,40 +223,11 @@ class NetworkManager {
                         reject(new Error('Connection timed out. Check room code.'));
                     }, 10000);
 
-                    const setupClientSnapshotChannel = () => {
-                        if (!conn.peerConnection || conn.peerConnection._hasSnapshotListener) return;
-                        conn.peerConnection._hasSnapshotListener = true;
-                        conn.peerConnection.addEventListener('datachannel', (event) => {
-                            if (event.channel && (event.channel.label === 'blob_snapshots' || event.channel.label === 'snapshots')) {
-                                const chan = event.channel;
-                                chan.binaryType = 'arraybuffer';
-                                chan.onmessage = (e) => {
-                                    this.handleClientReceivedData(e.data);
-                                };
-                                chan.onopen = () => {
-                                    console.log('[Net] Client unreliable snapshot channel open');
-                                    this.unreliableHostChannel = chan;
-                                };
-                                chan.onclose = () => {
-                                    this.unreliableHostChannel = null;
-                                };
-                                chan.onerror = (err) => {
-                                    console.warn('[Net] Client snapshot channel error:', err);
-                                    this.unreliableHostChannel = null;
-                                };
-                            }
-                        });
-                    };
-
-                    if (conn.peerConnection) setupClientSnapshotChannel();
-
                     conn.on('open', () => {
                         clearTimeout(connectionTimeout);
                         this.hostConnection = conn;
                         this.connections.set('host', conn);
                         console.log('[Net] Connected to Host:', this.roomCode);
-
-                        setupClientSnapshotChannel();
 
                         // Start 1s active heartbeat ping
                         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
@@ -322,14 +269,7 @@ class NetworkManager {
     }
 
     handleIncomingConnection(conn) {
-        conn.serialization = 'none';
-        if (conn.dataChannel) conn.dataChannel.binaryType = 'arraybuffer';
-        if (conn._dc) conn._dc.binaryType = 'arraybuffer';
-
         conn.on('open', () => {
-            conn.serialization = 'none';
-            if (conn.dataChannel) conn.dataChannel.binaryType = 'arraybuffer';
-            if (conn._dc) conn._dc.binaryType = 'arraybuffer';
             console.log('[Net] Peer connecting:', conn.peer);
             this.peerLastSeenMap.set(conn.peer, Date.now());
             let sessionToken = (conn.metadata && conn.metadata.sessionToken) ? conn.metadata.sessionToken : null;
@@ -627,9 +567,21 @@ class NetworkManager {
                 break;
 
             case 'WORLD_SNAPSHOT':
-                // 60 FPS authoritative game world state from host
+                // Authoritative game world state from host
                 if (typeof onWorldSnapshotReceived === 'function') {
-                    onWorldSnapshotReceived(data);
+                    if (data.b) {
+                        try {
+                            const bytes = base64ToUint8(data.b);
+                            const snapshot = unpackWorldSnapshotBinary(bytes);
+                            if (snapshot) {
+                                onWorldSnapshotReceived(snapshot);
+                            }
+                        } catch (e) {
+                            console.warn('[Net] Failed to decode base64 snapshot:', e);
+                        }
+                    } else {
+                        onWorldSnapshotReceived(data);
+                    }
                 }
                 break;
 
@@ -733,23 +685,27 @@ class NetworkManager {
         showStartMenu();
     }
 
-    // Host sends 20fps game world snapshot to all connected clients (Dual-Channel: Unreliable WebRTC stream with reliable fallback)
+    // Host sends 20fps game world snapshot to all connected clients
     broadcastWorldSnapshot(snapshot) {
         if (!this.isHost || this.connections.size === 0) return;
-        const payload = (snapshot instanceof ArrayBuffer || (snapshot && snapshot.buffer instanceof ArrayBuffer))
-            ? snapshot
-            : (typeof packWorldSnapshotBinary === 'function' ? packWorldSnapshotBinary() : { type: 'WORLD_SNAPSHOT', ...snapshot });
-
-        for (const [peerId, conn] of this.connections.entries()) {
-            const unreli = this.unreliableChannels.get(peerId);
-            if (unreli && unreli.readyState === 'open') {
-                try {
-                    unreli.send(payload);
-                    continue;
-                } catch (e) {
-                    console.warn(`[Net] Unreliable snapshot send to ${peerId} failed, falling back to reliable:`, e);
-                }
+        let payload;
+        if (snapshot && typeof snapshot === 'object' && snapshot.type === 'WORLD_SNAPSHOT' && snapshot.b) {
+            payload = snapshot;
+        } else if (snapshot instanceof ArrayBuffer || (snapshot && snapshot.buffer instanceof ArrayBuffer)) {
+            const u8 = new Uint8Array(snapshot.buffer || snapshot, snapshot.byteOffset || 0, snapshot.byteLength);
+            payload = { type: 'WORLD_SNAPSHOT', b: uint8ToBase64(u8) };
+        } else if (snapshot && snapshot.players) {
+            payload = snapshot;
+        } else {
+            const buf = (typeof packWorldSnapshotBinary === 'function') ? packWorldSnapshotBinary() : null;
+            if (buf) {
+                payload = { type: 'WORLD_SNAPSHOT', b: uint8ToBase64(new Uint8Array(buf)) };
+            } else {
+                payload = { type: 'WORLD_SNAPSHOT', ...snapshot };
             }
+        }
+
+        for (const conn of this.connections.values()) {
             if (conn && conn.open) {
                 this.sendConn(conn, payload);
             }
@@ -765,13 +721,13 @@ class NetworkManager {
             allReady: allReady
         };
         for (const conn of this.connections.values()) {
-            if (conn.open) {
+            if (conn && conn.open) {
                 this.sendConn(conn, msg);
             }
         }
     }
 
-    // Client sends input stream to host (prioritizes unreliable low-latency channel with reliable fallback)
+    // Client sends input stream to host
     sendLocalInput(moveX, moveY, angle, dashing = false) {
         if (!this.isClient) return;
         const msg = {
@@ -782,13 +738,6 @@ class NetworkManager {
             angle: angle,
             dashing: dashing
         };
-
-        if (this.unreliableHostChannel && this.unreliableHostChannel.readyState === 'open') {
-            try {
-                this.unreliableHostChannel.send(JSON.stringify(msg));
-                return;
-            } catch (e) {}
-        }
 
         if (this.hostConnection && this.hostConnection.open) {
             this.sendConn(this.hostConnection, msg);
@@ -1287,6 +1236,25 @@ function angleToUint8(a) {
 
 function uint8ToAngle(u) {
     return (u / 255) * (Math.PI * 2);
+}
+
+function uint8ToBase64(bytes) {
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return (typeof btoa !== 'undefined') ? btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
+}
+
+function base64ToUint8(base64) {
+    const binary = (typeof atob !== 'undefined') ? atob(base64) : Buffer.from(base64, 'base64').toString('binary');
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
 }
 
 function packWorldSnapshotBinary() {
@@ -2599,6 +2567,8 @@ if (typeof window !== 'undefined') {
     window.serializeWorldForNetworkJSON = serializeWorldForNetworkJSON;
     window.packWorldSnapshotBinary = packWorldSnapshotBinary;
     window.unpackWorldSnapshotBinary = unpackWorldSnapshotBinary;
+    window.uint8ToBase64 = uint8ToBase64;
+    window.base64ToUint8 = base64ToUint8;
     window.despawnPlayerEntities = despawnPlayerEntities;
     window.recalculateDynamicDifficulty = recalculateDynamicDifficulty;
 }
