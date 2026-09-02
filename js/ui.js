@@ -1053,10 +1053,17 @@ let pendingPlayerCount = 1;
 
 async function joinOnlineRoom(code) {
     const statusEl = document.getElementById('joinStatus');
-    const cleanCode = (code || '').trim().toUpperCase().replace(/^BLOB-/i, '');
+    const cleanCode = (code || '').trim().toUpperCase().replace(/^BLOB[-_\s]*/i, '').replace(/[^A-Z0-9]/g, '');
     if (!cleanCode) {
         if (statusEl) statusEl.textContent = 'Please enter a valid 4-character room code (e.g. 4821)';
         return;
+    }
+    selectedGameMode = 'online_join';
+    if (typeof GAME_STATE !== 'undefined') {
+        GAME_STATE.gameMode = 'online';
+        GAME_STATE.isOnline = true;
+        GAME_STATE.isHost = false;
+        GAME_STATE.isClient = true;
     }
     if (statusEl) statusEl.textContent = `Connecting to room ${cleanCode}...`;
     try {
@@ -1066,7 +1073,10 @@ async function joinOnlineRoom(code) {
         if (statusEl) statusEl.textContent = 'Connected! Entering room...';
     } catch (err) {
         console.error('[Multiplayer] Join failed:', err);
-        if (statusEl) statusEl.textContent = `Could not connect: ${err.message || 'Room not found'}`;
+        const errMsg = err && err.type === 'peer-unavailable'
+            ? 'Room not found. Make sure the Host is in the lobby.'
+            : (err.message || 'Room not found');
+        if (statusEl) statusEl.textContent = `Could not connect: ${errMsg}`;
     }
 }
 
@@ -1337,12 +1347,20 @@ function initUISystem() {
 
     // Join Room Submit Handler
     const btnSubmitJoin = document.getElementById('btnSubmitJoin');
+    const joinInput = document.getElementById('joinCodeInput');
     if (btnSubmitJoin) {
         btnSubmitJoin.onclick = () => {
-            const joinInput = document.getElementById('joinCodeInput');
             const code = joinInput ? joinInput.value : '';
             joinOnlineRoom(code);
         };
+    }
+    if (joinInput) {
+        joinInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                joinOnlineRoom(joinInput.value);
+            }
+        });
     }
 
     // Back Navigation Handlers

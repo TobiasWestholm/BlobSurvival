@@ -8,8 +8,7 @@ class NetworkManager {
     constructor() {
         this.peer = null;
         this.connections = new Map(); // peerId -> DataConnection (Reliable RPC channel)
-        this.unreliableChannels = new Map(); // peerId -> RTCDataChannel (Unreliable snapshot channel on host)
-        this.unreliableHostChannel = null; // RTCDataChannel (Unreliable snapshot channel on client)
+        this.streamConnections = new Map(); // peerId -> DataConnection (Unreliable Stream channel)
         this.playerPeerMap = new Map(); // playerIndex (1..3) -> peerId
         this.peerPlayerMap = new Map(); // peerId -> playerIndex (1..3)
         this.sessionPlayerMap = new Map(); // sessionToken -> playerIndex (1..3)
@@ -23,7 +22,8 @@ class NetworkManager {
         this.isOnline = false;
         this.localPlayerIndex = 0;
         this.roomCode = null;
-        this.hostConnection = null;
+        this.hostConnection = null; // Reliable RPC channel to host
+        this.streamConnection = null; // Unreliable Stream channel to host
         this.statusCallback = null;
         this.lastStateBroadcast = 0;
         this.reconnectAttempts = 0;
@@ -54,13 +54,13 @@ class NetworkManager {
             try { this.peer.destroy(); } catch (e) {}
             this.peer = null;
         }
-        for (const chan of this.unreliableChannels.values()) {
-            try { chan.close(); } catch (e) {}
+        for (const conn of this.streamConnections.values()) {
+            try { conn.close(); } catch (e) {}
         }
-        this.unreliableChannels.clear();
-        if (this.unreliableHostChannel) {
-            try { this.unreliableHostChannel.close(); } catch (e) {}
-            this.unreliableHostChannel = null;
+        this.streamConnections.clear();
+        if (this.streamConnection) {
+            try { this.streamConnection.close(); } catch (e) {}
+            this.streamConnection = null;
         }
         for (const conn of this.connections.values()) {
             try { conn.close(); } catch (e) {}
@@ -77,6 +77,7 @@ class NetworkManager {
         this.localPlayerIndex = 0;
         this.roomCode = null;
         this.hostConnection = null;
+        this.streamConnection = null;
         this.isReconnecting = false;
         if (typeof clientEnemyCache !== 'undefined') clientEnemyCache.clear();
         if (typeof clientTurretCache !== 'undefined') clientTurretCache.clear();
@@ -123,6 +124,10 @@ class NetworkManager {
                     config: {
                         iceServers: [
                             { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' },
+                            { urls: 'stun:stun2.l.google.com:19302' },
+                            { urls: 'stun:stun.cloudflare.com:3478' },
+                            { urls: 'stun:stun.services.mozilla.com' },
                             { urls: 'stun:global.stun.twilio.com:3478' }
                         ]
                     }
@@ -139,7 +144,7 @@ class NetworkManager {
                         const now = Date.now();
                         for (const [slot, peerId] of this.playerPeerMap.entries()) {
                             const lastSeen = this.peerLastSeenMap.get(peerId) || 0;
-                            if (lastSeen > 0 && now - lastSeen > 3500) {
+                            if (lastSeen > 0 && now - lastSeen > 4000) {
                                 console.warn(`[Net] Peer ${peerId} (Player ${slot + 1}) timed out via heartbeat (${now - lastSeen}ms).`);
                                 const conn = this.connections.get(peerId);
                                 if (conn) {
@@ -184,14 +189,19 @@ class NetworkManager {
             this.isHost = false;
             this.isClient = true;
             this.isOnline = true;
-            this.roomCode = roomCode.trim().toUpperCase();
+            this.roomCode = (roomCode || '').trim().toUpperCase().replace(/^BLOB[-_\s]*/i, '').replace(/[^A-Z0-9]/g, '');
 
-            // Retrieve or generate persistent sessionToken for this room
-            const sessionKey = `blob_session_${this.roomCode}`;
-            let sessionToken = sessionStorage.getItem(sessionKey);
-            if (!sessionToken) {
+            // Retrieve or generate persistent sessionToken for this room (safe on mobile Safari Private Browsing)
+            let sessionToken = null;
+            try {
+                const sessionKey = `blob_session_${this.roomCode}`;
+                sessionToken = sessionStorage.getItem(sessionKey);
+                if (!sessionToken) {
+                    sessionToken = 'tok_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now().toString(36);
+                    sessionStorage.setItem(sessionKey, sessionToken);
+                }
+            } catch (e) {
                 sessionToken = 'tok_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now().toString(36);
-                sessionStorage.setItem(sessionKey, sessionToken);
             }
             this.sessionToken = sessionToken;
 
@@ -206,6 +216,10 @@ class NetworkManager {
                     config: {
                         iceServers: [
                             { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' },
+                            { urls: 'stun:stun2.l.google.com:19302' },
+                            { urls: 'stun:stun.cloudflare.com:3478' },
+                            { urls: 'stun:stun.services.mozilla.com' },
                             { urls: 'stun:global.stun.twilio.com:3478' }
                         ]
                     }
@@ -216,20 +230,21 @@ class NetworkManager {
                     const conn = this.peer.connect(this.roomCode, {
                         reliable: true,
                         serialization: 'json',
-                        metadata: { sessionToken: this.sessionToken }
+                        label: 'rpc',
+                        metadata: { sessionToken: this.sessionToken, channelType: 'rpc' }
                     });
 
                     let connectionTimeout = setTimeout(() => {
                         reject(new Error('Connection timed out. Check room code.'));
-                    }, 10000);
+                    }, 15000);
 
                     conn.on('open', () => {
                         clearTimeout(connectionTimeout);
                         this.hostConnection = conn;
                         this.connections.set('host', conn);
-                        console.log('[Net] Connected to Host:', this.roomCode);
+                        console.log('[Net] Reliable RPC channel connected to Host:', this.roomCode);
 
-                        // Start 1s active heartbeat ping
+                        // Start 1s active heartbeat ping over reliable channel
                         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
                         this.heartbeatInterval = setInterval(() => {
                             if (this.hostConnection && this.hostConnection.open) {
@@ -237,8 +252,36 @@ class NetworkManager {
                             }
                         }, 1000);
 
-                        // Also send explicit HANDSHAKE with sessionToken
+                        // Send explicit HANDSHAKE with sessionToken
                         this.sendConn(conn, { type: 'HANDSHAKE', sessionToken: this.sessionToken });
+
+                        // Secondary: Establish unreliable streaming channel for 20Hz snapshots & 60Hz inputs
+                        try {
+                            const streamConn = this.peer.connect(this.roomCode, {
+                                reliable: false,
+                                serialization: 'json',
+                                label: 'stream',
+                                metadata: { sessionToken: this.sessionToken, channelType: 'stream' }
+                            });
+                            streamConn.on('open', () => {
+                                console.log('[Net] Unreliable snapshot/input stream channel open with Host.');
+                                this.streamConnection = streamConn;
+                            });
+                            streamConn.on('data', (data) => {
+                                this.handleClientReceivedData(data);
+                            });
+                            streamConn.on('close', () => {
+                                console.log('[Net] Unreliable stream channel closed.');
+                                if (this.streamConnection === streamConn) {
+                                    this.streamConnection = null;
+                                }
+                            });
+                            streamConn.on('error', (err) => {
+                                console.warn('[Net] Stream channel warning:', err);
+                            });
+                        } catch (e) {
+                            console.warn('[Net] Could not create secondary stream channel:', e);
+                        }
 
                         conn.on('data', (data) => {
                             this.handleClientReceivedData(data);
@@ -270,9 +313,36 @@ class NetworkManager {
 
     handleIncomingConnection(conn) {
         conn.on('open', () => {
-            console.log('[Net] Peer connecting:', conn.peer);
+            const sessionToken = (conn.metadata && conn.metadata.sessionToken) ? conn.metadata.sessionToken : null;
+            const channelType = (conn.metadata && conn.metadata.channelType) ? conn.metadata.channelType : (conn.label === 'stream' ? 'stream' : 'rpc');
+
+            // 0. Handle secondary unreliable streaming channel
+            if (channelType === 'stream') {
+                console.log(`[Net] Unreliable stream channel connected from peer: ${conn.peer} (token: ${sessionToken})`);
+                this.streamConnections.set(conn.peer, conn);
+                this.peerLastSeenMap.set(conn.peer, Date.now());
+
+                conn.on('data', (data) => {
+                    this.peerLastSeenMap.set(conn.peer, Date.now());
+                    const assignedSlot = (sessionToken && this.sessionPlayerMap.has(sessionToken))
+                        ? this.sessionPlayerMap.get(sessionToken)
+                        : this.peerPlayerMap.get(conn.peer);
+                    if (assignedSlot !== undefined) {
+                        this.handleHostReceivedData(conn.peer, assignedSlot, data);
+                    }
+                });
+
+                conn.on('close', () => {
+                    console.log(`[Net] Stream channel closed for peer: ${conn.peer}`);
+                    if (this.streamConnections.get(conn.peer) === conn) {
+                        this.streamConnections.delete(conn.peer);
+                    }
+                });
+                return;
+            }
+
+            console.log('[Net] Peer connecting (reliable RPC):', conn.peer);
             this.peerLastSeenMap.set(conn.peer, Date.now());
-            let sessionToken = (conn.metadata && conn.metadata.sessionToken) ? conn.metadata.sessionToken : null;
             const isGameStarted = (typeof GAME_STATE !== 'undefined' && typeof STATES !== 'undefined' && GAME_STATE.current !== STATES.WEAPON_SELECT && GAME_STATE.current !== STATES.START_MENU);
 
             // 1. Check if this is an established player reconnecting with their sessionToken
@@ -325,17 +395,6 @@ class NetworkManager {
 
                 if (typeof onOnlinePlayerJoined === 'function') {
                     onOnlinePlayerJoined(assignedSlot, conn.peer, true);
-                }
-
-                if (conn.peerConnection) {
-                    this.setupUnreliableChannel(conn, assignedSlot);
-                    conn.peerConnection.addEventListener('connectionstatechange', () => {
-                        const st = conn.peerConnection.connectionState;
-                        if (st === 'disconnected' || st === 'failed' || st === 'closed') {
-                            console.warn(`[Net] Peer ${conn.peer} WebRTC state: ${st}`);
-                            this.handlePeerDisconnected(assignedSlot, conn.peer);
-                        }
-                    });
                 }
 
                 conn.on('data', (data) => {
@@ -409,17 +468,6 @@ class NetworkManager {
                 onOnlinePlayerJoined(assignedSlot, conn.peer, false);
             }
 
-            if (conn.peerConnection) {
-                this.setupUnreliableChannel(conn, assignedSlot);
-                conn.peerConnection.addEventListener('connectionstatechange', () => {
-                    const st = conn.peerConnection.connectionState;
-                    if (st === 'disconnected' || st === 'failed' || st === 'closed') {
-                        console.warn(`[Net] Peer ${conn.peer} WebRTC state: ${st}`);
-                        this.handlePeerDisconnected(assignedSlot, conn.peer);
-                    }
-                });
-            }
-
             conn.on('data', (data) => {
                 this.handleHostReceivedData(conn.peer, assignedSlot, data);
             });
@@ -429,33 +477,6 @@ class NetworkManager {
                 this.handlePeerDisconnected(assignedSlot, conn.peer);
             });
         });
-    }
-
-    setupUnreliableChannel(conn, assignedSlot) {
-        if (!conn || !conn.peerConnection || this.unreliableChannels.has(conn.peer)) return;
-        try {
-            const chan = conn.peerConnection.createDataChannel('blob_snapshots', {
-                ordered: false,
-                maxRetransmits: 0
-            });
-            chan.binaryType = 'arraybuffer';
-            chan.onopen = () => {
-                console.log(`[Net] Unreliable snapshot channel open with ${conn.peer} (P${assignedSlot + 1})`);
-                this.unreliableChannels.set(conn.peer, chan);
-            };
-            chan.onmessage = (e) => {
-                this.handleHostReceivedData(conn.peer, assignedSlot, e.data);
-            };
-            chan.onclose = () => {
-                this.unreliableChannels.delete(conn.peer);
-            };
-            chan.onerror = (err) => {
-                console.warn(`[Net] Snapshot channel error with ${conn.peer}:`, err);
-                this.unreliableChannels.delete(conn.peer);
-            };
-        } catch (e) {
-            console.warn(`[Net] Could not create unreliable channel with ${conn.peer}:`, e);
-        }
     }
 
     handleHostReceivedData(peerId, playerIndex, data) {
@@ -642,6 +663,11 @@ class NetworkManager {
         const sessionToken = this.playerSessionMap.get(playerIndex);
 
         if (peerId) {
+            const streamConn = this.streamConnections.get(peerId);
+            if (streamConn) {
+                try { streamConn.close(); } catch (e) {}
+                this.streamConnections.delete(peerId);
+            }
             const conn = this.connections.get(peerId);
             if (conn) {
                 try {
@@ -666,10 +692,10 @@ class NetworkManager {
     }
 
     handlePeerDisconnected(playerIndex, peerId) {
-        const unreli = this.unreliableChannels.get(peerId);
-        if (unreli) {
-            try { unreli.close(); } catch (e) {}
-            this.unreliableChannels.delete(peerId);
+        const streamConn = this.streamConnections.get(peerId);
+        if (streamConn) {
+            try { streamConn.close(); } catch (e) {}
+            this.streamConnections.delete(peerId);
         }
         this.connections.delete(peerId);
         this.peerPlayerMap.delete(peerId);
@@ -685,28 +711,18 @@ class NetworkManager {
         showStartMenu();
     }
 
-    // Host sends 20fps game world snapshot to all connected clients
+    // Host sends 20fps game world snapshot to all connected clients (prioritizing unreliable stream channel)
     broadcastWorldSnapshot(snapshot) {
         if (!this.isHost || this.connections.size === 0) return;
-        let payload;
-        if (snapshot && typeof snapshot === 'object' && snapshot.type === 'WORLD_SNAPSHOT' && snapshot.b) {
-            payload = snapshot;
-        } else if (snapshot instanceof ArrayBuffer || (snapshot && snapshot.buffer instanceof ArrayBuffer)) {
-            const u8 = new Uint8Array(snapshot.buffer || snapshot, snapshot.byteOffset || 0, snapshot.byteLength);
-            payload = { type: 'WORLD_SNAPSHOT', b: uint8ToBase64(u8) };
-        } else if (snapshot && snapshot.players) {
-            payload = snapshot;
-        } else {
-            const buf = (typeof packWorldSnapshotBinary === 'function') ? packWorldSnapshotBinary() : null;
-            if (buf) {
-                payload = { type: 'WORLD_SNAPSHOT', b: uint8ToBase64(new Uint8Array(buf)) };
-            } else {
-                payload = { type: 'WORLD_SNAPSHOT', ...snapshot };
-            }
-        }
+        const payload = (snapshot && snapshot.players)
+            ? { type: 'WORLD_SNAPSHOT', ...snapshot }
+            : (typeof serializeWorldForNetworkJSON === 'function' ? { type: 'WORLD_SNAPSHOT', ...serializeWorldForNetworkJSON() } : { type: 'WORLD_SNAPSHOT', ...snapshot });
 
-        for (const conn of this.connections.values()) {
-            if (conn && conn.open) {
+        for (const [peerId, conn] of this.connections.entries()) {
+            const streamConn = this.streamConnections.get(peerId);
+            if (streamConn && streamConn.open) {
+                this.sendConn(streamConn, payload);
+            } else if (conn && conn.open) {
                 this.sendConn(conn, payload);
             }
         }
@@ -727,7 +743,7 @@ class NetworkManager {
         }
     }
 
-    // Client sends input stream to host
+    // Client sends input stream to host (prioritizing unreliable stream channel)
     sendLocalInput(moveX, moveY, angle, dashing = false) {
         if (!this.isClient) return;
         const msg = {
@@ -739,7 +755,9 @@ class NetworkManager {
             dashing: dashing
         };
 
-        if (this.hostConnection && this.hostConnection.open) {
+        if (this.streamConnection && this.streamConnection.open) {
+            this.sendConn(this.streamConnection, msg);
+        } else if (this.hostConnection && this.hostConnection.open) {
             this.sendConn(this.hostConnection, msg);
         }
     }
@@ -1008,11 +1026,13 @@ window.onRemoteWeaponSelected = function(playerIndex, weaponId) {
     const p = GAME_STATE.players[playerIndex];
     if (p) {
         p.selectedWeapon = weaponId;
-        p.selectedWeaponLabel = WEAPON_LABELS[weaponId];
+        p.selectedWeaponLabel = (typeof WEAPON_LABELS !== 'undefined' && WEAPON_LABELS[weaponId]) ? WEAPON_LABELS[weaponId] : (weaponId || '');
         p.weapons = [];
         p.unlockWeapon(weaponId);
 
-        renderLobbyWeaponPanels();
+        if (typeof renderLobbyWeaponPanels === 'function') {
+            renderLobbyWeaponPanels();
+        }
 
         const allReady = GAME_STATE.players.length > 0 && GAME_STATE.players.filter(pl => pl && !pl.disconnected).every(pl => pl.selectedWeapon);
         const lobbyStartBtn = document.getElementById('lobbyStartBtn');
@@ -1828,7 +1848,7 @@ function unpackWorldSnapshotBinary(buffer) {
 }
 
 function serializeWorldForNetwork() {
-    return packWorldSnapshotBinary();
+    return serializeWorldForNetworkJSON();
 }
 
 function serializeWorldForNetworkJSON() {
