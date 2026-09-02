@@ -447,8 +447,8 @@ function loop(now) {
                 resolvePlayerTerrainCollisions(myPlayer);
             }
 
-            // Smoothly interpolate remote entities towards latest snapshot target positions (smooth 60fps)
-            const lerpRate = Math.min(1.0, 0.45 * dtFactor);
+            // Smoothly extrapolate & interpolate remote entities towards latest snapshot target positions (smooth 60fps)
+            const lerpRate = Math.min(1.0, 0.40 * dtFactor);
             for (let i = 0; i < GAME_STATE.players.length; i++) {
                 if (i !== netManager.localPlayerIndex) {
                     const rp = GAME_STATE.players[i];
@@ -460,6 +460,11 @@ function loop(now) {
             }
             for (const e of GAME_STATE.enemies) {
                 if (e && e.targetX !== undefined) {
+                    // Dead reckoning: continue along estimated velocity vector between 20Hz updates
+                    if (e.vx !== undefined && e.vy !== undefined) {
+                        e.x += e.vx * dtFactor;
+                        e.y += e.vy * dtFactor;
+                    }
                     e.x += (e.targetX - e.x) * lerpRate;
                     e.y += (e.targetY - e.y) * lerpRate;
                 }
@@ -481,9 +486,9 @@ function loop(now) {
             update(dt, dtFactor, gameClock);
             draw(gameClock);
             
-            // 30 Hz authoritative sync broadcast to clients (every 2nd frame) to cut bandwidth & SCTP queuing by 50%
+            // 20 Hz authoritative sync broadcast to clients (every 3rd frame at 60fps = 50ms) to cut bandwidth & SCTP queuing by 67%
             GAME_STATE.netTick = (GAME_STATE.netTick || 0) + 1;
-            if (netManager.isHost && netManager.connections.size > 0 && GAME_STATE.netTick % 2 === 0) {
+            if (netManager.isHost && netManager.connections.size > 0 && GAME_STATE.netTick % 3 === 0) {
                 netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
             }
 

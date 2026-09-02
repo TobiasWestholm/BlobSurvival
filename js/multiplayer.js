@@ -1036,6 +1036,7 @@ window.onOnlineCountdownStarted = function(isNewGame) {
 };
 
 let netEntityCounter = 1;
+let netGemSyncTick = 0;
 const clientEnemyCache = new Map(); // id -> Enemy instance
 const clientTurretCache = new Map(); // id -> TurretEntity instance
 const clientHazardCache = new Map(); // id -> Hazard instance
@@ -1057,7 +1058,7 @@ function serializeWorldForNetwork() {
             w: p.selectedWeapon || '',
             wl: p.selectedWeaponLabel || '',
             up: p.currentLevelUpgradeName || '',
-            cv: p.campervanUntil > gameClock ? Math.round(p.campervanUntil) : 0,
+            cv: (typeof gameClock !== 'undefined' && p.campervanUntil > gameClock) ? Math.round(p.campervanUntil) : 0,
             iv: p.invuln > 0 ? Math.round(p.invuln) : (p.spawnInvuln > 0 ? Math.round(p.spawnInvuln) : 0),
             ma: p.martyrdomAuraEnabled ? 1 : 0,
             mp: p.martyrsPresenceEnabled ? 1 : 0,
@@ -1074,61 +1075,64 @@ function serializeWorldForNetwork() {
         };
     });
 
-    // 2. Enemies (compact serialization omitting empty/static keys)
+    // 2. Enemies: compact flat tuples [id, type, x, y, hp, mhp, fa, r, color, state, shieldRadius, airborne, landY, landAt]
     const enemies = GAME_STATE.enemies.filter(e => e.alive && e.hp > 0).map(e => {
         if (!e._nid) e._nid = ++netEntityCounter;
-        const obj = {
-            id: e._nid,
-            t: e.type,
-            x: Math.round(e.x),
-            y: Math.round(e.y),
-            hp: Math.round(e.hp),
-            mhp: e.maxHp,
-            fa: Math.round(e.facingAngle * 100) / 100
-        };
-        if (e.r) obj.r = e.r;
-        if (e.color) obj.c = e.color;
-        if (e.viperState || e.stalkerState) obj.st = e.viperState || e.stalkerState;
-        if (e.shieldRadius) obj.sr = e.shieldRadius;
-        if (e.airborne) obj.ab = 1;
-        if (e.landY) obj.ly = Math.round(e.landY);
-        if (e.landAt) obj.la = Math.round(e.landAt);
-        return obj;
-    });
+        const fa = Math.round((e.facingAngle || 0) * 100) / 100;
+        const r = e.r || 0;
+        const c = e.color || '';
+        const st = e.viperState || e.stalkerState || '';
+        const sr = e.shieldRadius || 0;
+        const ab = e.airborne ? 1 : 0;
+        const ly = Math.round(e.landY || 0);
+        const la = Math.round(e.landAt || 0);
 
-    // 3. Projectiles
-    const projectiles = GAME_STATE.projectiles.map(p => ({
-        t: (p instanceof OrbitProjectile) ? 'fire_ring' : (p instanceof DeflectorOrbiter ? 'deflector_shield' : (p.type || '')),
-        x: Math.round(p.x),
-        y: Math.round(p.y),
-        r: p.r || (p instanceof OrbitProjectile ? 10 : 3),
-        c: (p instanceof OrbitProjectile) ? '#ff6600' : (p instanceof DeflectorOrbiter ? '#00e5ff' : (p.color || '#00ffcc')),
-        a: Math.round((p.angle || 0) * 100) / 100,
-        tx: p.targetX !== undefined ? Math.round(p.targetX) : undefined,
-        ty: p.targetY !== undefined ? Math.round(p.targetY) : undefined,
-        sx: p.startX !== undefined ? Math.round(p.startX) : undefined,
-        sy: p.startY !== undefined ? Math.round(p.startY) : undefined,
-        mr: (p instanceof OrbitProjectile && p.player && p.player.mineRingEnabled) ? 1 : 0,
-        pi: (p.player && p.player.index !== undefined) ? p.player.index : 0
-    }));
-
-    // 4. Enemy Projectiles
-    const enemyProjectiles = GAME_STATE.enemyProjectiles.map(ep => ({
-        x: Math.round(ep.x),
-        y: Math.round(ep.y),
-        r: ep.r || 4,
-        c: ep.color || '#ff3344'
-    }));
-
-    // 5. Gems, Health Packs & Supply Drops (Compact Array Tuples [x, y, v, hp, sd])
-    const gems = GAME_STATE.gems.map(g => {
-        const isHp = (g instanceof HealthPack) ? 1 : 0;
-        const isSd = (g instanceof SupplyDrop) ? g.type : 0;
-        if (isHp || isSd) {
-            return [Math.round(g.x), Math.round(g.y), g.value || 5, isHp, isSd];
+        if (!r && !c && !st && !sr && !ab && !ly && !la) {
+            return [e._nid, e.type, Math.round(e.x), Math.round(e.y), Math.round(e.hp), e.maxHp, fa];
         }
-        return [Math.round(g.x), Math.round(g.y), g.value || 5];
+        return [e._nid, e.type, Math.round(e.x), Math.round(e.y), Math.round(e.hp), e.maxHp, fa, r, c, st, sr, ab, ly, la];
     });
+
+    // 3. Projectiles: compact flat tuples [type, x, y, r, color, angle, tx, ty, sx, sy, mr, pi]
+    const projectiles = GAME_STATE.projectiles.map(p => {
+        const t = (p instanceof OrbitProjectile) ? 'fire_ring' : (p instanceof DeflectorOrbiter ? 'deflector_shield' : (p.type || ''));
+        const c = (p instanceof OrbitProjectile) ? '#ff6600' : (p instanceof DeflectorOrbiter ? '#00e5ff' : (p.color || '#00ffcc'));
+        const r = p.r || (p instanceof OrbitProjectile ? 10 : 3);
+        const a = Math.round((p.angle || 0) * 100) / 100;
+        const tx = p.targetX !== undefined ? Math.round(p.targetX) : 0;
+        const ty = p.targetY !== undefined ? Math.round(p.targetY) : 0;
+        const sx = p.startX !== undefined ? Math.round(p.startX) : 0;
+        const sy = p.startY !== undefined ? Math.round(p.startY) : 0;
+        const mr = (p instanceof OrbitProjectile && p.player && p.player.mineRingEnabled) ? 1 : 0;
+        const pi = (p.player && p.player.index !== undefined) ? p.player.index : 0;
+
+        if (!tx && !ty && !sx && !sy && !mr && !pi) {
+            return [t, Math.round(p.x), Math.round(p.y), r, c, a];
+        }
+        return [t, Math.round(p.x), Math.round(p.y), r, c, a, tx, ty, sx, sy, mr, pi];
+    });
+
+    // 4. Enemy Projectiles: compact flat tuples [x, y, r, color]
+    const enemyProjectiles = GAME_STATE.enemyProjectiles.map(ep => [
+        Math.round(ep.x),
+        Math.round(ep.y),
+        ep.r || 4,
+        ep.color || '#ff3344'
+    ]);
+
+    // 5. Gems, Health Packs & Supply Drops (sync every 6 network ticks to save 80%+ bandwidth on static gems)
+    let gems = undefined;
+    netGemSyncTick = (netGemSyncTick + 1) % 6;
+    if (netGemSyncTick === 0 || GAME_STATE.activeBoss) {
+        gems = GAME_STATE.gems.map(g => {
+            const isHp = (g instanceof HealthPack) ? 1 : 0;
+            const isSd = (g instanceof SupplyDrop) ? g.type : 0;
+            if (isHp || isSd) {
+                return [Math.round(g.x), Math.round(g.y), g.value || 5, isHp, isSd];
+            }
+            return [Math.round(g.x), Math.round(g.y), g.value || 5];
+        });
+    }
 
     // 6. Turrets
     const turrets = GAME_STATE.turrets.map(t => {
@@ -1268,6 +1272,7 @@ const NetworkEnemyProjectileProto = {
 
 window.onWorldSnapshotReceived = function(snapshot) {
     if (!snapshot) return;
+    const nowTime = (typeof gameClock !== 'undefined' ? gameClock : (snapshot.elapsed !== undefined ? snapshot.elapsed : (typeof performance !== 'undefined' ? performance.now() : Date.now())));
 
     if (snapshot.hostW !== undefined && (GAME_STATE.hostW !== snapshot.hostW || W !== snapshot.hostW)) {
         GAME_STATE.hostW = snapshot.hostW;
@@ -1366,45 +1371,60 @@ window.onWorldSnapshotReceived = function(snapshot) {
         }
     }
 
-    // 2. Reconcile Enemies (setting targetX/targetY for smooth 60fps interpolation)
+    // 2. Reconcile Enemies (compact tuples + velocity extrapolation for smooth 60fps dead reckoning)
     if (snapshot.enemies) {
         const seenIds = new Set();
         const activeEnemies = [];
         for (const se of snapshot.enemies) {
-            if (se.hp <= 0) continue;
-            seenIds.add(se.id);
-            let e = clientEnemyCache.get(se.id);
-            if (!e) {
-                e = new Enemy(se.x, se.y, se.t, gameClock);
-                e._nid = se.id;
-                e.x = se.x;
-                e.y = se.y;
-                e.targetX = se.x;
-                e.targetY = se.y;
-                clientEnemyCache.set(se.id, e);
+            let id, type, x, y, hp, mhp, fa, r, c, st, sr, ab, ly, la;
+            if (Array.isArray(se)) {
+                id = se[0]; type = se[1]; x = se[2]; y = se[3]; hp = se[4]; mhp = se[5]; fa = se[6];
+                r = se[7] || 0; c = se[8] || ''; st = se[9] || ''; sr = se[10] || 0; ab = (se[11] === 1); ly = se[12] || 0; la = se[13] || 0;
             } else {
-                e.targetX = se.x;
-                e.targetY = se.y;
-                const d2 = (e.x - se.x) ** 2 + (e.y - se.y) ** 2;
+                id = se.id; type = se.t; x = se.x; y = se.y; hp = se.hp; mhp = se.mhp; fa = se.fa;
+                r = se.r || 0; c = se.c || ''; st = se.st || ''; sr = se.sr || 0; ab = (se.ab === 1); ly = se.ly || 0; la = se.la || 0;
+            }
+            if (hp <= 0) continue;
+            seenIds.add(id);
+            let e = clientEnemyCache.get(id);
+            if (!e) {
+                e = new Enemy(x, y, type, nowTime);
+                e._nid = id;
+                e.x = x;
+                e.y = y;
+                e.targetX = x;
+                e.targetY = y;
+                e.vx = 0;
+                e.vy = 0;
+                clientEnemyCache.set(id, e);
+            } else {
+                // Estimate velocity vector between authoritative 20Hz snapshots (3 frames per snapshot)
+                const dx = x - (e.targetX !== undefined ? e.targetX : e.x);
+                const dy = y - (e.targetY !== undefined ? e.targetY : e.y);
+                e.vx = dx / 3.0;
+                e.vy = dy / 3.0;
+                e.targetX = x;
+                e.targetY = y;
+                const d2 = (e.x - x) ** 2 + (e.y - y) ** 2;
                 if (d2 > 32400) {
-                    e.x = se.x;
-                    e.y = se.y;
+                    e.x = x;
+                    e.y = y;
                 }
             }
             e.alive = true;
-            e.hp = se.hp;
-            e.maxHp = se.mhp;
-            e.facingAngle = se.fa;
-            if (se.r) e.r = se.r;
-            if (se.c) e.color = se.c;
-            if (se.st) {
-                e.viperState = se.st;
-                e.stalkerState = se.st;
+            e.hp = hp;
+            e.maxHp = mhp;
+            e.facingAngle = fa;
+            if (r) e.r = r;
+            if (c) e.color = c;
+            if (st) {
+                e.viperState = st;
+                e.stalkerState = st;
             }
-            if (se.sr) e.shieldRadius = se.sr;
-            if (se.ab !== undefined) e.airborne = (se.ab === 1);
-            if (se.ly) e.landY = se.ly;
-            if (se.la) e.landAt = se.la;
+            if (sr) e.shieldRadius = sr;
+            e.airborne = ab;
+            if (ly) e.landY = ly;
+            if (la) e.landAt = la;
             activeEnemies.push(e);
         }
         for (const [id] of clientEnemyCache.entries()) {
@@ -1415,7 +1435,7 @@ window.onWorldSnapshotReceived = function(snapshot) {
         GAME_STATE.enemies = activeEnemies;
     }
 
-    // 3. Reconcile Projectiles & Enemy Projectiles (Zero-allocation object pooling)
+    // 3. Reconcile Projectiles & Enemy Projectiles (Zero-allocation object pooling & tuple support)
     if (snapshot.projectiles) {
         const count = snapshot.projectiles.length;
         if (GAME_STATE.projectiles.length > count) {
@@ -1428,18 +1448,33 @@ window.onWorldSnapshotReceived = function(snapshot) {
                 p = Object.create(NetworkProjectileProto);
                 GAME_STATE.projectiles[i] = p;
             }
-            p.type = sp.t;
-            p.x = sp.x;
-            p.y = sp.y;
-            p.r = sp.r || 3;
-            p.color = sp.c || '#00ffcc';
-            p.angle = sp.a || 0;
-            p.targetX = sp.tx;
-            p.targetY = sp.ty;
-            p.startX = sp.sx;
-            p.startY = sp.sy;
-            p.mineRing = (sp.mr === 1);
-            p.playerIndex = sp.pi || 0;
+            if (Array.isArray(sp)) {
+                p.type = sp[0];
+                p.x = sp[1];
+                p.y = sp[2];
+                p.r = sp[3] || 3;
+                p.color = sp[4] || '#00ffcc';
+                p.angle = sp[5] || 0;
+                p.targetX = sp[6] || undefined;
+                p.targetY = sp[7] || undefined;
+                p.startX = sp[8] || undefined;
+                p.startY = sp[9] || undefined;
+                p.mineRing = (sp[10] === 1);
+                p.playerIndex = sp[11] || 0;
+            } else {
+                p.type = sp.t;
+                p.x = sp.x;
+                p.y = sp.y;
+                p.r = sp.r || 3;
+                p.color = sp.c || '#00ffcc';
+                p.angle = sp.a || 0;
+                p.targetX = sp.tx;
+                p.targetY = sp.ty;
+                p.startX = sp.sx;
+                p.startY = sp.sy;
+                p.mineRing = (sp.mr === 1);
+                p.playerIndex = sp.pi || 0;
+            }
             p.alive = true;
         }
     }
@@ -1456,16 +1491,23 @@ window.onWorldSnapshotReceived = function(snapshot) {
                 ep = Object.create(NetworkEnemyProjectileProto);
                 GAME_STATE.enemyProjectiles[i] = ep;
             }
-            ep.x = sep.x;
-            ep.y = sep.y;
-            ep.r = sep.r || 4;
-            ep.color = sep.c || '#ff3344';
+            if (Array.isArray(sep)) {
+                ep.x = sep[0];
+                ep.y = sep[1];
+                ep.r = sep[2] || 4;
+                ep.color = sep[3] || '#ff3344';
+            } else {
+                ep.x = sep.x;
+                ep.y = sep.y;
+                ep.r = sep.r || 4;
+                ep.color = sep.c || '#ff3344';
+            }
             ep.alive = true;
         }
     }
 
-    // 4. Reconcile Gems, Health Packs & Supply Drops (In-place update supporting compact tuples)
-    if (snapshot.gems) {
+    // 4. Reconcile Gems, Health Packs & Supply Drops (In-place update with low-frequency payload check)
+    if (snapshot.gems !== undefined) {
         const count = snapshot.gems.length;
         if (GAME_STATE.gems.length > count) {
             GAME_STATE.gems.length = count;
@@ -1481,31 +1523,24 @@ window.onWorldSnapshotReceived = function(snapshot) {
 
             if (ghp) {
                 if (!(g instanceof HealthPack)) {
-                    g = new HealthPack(gx, gy, gameClock);
+                    g = new HealthPack(gx, gy, nowTime);
                     GAME_STATE.gems[i] = g;
                 } else {
-                    g.x = gx;
-                    g.y = gy;
-                    g.alive = true;
+                    g.x = gx; g.y = gy; g.alive = true;
                 }
             } else if (gsd) {
                 if (!(g instanceof SupplyDrop) || g.type !== gsd) {
-                    g = new SupplyDrop(gx, gy, gsd, gameClock);
+                    g = new SupplyDrop(gx, gy, gsd, nowTime);
                     GAME_STATE.gems[i] = g;
                 } else {
-                    g.x = gx;
-                    g.y = gy;
-                    g.alive = true;
+                    g.x = gx; g.y = gy; g.alive = true;
                 }
             } else {
-                if (!(g instanceof XPGem)) {
+                if (!g || (g instanceof HealthPack) || (g instanceof SupplyDrop)) {
                     g = new XPGem(gx, gy, gv);
                     GAME_STATE.gems[i] = g;
                 } else {
-                    g.x = gx;
-                    g.y = gy;
-                    g.value = gv;
-                    g.alive = true;
+                    g.x = gx; g.y = gy; g.value = gv; g.alive = true;
                 }
             }
         }
@@ -1520,9 +1555,9 @@ window.onWorldSnapshotReceived = function(snapshot) {
             let turret = clientTurretCache.get(st.id);
             const owner = GAME_STATE.players[st.pi] || GAME_STATE.players[0];
             if (!turret) {
-                turret = new TurretEntity(st.x, st.y, owner, st.st || gameClock);
+                turret = new TurretEntity(st.x, st.y, owner, st.st || nowTime);
                 turret._nid = st.id;
-                turret.spawnTime = st.st || gameClock;
+                turret.spawnTime = st.st || nowTime;
                 clientTurretCache.set(st.id, turret);
             }
             turret.x = st.x;
@@ -1565,65 +1600,65 @@ window.onWorldSnapshotReceived = function(snapshot) {
             if (!hazard) {
                 switch (sh.t) {
                     case 'mine':
-                        hazard = new PlayerMine(sh.x, sh.y, sh.r || 8, 50, owner, sh.st || gameClock);
-                        hazard.spawnTime = sh.st || gameClock;
-                        if (sh.tr) hazard.triggeredTime = gameClock;
+                        hazard = new PlayerMine(sh.x, sh.y, sh.r || 8, 50, owner, sh.st || nowTime);
+                        hazard.spawnTime = sh.st || nowTime;
+                        if (sh.tr) hazard.triggeredTime = nowTime;
                         break;
                     case 'mine_explosion':
-                        hazard = new MineExplosion(sh.x, sh.y, sh.r, sh.st || gameClock, owner);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new MineExplosion(sh.x, sh.y, sh.r, sh.st || nowTime, owner);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'nuke_explosion':
-                        hazard = new NukeExplosion(sh.x, sh.y, sh.r, sh.st || gameClock);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new NukeExplosion(sh.x, sh.y, sh.r, sh.st || nowTime);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'freeze_explosion':
-                        hazard = new FreezeBlastVisual(sh.x, sh.y, sh.r, sh.st || gameClock);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new FreezeBlastVisual(sh.x, sh.y, sh.r, sh.st || nowTime);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'sledge_hit':
-                        hazard = new SledgeHitVisual(sh.x, sh.y, sh.r, sh.ca || 1.2, sh.a || 0, sh.st || gameClock, owner);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new SledgeHitVisual(sh.x, sh.y, sh.r, sh.ca || 1.2, sh.a || 0, sh.st || nowTime, owner);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'muzzle_flash':
-                        hazard = new InstantMuzzleFlash(sh.x, sh.y, sh.a || 0, sh.c || (owner ? owner.color : '#00ffcc'), sh.st || gameClock, owner, sh.r || 16);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new InstantMuzzleFlash(sh.x, sh.y, sh.a || 0, sh.c || (owner ? owner.color : '#00ffcc'), sh.st || nowTime, owner, sh.r || 16);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'hit_impact':
-                        hazard = new InstantHitImpact(sh.x, sh.y, sh.a || 0, sh.c || '#ffcc00', sh.st || gameClock, sh.r || 20);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new InstantHitImpact(sh.x, sh.y, sh.a || 0, sh.c || '#ffcc00', sh.st || nowTime, sh.r || 20);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'burning_surface':
-                        hazard = new BurningSurface(sh.x, sh.y, sh.r, sh.st || gameClock);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new BurningSurface(sh.x, sh.y, sh.r, sh.st || nowTime);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'burning_trail':
-                        hazard = new BurningTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, owner);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new BurningTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || nowTime, owner);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'laser_trail':
-                        hazard = new LaserTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, owner);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new LaserTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || nowTime, owner);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'ice_trail':
-                        hazard = new IceTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, owner);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new IceTrailSegment(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || nowTime, owner);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'bile_mortar':
-                        hazard = new BileMortarPod(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || gameClock, sh.lt || (sh.st + 1500));
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new BileMortarPod(sh.x, sh.y, sh.x2 || sh.x, sh.y2 || sh.y, sh.st || nowTime, sh.lt || (sh.st + 1500));
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'acid_pool':
-                        hazard = new AcidPoolHazard(sh.x, sh.y, sh.r, sh.st || gameClock, sh.dur || 5000);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new AcidPoolHazard(sh.x, sh.y, sh.r, sh.st || nowTime, sh.dur || 5000);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'white_hole':
-                        hazard = new WhiteHolePush(sh.x, sh.y, sh.r, sh.st || gameClock);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new WhiteHolePush(sh.x, sh.y, sh.r, sh.st || nowTime);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'black_hole':
-                        hazard = new BlackHolePull(sh.x, sh.y, sh.r, sh.st || gameClock);
-                        hazard.spawnTime = sh.st || gameClock;
+                        hazard = new BlackHolePull(sh.x, sh.y, sh.r, sh.st || nowTime);
+                        hazard.spawnTime = sh.st || nowTime;
                         break;
                     default:
                         hazard = {
@@ -1650,7 +1685,7 @@ window.onWorldSnapshotReceived = function(snapshot) {
                 // Update position / state of ongoing hazard
                 if (hazard.x !== undefined) hazard.x = sh.x;
                 if (hazard.y !== undefined) hazard.y = sh.y;
-                if (sh.tr && hazard.triggeredTime === 0) hazard.triggeredTime = gameClock;
+                if (sh.tr && hazard.triggeredTime === 0) hazard.triggeredTime = nowTime;
             }
             activeHazards.push(hazard);
         }
@@ -1663,7 +1698,7 @@ window.onWorldSnapshotReceived = function(snapshot) {
     }
 
     if (snapshot.terrains) {
-        GAME_STATE.terrains = snapshot.terrains.map(st => new ShieldTerrain(st.x, st.y, st.r, st.fa, gameClock + 10000));
+        GAME_STATE.terrains = snapshot.terrains.map(st => new ShieldTerrain(st.x, st.y, st.r, st.fa, nowTime + 10000));
     }
 
     // 7. World Stats & State Sync
