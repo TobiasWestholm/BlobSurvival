@@ -33,12 +33,29 @@ class NetworkManager {
     sendConn(target, payload) {
         if (!target) return;
         try {
+            const dc = target.dataChannel || target._dc;
+            const isDcOpen = (dc && (dc.readyState === 'open' || dc.open));
+
             if (payload instanceof ArrayBuffer || (payload && payload.buffer instanceof ArrayBuffer)) {
-                target.send(payload);
+                const buffer = (payload instanceof ArrayBuffer) ? payload : payload.buffer;
+                if (isDcOpen) {
+                    dc.send(buffer);
+                } else if (typeof target.send === 'function' && target.open) {
+                    target.send(buffer);
+                }
             } else if (typeof payload === 'object') {
-                target.send(JSON.stringify(payload));
+                const str = JSON.stringify(payload);
+                if (isDcOpen) {
+                    dc.send(str);
+                } else if (typeof target.send === 'function' && target.open) {
+                    target.send(str);
+                }
             } else {
-                target.send(payload);
+                if (isDcOpen) {
+                    dc.send(payload);
+                } else if (typeof target.send === 'function' && target.open) {
+                    target.send(payload);
+                }
             }
         } catch (e) {
             // Socket / datachannel closed
@@ -158,6 +175,9 @@ class NetworkManager {
                 });
 
                 this.peer.on('connection', (conn) => {
+                    conn.serialization = 'none';
+                    if (conn.dataChannel) conn.dataChannel.binaryType = 'arraybuffer';
+                    if (conn._dc) conn._dc.binaryType = 'arraybuffer';
                     this.handleIncomingConnection(conn);
                 });
 
@@ -302,7 +322,14 @@ class NetworkManager {
     }
 
     handleIncomingConnection(conn) {
+        conn.serialization = 'none';
+        if (conn.dataChannel) conn.dataChannel.binaryType = 'arraybuffer';
+        if (conn._dc) conn._dc.binaryType = 'arraybuffer';
+
         conn.on('open', () => {
+            conn.serialization = 'none';
+            if (conn.dataChannel) conn.dataChannel.binaryType = 'arraybuffer';
+            if (conn._dc) conn._dc.binaryType = 'arraybuffer';
             console.log('[Net] Peer connecting:', conn.peer);
             this.peerLastSeenMap.set(conn.peer, Date.now());
             let sessionToken = (conn.metadata && conn.metadata.sessionToken) ? conn.metadata.sessionToken : null;
@@ -537,14 +564,27 @@ class NetworkManager {
     }
 
     handleClientReceivedData(data) {
+        if (!data) return;
+
+        // 1. Handle Blob in case browser WebRTC delivers frames as Blob
+        if (typeof Blob !== 'undefined' && data instanceof Blob) {
+            data.arrayBuffer().then(buf => {
+                this.handleClientReceivedData(buf);
+            }).catch(() => {});
+            return;
+        }
+
+        // 2. Handle Binary ArrayBuffer / TypedArray
         if (data instanceof ArrayBuffer || (data && data.buffer instanceof ArrayBuffer && data.byteLength !== undefined)) {
-            const snapshot = unpackWorldSnapshotBinary(data);
+            const buffer = (data instanceof ArrayBuffer) ? data : data.buffer;
+            const snapshot = unpackWorldSnapshotBinary(buffer);
             if (snapshot && typeof onWorldSnapshotReceived === 'function') {
                 onWorldSnapshotReceived(snapshot);
             }
             return;
         }
 
+        // 3. Handle JSON string
         if (typeof data === 'string') {
             try {
                 data = JSON.parse(data);
@@ -1230,6 +1270,7 @@ const BOSS_ID_TO_BYTE = {
 const BYTE_TO_BOSS_ID = ['', 'octopus', 'horde', 'felhound', 'behemoth'];
 
 const STATE_TO_BYTE = {
+    0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6,
     'START_MENU': 0, 'WEAPON_SELECT': 1, 'GAMEPLAY': 2,
     'LEVEL_UP': 3, 'PAUSED': 4, 'GAME_OVER': 5, 'COUNTDOWN': 6
 };
@@ -1540,270 +1581,282 @@ function packWorldSnapshotBinary() {
 
 function unpackWorldSnapshotBinary(buffer) {
     if (!buffer) return null;
-    const view = (buffer instanceof DataView) ? buffer : new DataView(buffer.buffer || buffer, buffer.byteOffset || 0, buffer.byteLength);
-    const u8 = new Uint8Array(buffer.buffer || buffer, buffer.byteOffset || 0, buffer.byteLength);
-    let offset = 0;
+    try {
+        const rawBuf = (buffer instanceof ArrayBuffer) ? buffer : (buffer.buffer || buffer);
+        const byteOffset = (buffer.byteOffset !== undefined) ? buffer.byteOffset : 0;
+        const byteLength = (buffer.byteLength !== undefined) ? buffer.byteLength : (rawBuf ? rawBuf.byteLength : 0);
+        if (!rawBuf || byteLength < 33) return null;
 
-    const magic = view.getUint8(offset); offset += 1;
-    if (magic !== BINARY_MAGIC) return null;
-    const version = view.getUint8(offset); offset += 1;
-    const flags = view.getUint8(offset); offset += 1;
-    const hasGems = (flags & 1) !== 0;
+        const view = new DataView(rawBuf, byteOffset, byteLength);
+        const u8 = new Uint8Array(rawBuf, byteOffset, byteLength);
+        let offset = 0;
 
-    const stateByte = view.getUint8(offset); offset += 1;
-    const currentGameState = (typeof STATES !== 'undefined' && BYTE_TO_STATE[stateByte] && STATES[BYTE_TO_STATE[stateByte]]) ? STATES[BYTE_TO_STATE[stateByte]] : (typeof STATES !== 'undefined' ? STATES.GAMEPLAY : 'gameplay');
+        const magic = view.getUint8(offset); offset += 1;
+        if (magic !== BINARY_MAGIC) return null;
+        const version = view.getUint8(offset); offset += 1;
+        const flags = view.getUint8(offset); offset += 1;
+        const hasGems = (flags & 1) !== 0;
 
-    const elapsed = view.getUint32(offset, true); offset += 4;
-    const level = view.getUint16(offset, true); offset += 2;
-    const xp = view.getUint32(offset, true); offset += 4;
-    const nextXp = view.getUint32(offset, true); offset += 4;
-    const kills = view.getUint16(offset, true); offset += 2;
-    const hostW = view.getUint16(offset, true); offset += 2;
-    const hostH = view.getUint16(offset, true); offset += 2;
+        const stateByte = view.getUint8(offset); offset += 1;
+        const currentGameState = (typeof STATES !== 'undefined' && BYTE_TO_STATE[stateByte] && STATES[BYTE_TO_STATE[stateByte]] !== undefined)
+            ? STATES[BYTE_TO_STATE[stateByte]]
+            : (typeof STATES !== 'undefined' ? STATES.GAMEPLAY : 2);
 
-    const bossByte = view.getUint8(offset); offset += 1;
-    const activeBoss = BYTE_TO_BOSS_ID[bossByte] || null;
-    const activeBossStartTime = view.getUint32(offset, true); offset += 4;
-    const hordeStartTime = view.getUint32(offset, true); offset += 4;
+        const elapsed = view.getUint32(offset, true); offset += 4;
+        const level = view.getUint16(offset, true); offset += 2;
+        const xp = view.getUint32(offset, true); offset += 4;
+        const nextXp = view.getUint32(offset, true); offset += 4;
+        const kills = view.getUint16(offset, true); offset += 2;
+        const hostW = view.getUint16(offset, true); offset += 2;
+        const hostH = view.getUint16(offset, true); offset += 2;
 
-    // 1. Players
-    const playerCount = view.getUint8(offset); offset += 1;
-    const players = [];
-    for (let i = 0; i < playerCount; i++) {
-        const idx = view.getUint8(offset); offset += 1;
-        const x = view.getInt16(offset, true); offset += 2;
-        const y = view.getInt16(offset, true); offset += 2;
-        const hp = view.getUint16(offset, true) / 10; offset += 2;
-        const mhp = view.getUint16(offset, true); offset += 2;
-        const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+        const bossByte = view.getUint8(offset); offset += 1;
+        const activeBoss = BYTE_TO_BOSS_ID[bossByte] || null;
+        const activeBossStartTime = view.getUint32(offset, true); offset += 4;
+        const hordeStartTime = view.getUint32(offset, true); offset += 4;
 
-        const pFlags = view.getUint8(offset); offset += 1;
-        const al = (pFlags & (1 << 0)) ? 1 : 0;
-        const mv = (pFlags & (1 << 1)) ? 1 : 0;
-        const ma = (pFlags & (1 << 2)) ? 1 : 0;
-        const mp = (pFlags & (1 << 3)) ? 1 : 0;
-        const dc = (pFlags & (1 << 4)) ? 1 : 0;
-        const hasFlail = (pFlags & (1 << 5)) !== 0;
-        const hasSledge = (pFlags & (1 << 6)) !== 0;
-        const hasUpName = (pFlags & (1 << 7)) !== 0;
-
-        const weaponIdByte = view.getUint8(offset); offset += 1;
-        const w = ID_TO_WEAPON_TYPE[weaponIdByte] || '';
-        const wl = (typeof WEAPON_LABELS !== 'undefined' && WEAPON_LABELS[w]) ? WEAPON_LABELS[w] : '';
-
-        const cv = view.getUint32(offset, true); offset += 4;
-        const iv = view.getUint16(offset, true); offset += 2;
-        const mf = view.getUint32(offset, true); offset += 4;
-        const mrm = view.getUint8(offset) / 50; offset += 1;
-
-        let fx = undefined, fy = undefined;
-        if (hasFlail) {
-            fx = view.getInt16(offset, true); offset += 2;
-            fy = view.getInt16(offset, true); offset += 2;
-        }
-        let sh = undefined;
-        if (hasSledge) {
-            const st = view.getUint32(offset, true); offset += 4;
-            const du = view.getUint16(offset, true); offset += 2;
-            const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
-            sh = { st, du, a };
-        }
-        let up = '';
-        if (hasUpName) {
-            const upLen = view.getUint8(offset); offset += 1;
-            for (let j = 0; j < upLen; j++) {
-                up += String.fromCharCode(u8[offset++]);
-            }
-        }
-
-        players.push({
-            i: idx, x, y, hp, mhp, al, fa, mv, w, wl, up, cv, iv, ma, mp, dc, fx, fy, mf, mrm, sh
-        });
-    }
-
-    // 2. Enemies (compact flat tuples: [id, type, x, y, hp, mhp, fa, r, color, state, shieldRadius, airborne, landY, landAt])
-    const enemyCount = view.getUint16(offset, true); offset += 2;
-    const enemies = [];
-    for (let i = 0; i < enemyCount; i++) {
-        const id = view.getUint16(offset, true); offset += 2;
-        const typeId = view.getUint8(offset); offset += 1;
-        const type = ID_TO_ENEMY_TYPE[typeId] || 'swarm';
-        const x = view.getInt16(offset, true); offset += 2;
-        const y = view.getInt16(offset, true); offset += 2;
-        const hp = view.getUint16(offset, true); offset += 2;
-        const mhp = view.getUint16(offset, true); offset += 2;
-        const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
-
-        const eFlags = view.getUint8(offset); offset += 1;
-        const ab = (eFlags & (1 << 0)) ? 1 : 0;
-        let r = 0, sr = 0, ly = 0, la = 0;
-        if (eFlags & (1 << 1)) {
-            r = view.getUint8(offset); offset += 1;
-        }
-        if (eFlags & (1 << 2)) {
-            sr = view.getUint8(offset); offset += 1;
-        }
-        if (eFlags & (1 << 3)) {
-            ly = view.getInt16(offset, true); offset += 2;
-            la = view.getUint32(offset, true); offset += 4;
-        }
-
-        enemies.push([id, type, x, y, hp, mhp, fa, r, '', '', sr, ab, ly, la]);
-    }
-
-    // 3. Projectiles (compact flat tuples)
-    const projectileCount = view.getUint16(offset, true); offset += 2;
-    const projectiles = [];
-    for (let i = 0; i < projectileCount; i++) {
-        const typeId = view.getUint8(offset); offset += 1;
-        const t = ID_TO_PROJECTILE_TYPE[typeId] || 'missile';
-        const x = view.getInt16(offset, true); offset += 2;
-        const y = view.getInt16(offset, true); offset += 2;
-        const r = view.getUint8(offset); offset += 1;
-        const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
-
-        const pFlags = view.getUint8(offset); offset += 1;
-        const mr = (pFlags & (1 << 0)) ? 1 : 0;
-        const hasTarget = (pFlags & (1 << 1)) !== 0;
-        const hasStart = (pFlags & (1 << 2)) !== 0;
-        const pi = (pFlags >> 3) & 3;
-
-        let tx = 0, ty = 0, sx = 0, sy = 0;
-        if (hasTarget) {
-            tx = view.getInt16(offset, true); offset += 2;
-            ty = view.getInt16(offset, true); offset += 2;
-        }
-        if (hasStart) {
-            sx = view.getInt16(offset, true); offset += 2;
-            sy = view.getInt16(offset, true); offset += 2;
-        }
-
-        const c = (t === 'fire_ring') ? '#ff6600' : (t === 'deflector_shield' ? '#00e5ff' : '#00ffcc');
-        projectiles.push([t, x, y, r, c, a, tx, ty, sx, sy, mr, pi]);
-    }
-
-    // 4. Enemy Projectiles
-    const enemyProjectileCount = view.getUint16(offset, true); offset += 2;
-    const enemyProjectiles = [];
-    for (let i = 0; i < enemyProjectileCount; i++) {
-        const x = view.getInt16(offset, true); offset += 2;
-        const y = view.getInt16(offset, true); offset += 2;
-        const r = view.getUint8(offset); offset += 1;
-        enemyProjectiles.push([x, y, r, '#ff3344']);
-    }
-
-    // 5. Gems
-    let gems = undefined;
-    if (hasGems) {
-        const gemCount = view.getUint16(offset, true); offset += 2;
-        gems = [];
-        for (let i = 0; i < gemCount; i++) {
+        // 1. Players
+        const playerCount = view.getUint8(offset); offset += 1;
+        const players = [];
+        for (let i = 0; i < playerCount; i++) {
+            const idx = view.getUint8(offset); offset += 1;
             const x = view.getInt16(offset, true); offset += 2;
             const y = view.getInt16(offset, true); offset += 2;
-            const v = view.getUint8(offset); offset += 1;
-            const spType = view.getUint8(offset); offset += 1;
+            const hp = view.getUint16(offset, true) / 10; offset += 2;
+            const mhp = view.getUint16(offset, true); offset += 2;
+            const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
 
-            const isHp = (spType === 1) ? 1 : 0;
-            const isSd = (spType >= 2) ? (spType - 1) : 0;
-            if (isHp || isSd) {
-                gems.push([x, y, v, isHp, isSd]);
-            } else {
-                gems.push([x, y, v]);
+            const pFlags = view.getUint8(offset); offset += 1;
+            const al = (pFlags & (1 << 0)) ? 1 : 0;
+            const mv = (pFlags & (1 << 1)) ? 1 : 0;
+            const ma = (pFlags & (1 << 2)) ? 1 : 0;
+            const mp = (pFlags & (1 << 3)) ? 1 : 0;
+            const dc = (pFlags & (1 << 4)) ? 1 : 0;
+            const hasFlail = (pFlags & (1 << 5)) !== 0;
+            const hasSledge = (pFlags & (1 << 6)) !== 0;
+            const hasUpName = (pFlags & (1 << 7)) !== 0;
+
+            const weaponIdByte = view.getUint8(offset); offset += 1;
+            const w = ID_TO_WEAPON_TYPE[weaponIdByte] || '';
+            const wl = (typeof WEAPON_LABELS !== 'undefined' && WEAPON_LABELS[w]) ? WEAPON_LABELS[w] : '';
+
+            const cv = view.getUint32(offset, true); offset += 4;
+            const iv = view.getUint16(offset, true); offset += 2;
+            const mf = view.getUint32(offset, true); offset += 4;
+            const mrm = view.getUint8(offset) / 50; offset += 1;
+
+            let fx = undefined, fy = undefined;
+            if (hasFlail) {
+                fx = view.getInt16(offset, true); offset += 2;
+                fy = view.getInt16(offset, true); offset += 2;
+            }
+            let sh = undefined;
+            if (hasSledge) {
+                const st = view.getUint32(offset, true); offset += 4;
+                const du = view.getUint16(offset, true); offset += 2;
+                const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+                sh = { st, du, a };
+            }
+            let up = '';
+            if (hasUpName) {
+                const upLen = view.getUint8(offset); offset += 1;
+                for (let j = 0; j < upLen; j++) {
+                    up += String.fromCharCode(u8[offset++]);
+                }
+            }
+
+            players.push({
+                i: idx, x, y, hp, mhp, al, fa, mv, w, wl, up, cv, iv, ma, mp, dc, fx, fy, mf, mrm, sh
+            });
+        }
+
+        // 2. Enemies (compact flat tuples: [id, type, x, y, hp, mhp, fa, r, color, state, shieldRadius, airborne, landY, landAt])
+        const enemyCount = view.getUint16(offset, true); offset += 2;
+        const enemies = [];
+        for (let i = 0; i < enemyCount; i++) {
+            const id = view.getUint16(offset, true); offset += 2;
+            const typeId = view.getUint8(offset); offset += 1;
+            const type = ID_TO_ENEMY_TYPE[typeId] || 'swarm';
+            const x = view.getInt16(offset, true); offset += 2;
+            const y = view.getInt16(offset, true); offset += 2;
+            const hp = view.getUint16(offset, true); offset += 2;
+            const mhp = view.getUint16(offset, true); offset += 2;
+            const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+
+            const eFlags = view.getUint8(offset); offset += 1;
+            const ab = (eFlags & (1 << 0)) ? 1 : 0;
+            let r = 0, sr = 0, ly = 0, la = 0;
+            if (eFlags & (1 << 1)) {
+                r = view.getUint8(offset); offset += 1;
+            }
+            if (eFlags & (1 << 2)) {
+                sr = view.getUint8(offset); offset += 1;
+            }
+            if (eFlags & (1 << 3)) {
+                ly = view.getInt16(offset, true); offset += 2;
+                la = view.getUint32(offset, true); offset += 4;
+            }
+
+            enemies.push([id, type, x, y, hp, mhp, fa, r, '', '', sr, ab, ly, la]);
+        }
+
+        // 3. Projectiles (compact flat tuples)
+        const projectileCount = view.getUint16(offset, true); offset += 2;
+        const projectiles = [];
+        for (let i = 0; i < projectileCount; i++) {
+            const typeId = view.getUint8(offset); offset += 1;
+            const t = ID_TO_PROJECTILE_TYPE[typeId] || 'missile';
+            const x = view.getInt16(offset, true); offset += 2;
+            const y = view.getInt16(offset, true); offset += 2;
+            const r = view.getUint8(offset); offset += 1;
+            const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+
+            const pFlags = view.getUint8(offset); offset += 1;
+            const mr = (pFlags & (1 << 0)) ? 1 : 0;
+            const hasTarget = (pFlags & (1 << 1)) !== 0;
+            const hasStart = (pFlags & (1 << 2)) !== 0;
+            const pi = (pFlags >> 3) & 3;
+
+            let tx = 0, ty = 0, sx = 0, sy = 0;
+            if (hasTarget) {
+                tx = view.getInt16(offset, true); offset += 2;
+                ty = view.getInt16(offset, true); offset += 2;
+            }
+            if (hasStart) {
+                sx = view.getInt16(offset, true); offset += 2;
+                sy = view.getInt16(offset, true); offset += 2;
+            }
+
+            const c = (t === 'fire_ring') ? '#ff6600' : (t === 'deflector_shield' ? '#00e5ff' : '#00ffcc');
+            projectiles.push([t, x, y, r, c, a, tx, ty, sx, sy, mr, pi]);
+        }
+
+        // 4. Enemy Projectiles
+        const enemyProjectileCount = view.getUint16(offset, true); offset += 2;
+        const enemyProjectiles = [];
+        for (let i = 0; i < enemyProjectileCount; i++) {
+            const x = view.getInt16(offset, true); offset += 2;
+            const y = view.getInt16(offset, true); offset += 2;
+            const r = view.getUint8(offset); offset += 1;
+            enemyProjectiles.push([x, y, r, '#ff3344']);
+        }
+
+        // 5. Gems
+        let gems = undefined;
+        if (hasGems) {
+            const gemCount = view.getUint16(offset, true); offset += 2;
+            gems = [];
+            for (let i = 0; i < gemCount; i++) {
+                const x = view.getInt16(offset, true); offset += 2;
+                const y = view.getInt16(offset, true); offset += 2;
+                const v = view.getUint8(offset); offset += 1;
+                const spType = view.getUint8(offset); offset += 1;
+
+                const isHp = (spType === 1) ? 1 : 0;
+                const isSd = (spType >= 2) ? (spType - 1) : 0;
+                if (isHp || isSd) {
+                    gems.push([x, y, v, isHp, isSd]);
+                } else {
+                    gems.push([x, y, v]);
+                }
             }
         }
+
+        // 6. Turrets
+        const turretCount = view.getUint8(offset); offset += 1;
+        const turrets = [];
+        for (let i = 0; i < turretCount; i++) {
+            const id = view.getUint16(offset, true); offset += 2;
+            const x = view.getInt16(offset, true); offset += 2;
+            const y = view.getInt16(offset, true); offset += 2;
+            const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+            const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+            const hp = view.getUint16(offset, true); offset += 2;
+            const mhp = view.getUint16(offset, true); offset += 2;
+            const pi = view.getUint8(offset); offset += 1;
+            const st = view.getUint32(offset, true); offset += 4;
+
+            const tFlags = view.getUint8(offset); offset += 1;
+            const fl = (tFlags & (1 << 0)) ? 1 : 0;
+            let faU = 0, fcA = 0;
+            if (tFlags & (1 << 1)) {
+                faU = view.getUint32(offset, true); offset += 4;
+                fcA = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+            }
+
+            turrets.push({ id, x, y, a, fa, hp, mhp, pi, st, fl, faU, fcA });
+        }
+
+        // 7. Hazards
+        const hazardCount = view.getUint16(offset, true); offset += 2;
+        const hazards = [];
+        for (let i = 0; i < hazardCount; i++) {
+            const id = view.getUint16(offset, true); offset += 2;
+            const typeId = view.getUint8(offset); offset += 1;
+            const t = ID_TO_HAZARD_TYPE[typeId] || 'hazard';
+            const x = view.getInt16(offset, true); offset += 2;
+            const y = view.getInt16(offset, true); offset += 2;
+            const r = view.getUint8(offset); offset += 1;
+            const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+            const pi = view.getUint8(offset); offset += 1;
+            const st = view.getUint32(offset, true); offset += 4;
+
+            const hFlags = view.getUint8(offset); offset += 1;
+            let x2 = undefined, y2 = undefined, ca = undefined, dur = undefined, lt = undefined;
+            if (hFlags & (1 << 0)) {
+                x2 = view.getInt16(offset, true); offset += 2;
+                y2 = view.getInt16(offset, true); offset += 2;
+            }
+            if (hFlags & (1 << 1)) {
+                ca = view.getUint8(offset) / 50; offset += 1;
+            }
+            if (hFlags & (1 << 2)) {
+                dur = view.getUint16(offset, true); offset += 2;
+            }
+            if (hFlags & (1 << 3)) {
+                lt = view.getUint32(offset, true); offset += 4;
+            }
+            const tr = (hFlags & (1 << 4)) ? 1 : 0;
+
+            hazards.push({ id, t, x, y, x2, y2, r, a, ca, st, dur, lt, tr, pi });
+        }
+
+        // 8. Terrains
+        const terrainCount = view.getUint8(offset); offset += 1;
+        const terrains = [];
+        for (let i = 0; i < terrainCount; i++) {
+            const x = view.getInt16(offset, true); offset += 2;
+            const y = view.getInt16(offset, true); offset += 2;
+            const r = view.getUint8(offset); offset += 1;
+            const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
+            terrains.push({ x, y, r, fa });
+        }
+
+        return {
+            players,
+            enemies,
+            projectiles,
+            enemyProjectiles,
+            gems,
+            turrets,
+            hazards,
+            terrains,
+            elapsed,
+            level,
+            xp,
+            nextXp,
+            kills,
+            activeBoss,
+            activeBossStartTime,
+            hordeStartTime,
+            hostW,
+            hostH,
+            currentGameState
+        };
+    } catch (err) {
+        console.warn('[Net] unpackWorldSnapshotBinary failed:', err);
+        return null;
     }
-
-    // 6. Turrets
-    const turretCount = view.getUint8(offset); offset += 1;
-    const turrets = [];
-    for (let i = 0; i < turretCount; i++) {
-        const id = view.getUint16(offset, true); offset += 2;
-        const x = view.getInt16(offset, true); offset += 2;
-        const y = view.getInt16(offset, true); offset += 2;
-        const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
-        const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
-        const hp = view.getUint16(offset, true); offset += 2;
-        const mhp = view.getUint16(offset, true); offset += 2;
-        const pi = view.getUint8(offset); offset += 1;
-        const st = view.getUint32(offset, true); offset += 4;
-
-        const tFlags = view.getUint8(offset); offset += 1;
-        const fl = (tFlags & (1 << 0)) ? 1 : 0;
-        let faU = 0, fcA = 0;
-        if (tFlags & (1 << 1)) {
-            faU = view.getUint32(offset, true); offset += 4;
-            fcA = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
-        }
-
-        turrets.push({ id, x, y, a, fa, hp, mhp, pi, st, fl, faU, fcA });
-    }
-
-    // 7. Hazards
-    const hazardCount = view.getUint16(offset, true); offset += 2;
-    const hazards = [];
-    for (let i = 0; i < hazardCount; i++) {
-        const id = view.getUint16(offset, true); offset += 2;
-        const typeId = view.getUint8(offset); offset += 1;
-        const t = ID_TO_HAZARD_TYPE[typeId] || 'hazard';
-        const x = view.getInt16(offset, true); offset += 2;
-        const y = view.getInt16(offset, true); offset += 2;
-        const r = view.getUint8(offset); offset += 1;
-        const a = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
-        const pi = view.getUint8(offset); offset += 1;
-        const st = view.getUint32(offset, true); offset += 4;
-
-        const hFlags = view.getUint8(offset); offset += 1;
-        let x2 = undefined, y2 = undefined, ca = undefined, dur = undefined, lt = undefined;
-        if (hFlags & (1 << 0)) {
-            x2 = view.getInt16(offset, true); offset += 2;
-            y2 = view.getInt16(offset, true); offset += 2;
-        }
-        if (hFlags & (1 << 1)) {
-            ca = view.getUint8(offset) / 50; offset += 1;
-        }
-        if (hFlags & (1 << 2)) {
-            dur = view.getUint16(offset, true); offset += 2;
-        }
-        if (hFlags & (1 << 3)) {
-            lt = view.getUint32(offset, true); offset += 4;
-        }
-        const tr = (hFlags & (1 << 4)) ? 1 : 0;
-
-        hazards.push({ id, t, x, y, x2, y2, r, a, ca, st, dur, lt, tr, pi });
-    }
-
-    // 8. Terrains
-    const terrainCount = view.getUint8(offset); offset += 1;
-    const terrains = [];
-    for (let i = 0; i < terrainCount; i++) {
-        const x = view.getInt16(offset, true); offset += 2;
-        const y = view.getInt16(offset, true); offset += 2;
-        const r = view.getUint8(offset); offset += 1;
-        const fa = Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100; offset += 1;
-        terrains.push({ x, y, r, fa });
-    }
-
-    return {
-        players,
-        enemies,
-        projectiles,
-        enemyProjectiles,
-        gems,
-        turrets,
-        hazards,
-        terrains,
-        elapsed,
-        level,
-        xp,
-        nextXp,
-        kills,
-        activeBoss,
-        activeBossStartTime,
-        hordeStartTime,
-        hostW,
-        hostH,
-        currentGameState
-    };
 }
 
 function serializeWorldForNetwork() {
