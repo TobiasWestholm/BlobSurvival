@@ -2131,14 +2131,14 @@ window.onWorldSnapshotReceived = function(snapshot) {
             p.disconnected = (sp.dc === 1);
 
             if (sp.i === netManager.localPlayerIndex) {
-                // Client's own player: reconcile position without hard rubberbanding
+                // Client's own player: trust local joystick prediction while moving
                 const dist2 = (p.x - sp.x) ** 2 + (p.y - sp.y) ** 2;
-                if (dist2 > 14400) {
-                    // Hard snap only if desynced by > 120px
+                if (dist2 > 22500) {
+                    // Hard snap only if severely desynced (> 150px, e.g. teleport / respawn / massive knockback)
                     p.x = sp.x;
                     p.y = sp.y;
-                } else if (dist2 > 900) {
-                    // Smooth exponential decay towards authoritative position (no teleport)
+                } else if (!p.isMoving && dist2 > 900) {
+                    // Smooth exponential decay towards authoritative position only when stationary
                     p.x += (sp.x - p.x) * 0.15;
                     p.y += (sp.y - p.y) * 0.15;
                 }
@@ -2181,7 +2181,7 @@ window.onWorldSnapshotReceived = function(snapshot) {
         }
     }
 
-    // 2. Reconcile Enemies (compact tuples + velocity extrapolation for smooth 60fps dead reckoning)
+    // 2. Reconcile Enemies (smooth target coordinates for 60fps interpolation)
     if (snapshot.enemies) {
         const seenIds = new Set();
         const activeEnemies = [];
@@ -2204,15 +2204,8 @@ window.onWorldSnapshotReceived = function(snapshot) {
                 e.y = y;
                 e.targetX = x;
                 e.targetY = y;
-                e.vx = 0;
-                e.vy = 0;
                 clientEnemyCache.set(id, e);
             } else {
-                // Estimate velocity vector between authoritative 20Hz snapshots (3 frames per snapshot)
-                const dx = x - (e.targetX !== undefined ? e.targetX : e.x);
-                const dy = y - (e.targetY !== undefined ? e.targetY : e.y);
-                e.vx = dx / 3.0;
-                e.vy = dy / 3.0;
                 e.targetX = x;
                 e.targetY = y;
                 const d2 = (e.x - x) ** 2 + (e.y - y) ** 2;
@@ -2285,6 +2278,9 @@ window.onWorldSnapshotReceived = function(snapshot) {
                 p.mineRing = (sp.mr === 1);
                 p.playerIndex = sp.pi || 0;
             }
+            const speed = (p.type === 'missile' || p.type === 'laser') ? 8 : (p.type === 'lightning' ? 0 : 5);
+            p.vx = Math.cos(p.angle) * speed;
+            p.vy = Math.sin(p.angle) * speed;
             p.alive = true;
         }
     }
@@ -2301,6 +2297,8 @@ window.onWorldSnapshotReceived = function(snapshot) {
                 ep = Object.create(NetworkEnemyProjectileProto);
                 GAME_STATE.enemyProjectiles[i] = ep;
             }
+            const prevX = ep.x;
+            const prevY = ep.y;
             if (Array.isArray(sep)) {
                 ep.x = sep[0];
                 ep.y = sep[1];
@@ -2311,6 +2309,13 @@ window.onWorldSnapshotReceived = function(snapshot) {
                 ep.y = sep.y;
                 ep.r = sep.r || 4;
                 ep.color = sep.c || '#ff3344';
+            }
+            if (prevX !== undefined && prevY !== undefined) {
+                ep.vx = (ep.x - prevX) / 2.0;
+                ep.vy = (ep.y - prevY) / 2.0;
+            } else {
+                ep.vx = 0;
+                ep.vy = 0;
             }
             ep.alive = true;
         }
