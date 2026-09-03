@@ -15,6 +15,7 @@ function startGame(playerCount, difficultyKey) {
     GAME_STATE.difficulty = diff;
     GAME_STATE.siphonCellsOwner = null;
     GAME_STATE.victoryTriggered = false;
+    GAME_STATE.showFps = Boolean(GAME_STATE.testingMode);
 
     // Reset host dimensions when starting non-client game
     if (typeof netManager === 'undefined' || !netManager.isClient) {
@@ -447,45 +448,48 @@ function loop(now) {
                 resolvePlayerTerrainCollisions(myPlayer);
             }
 
-            // Smoothly extrapolate & interpolate remote entities towards latest snapshot target positions (smooth 60fps)
-            const lerpRate = Math.min(1.0, 0.35 * dtFactor);
-            for (let i = 0; i < GAME_STATE.players.length; i++) {
-                if (i !== netManager.localPlayerIndex) {
-                    const rp = GAME_STATE.players[i];
-                    if (rp && rp.targetX !== undefined) {
-                        rp.x += (rp.targetX - rp.x) * lerpRate;
-                        rp.y += (rp.targetY - rp.y) * lerpRate;
-                    }
-                }
-            }
-            for (const e of GAME_STATE.enemies) {
-                if (e && e.targetX !== undefined) {
-                    e.x += (e.targetX - e.x) * lerpRate;
-                    e.y += (e.targetY - e.y) * lerpRate;
-                }
+            // 3. Smoothly interpolate remote entities (enemies, remote players, turrets) from snapshot buffer
+            if (typeof interpolateNetworkWorld === 'function') {
+                interpolateNetworkWorld(performance.now() - 66, dtFactor);
             }
 
-            // 3. Smoothly advance projectiles & enemy projectiles at 60 FPS between snapshots
+            // 4. Smoothly advance projectiles & enemy projectiles at 60 FPS between snapshots
             for (const p of GAME_STATE.projectiles) {
                 if (!p || !p.alive) continue;
                 if (p.type === 'fire_ring' || p.type === 'deflector_shield') {
                     p.angle = (p.angle || 0) + 0.06 * dtFactor;
+                } else if (p.targetX !== undefined && p.targetY !== undefined) {
+                    p.x += (p.targetX - p.x) * 0.35 * dtFactor;
+                    p.y += (p.targetY - p.y) * 0.35 * dtFactor;
+                    if (p.vx !== undefined && p.vy !== undefined) {
+                        p.x += p.vx * 0.65 * dtFactor;
+                        p.y += p.vy * 0.65 * dtFactor;
+                    }
                 } else if (p.vx !== undefined && p.vy !== undefined) {
                     p.x += p.vx * dtFactor;
                     p.y += p.vy * dtFactor;
                 }
             }
             for (const ep of GAME_STATE.enemyProjectiles) {
-                if (ep && ep.alive && ep.vx !== undefined && ep.vy !== undefined) {
-                    ep.x += ep.vx * dtFactor;
-                    ep.y += ep.vy * dtFactor;
+                if (ep && ep.alive) {
+                    if (ep.targetX !== undefined && ep.targetY !== undefined) {
+                        ep.x += (ep.targetX - ep.x) * 0.35 * dtFactor;
+                        ep.y += (ep.targetY - ep.y) * 0.35 * dtFactor;
+                        if (ep.vx !== undefined && ep.vy !== undefined) {
+                            ep.x += ep.vx * 0.65 * dtFactor;
+                            ep.y += ep.vy * 0.65 * dtFactor;
+                        }
+                    } else if (ep.vx !== undefined && ep.vy !== undefined) {
+                        ep.x += ep.vx * dtFactor;
+                        ep.y += ep.vy * dtFactor;
+                    }
                 }
             }
             
-            // 4. Update local client particles
+            // 5. Update local client particles
             for (const pa of GAME_STATE.particles) pa.update(dt, dtFactor);
             
-            // 5. Render authoritative world snapshot from host
+            // 6. Render authoritative world snapshot from host
             draw(gameClock);
 
             // Throttle UI DOM updates to 10Hz (every 6 frames) to prevent layout thrashing
@@ -548,6 +552,59 @@ function updateLobbyPlayers(dt, dtFactor, now) {
     }
 }
 
+let bgWorker = null;
+let bgInterval = null;
+
+function setupHostBackgroundKeepAlive() {
+    if (typeof window === 'undefined' || typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+    try {
+        if (typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+            const workerCode = `
+                let timer = null;
+                self.onmessage = function(e) {
+                    if (e.data === 'start') {
+                        if (!timer) timer = setInterval(function() { postMessage('tick'); }, 16);
+                    } else if (e.data === 'stop') {
+                        if (timer) { clearInterval(timer); timer = null; }
+                    }
+                };
+            `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            bgWorker = new Worker(URL.createObjectURL(blob));
+            bgWorker.onmessage = function() {
+                if (document.hidden && typeof loop === 'function' && typeof netManager !== 'undefined' && netManager.isHost && netManager.connections.size > 0) {
+                    loop(performance.now());
+                }
+            };
+        }
+    } catch (e) {
+        // Fallback to interval
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (typeof netManager === 'undefined' || !netManager.isHost || netManager.connections.size === 0) return;
+        if (document.hidden) {
+            if (bgWorker) {
+                bgWorker.postMessage('start');
+            } else if (!bgInterval) {
+                bgInterval = setInterval(() => {
+                    if (document.hidden && typeof loop === 'function' && netManager.isHost && netManager.connections.size > 0) {
+                        loop(performance.now());
+                    }
+                }, 16);
+            }
+        } else {
+            if (bgWorker) {
+                bgWorker.postMessage('stop');
+            }
+            if (bgInterval) {
+                clearInterval(bgInterval);
+                bgInterval = null;
+            }
+        }
+    });
+}
+
 if (typeof window !== 'undefined') {
     window.startGame = startGame;
     window.update = update;
@@ -556,13 +613,16 @@ if (typeof window !== 'undefined') {
     window.getGameWinCondition = getGameWinCondition;
     window.isLastBossCleared = isLastBossCleared;
     window.compactAlive = compactAlive;
+    window.setupHostBackgroundKeepAlive = setupHostBackgroundKeepAlive;
 
     // Start main game loop on document load
     if (document.readyState === 'loading') {
         window.addEventListener('DOMContentLoaded', () => {
+            setupHostBackgroundKeepAlive();
             requestAnimationFrame(loop);
         });
     } else {
+        setupHostBackgroundKeepAlive();
         requestAnimationFrame(loop);
     }
 }

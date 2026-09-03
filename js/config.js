@@ -281,7 +281,8 @@ const GAME_STATE = {
     pendingLevels: 0,
     pendingPicks: 0,
     countdownTimer: null,
-    siphonCellsOwner: null
+    siphonCellsOwner: null,
+    showFps: false
 };
 
 // Feature flag: set to true locally to expose the Upgrade Testing Lab button.

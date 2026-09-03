@@ -82,6 +82,9 @@ class NetworkManager {
         if (typeof clientEnemyCache !== 'undefined') clientEnemyCache.clear();
         if (typeof clientTurretCache !== 'undefined') clientTurretCache.clear();
         if (typeof clientHazardCache !== 'undefined') clientHazardCache.clear();
+        if (typeof clientProjectileCache !== 'undefined') clientProjectileCache.clear();
+        if (typeof clientEnemyProjectileCache !== 'undefined') clientEnemyProjectileCache.clear();
+        if (typeof clientSnapshotBuffer !== 'undefined') clientSnapshotBuffer.length = 0;
         if (typeof GAME_STATE !== 'undefined') {
             GAME_STATE.hostW = null;
             GAME_STATE.hostH = null;
@@ -1140,6 +1143,9 @@ window.onOnlineCountdownStarted = function(isNewGame) {
         if (typeof clientEnemyCache !== 'undefined') clientEnemyCache.clear();
         if (typeof clientTurretCache !== 'undefined') clientTurretCache.clear();
         if (typeof clientHazardCache !== 'undefined') clientHazardCache.clear();
+        if (typeof clientProjectileCache !== 'undefined') clientProjectileCache.clear();
+        if (typeof clientEnemyProjectileCache !== 'undefined') clientEnemyProjectileCache.clear();
+        if (typeof clientSnapshotBuffer !== 'undefined') clientSnapshotBuffer.length = 0;
         if (typeof SPATIAL_GRID !== 'undefined' && SPATIAL_GRID.clear) SPATIAL_GRID.clear();
         if (typeof resizeCanvas === 'function') resizeCanvas();
         if (typeof ctx !== 'undefined' && ctx && typeof canvas !== 'undefined' && canvas) {
@@ -1151,9 +1157,13 @@ window.onOnlineCountdownStarted = function(isNewGame) {
 
 let netEntityCounter = 1;
 let netGemSyncTick = 0;
+let snapshotSeq = 0;
 const clientEnemyCache = new Map(); // id -> Enemy instance
 const clientTurretCache = new Map(); // id -> TurretEntity instance
 const clientHazardCache = new Map(); // id -> Hazard instance
+const clientProjectileCache = new Map(); // id -> NetworkProjectileProto instance
+const clientEnemyProjectileCache = new Map(); // id -> NetworkEnemyProjectileProto instance
+const clientSnapshotBuffer = []; // [ { clientTime, serverTime, snapshot } ]
 
 // =========================================================================
 // HIGH PERFORMANCE BINARY SNAPSHOT CODEC (ArrayBuffer / DataView)
@@ -1903,8 +1913,9 @@ function serializeWorldForNetworkJSON() {
         return [e._nid, e.type, Math.round(e.x), Math.round(e.y), Math.round(e.hp), e.maxHp, fa, r, c, st, sr, ab, ly, la];
     });
 
-    // 3. Projectiles: compact flat tuples [type, x, y, r, color, angle, tx, ty, sx, sy, mr, pi]
+    // 3. Projectiles: compact flat tuples [id, type, x, y, r, color, angle, tx, ty, sx, sy, mr, pi]
     const projectiles = GAME_STATE.projectiles.map(p => {
+        if (!p._nid) p._nid = ++netEntityCounter;
         const t = (p instanceof OrbitProjectile) ? 'fire_ring' : (p instanceof DeflectorOrbiter ? 'deflector_shield' : (p.type || ''));
         const c = (p instanceof OrbitProjectile) ? '#ff6600' : (p instanceof DeflectorOrbiter ? '#00e5ff' : (p.color || '#00ffcc'));
         const r = p.r || (p instanceof OrbitProjectile ? 10 : 3);
@@ -1917,18 +1928,22 @@ function serializeWorldForNetworkJSON() {
         const pi = (p.player && p.player.index !== undefined) ? p.player.index : 0;
 
         if (!tx && !ty && !sx && !sy && !mr && !pi) {
-            return [t, Math.round(p.x), Math.round(p.y), r, c, a];
+            return [p._nid, t, Math.round(p.x), Math.round(p.y), r, c, a];
         }
-        return [t, Math.round(p.x), Math.round(p.y), r, c, a, tx, ty, sx, sy, mr, pi];
+        return [p._nid, t, Math.round(p.x), Math.round(p.y), r, c, a, tx, ty, sx, sy, mr, pi];
     });
 
-    // 4. Enemy Projectiles: compact flat tuples [x, y, r, color]
-    const enemyProjectiles = GAME_STATE.enemyProjectiles.map(ep => [
-        Math.round(ep.x),
-        Math.round(ep.y),
-        ep.r || 4,
-        ep.color || '#ff3344'
-    ]);
+    // 4. Enemy Projectiles: compact flat tuples [id, x, y, r, color]
+    const enemyProjectiles = GAME_STATE.enemyProjectiles.map(ep => {
+        if (!ep._nid) ep._nid = ++netEntityCounter;
+        return [
+            ep._nid,
+            Math.round(ep.x),
+            Math.round(ep.y),
+            ep.r || 4,
+            ep.color || '#ff3344'
+        ];
+    });
 
     // 5. Gems, Health Packs & Supply Drops (sync every 6 network ticks to save 80%+ bandwidth on static gems)
     let gems = undefined;
@@ -2011,6 +2026,8 @@ function serializeWorldForNetworkJSON() {
     }));
 
     return {
+        serverTime: (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+        seq: ++snapshotSeq,
         players,
         enemies,
         projectiles,
@@ -2083,6 +2100,17 @@ const NetworkEnemyProjectileProto = {
 window.onWorldSnapshotReceived = function(snapshot) {
     if (!snapshot) return;
     const nowTime = (typeof gameClock !== 'undefined' ? gameClock : (snapshot.elapsed !== undefined ? snapshot.elapsed : (typeof performance !== 'undefined' ? performance.now() : Date.now())));
+    const arrivalTime = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+    // Buffer incoming snapshot with arrival timestamp for smooth 60fps interpolation
+    clientSnapshotBuffer.push({
+        clientTime: arrivalTime,
+        serverTime: snapshot.serverTime || arrivalTime,
+        snapshot: snapshot
+    });
+    if (clientSnapshotBuffer.length > 6) {
+        clientSnapshotBuffer.shift();
+    }
 
     if (snapshot.hostW !== undefined && (GAME_STATE.hostW !== snapshot.hostW || W !== snapshot.hostW)) {
         GAME_STATE.hostW = snapshot.hostW;
@@ -2238,87 +2266,123 @@ window.onWorldSnapshotReceived = function(snapshot) {
         GAME_STATE.enemies = activeEnemies;
     }
 
-    // 3. Reconcile Projectiles & Enemy Projectiles (Zero-allocation object pooling & tuple support)
+    // 3. Reconcile Projectiles & Enemy Projectiles with persistent _nid tracking
     if (snapshot.projectiles) {
-        const count = snapshot.projectiles.length;
-        if (GAME_STATE.projectiles.length > count) {
-            GAME_STATE.projectiles.length = count;
-        }
-        for (let i = 0; i < count; i++) {
+        const seenIds = new Set();
+        const activeProjectiles = [];
+        for (let i = 0; i < snapshot.projectiles.length; i++) {
             const sp = snapshot.projectiles[i];
-            let p = GAME_STATE.projectiles[i];
+            let id, type, x, y, r, color, angle, tx, ty, sx, sy, mr, pi;
+            if (Array.isArray(sp)) {
+                if (typeof sp[0] === 'number' && typeof sp[1] === 'string') {
+                    // Modern format with _nid: [id, type, x, y, r, color, angle, ...]
+                    id = sp[0]; type = sp[1]; x = sp[2]; y = sp[3]; r = sp[4] || 3; color = sp[5] || '#00ffcc'; angle = sp[6] || 0;
+                    tx = sp[7] || undefined; ty = sp[8] || undefined; sx = sp[9] || undefined; sy = sp[10] || undefined; mr = (sp[11] === 1); pi = sp[12] || 0;
+                } else {
+                    // Legacy tuple format: [type, x, y, r, color, angle, ...]
+                    id = i + 1; type = sp[0]; x = sp[1]; y = sp[2]; r = sp[3] || 3; color = sp[4] || '#00ffcc'; angle = sp[5] || 0;
+                    tx = sp[6] || undefined; ty = sp[7] || undefined; sx = sp[8] || undefined; sy = sp[9] || undefined; mr = (sp[10] === 1); pi = sp[11] || 0;
+                }
+            } else {
+                id = sp.id || (i + 1); type = sp.t; x = sp.x; y = sp.y; r = sp.r || 3; color = sp.c || '#00ffcc'; angle = sp.a || 0;
+                tx = sp.tx; ty = sp.ty; sx = sp.sx; sy = sp.sy; mr = (sp.mr === 1); pi = sp.pi || 0;
+            }
+            seenIds.add(id);
+            let p = clientProjectileCache.get(id);
             if (!p) {
                 p = Object.create(NetworkProjectileProto);
-                GAME_STATE.projectiles[i] = p;
-            }
-            if (Array.isArray(sp)) {
-                p.type = sp[0];
-                p.x = sp[1];
-                p.y = sp[2];
-                p.r = sp[3] || 3;
-                p.color = sp[4] || '#00ffcc';
-                p.angle = sp[5] || 0;
-                p.targetX = sp[6] || undefined;
-                p.targetY = sp[7] || undefined;
-                p.startX = sp[8] || undefined;
-                p.startY = sp[9] || undefined;
-                p.mineRing = (sp[10] === 1);
-                p.playerIndex = sp[11] || 0;
+                p._nid = id;
+                p.x = x;
+                p.y = y;
+                p.targetX = x;
+                p.targetY = y;
+                clientProjectileCache.set(id, p);
             } else {
-                p.type = sp.t;
-                p.x = sp.x;
-                p.y = sp.y;
-                p.r = sp.r || 3;
-                p.color = sp.c || '#00ffcc';
-                p.angle = sp.a || 0;
-                p.targetX = sp.tx;
-                p.targetY = sp.ty;
-                p.startX = sp.sx;
-                p.startY = sp.sy;
-                p.mineRing = (sp.mr === 1);
-                p.playerIndex = sp.pi || 0;
+                p.targetX = x;
+                p.targetY = y;
+                const d2 = (p.x - x) ** 2 + (p.y - y) ** 2;
+                if (d2 > 14400) { // snap if desynced by > 120px
+                    p.x = x;
+                    p.y = y;
+                }
             }
+            p.type = type;
+            p.r = r;
+            p.color = color;
+            p.angle = angle;
+            p.tx = tx;
+            p.ty = ty;
+            p.startX = sx;
+            p.startY = sy;
+            p.mineRing = mr;
+            p.playerIndex = pi;
             const speed = (p.type === 'missile' || p.type === 'laser') ? 8 : (p.type === 'lightning' ? 0 : 5);
             p.vx = Math.cos(p.angle) * speed;
             p.vy = Math.sin(p.angle) * speed;
             p.alive = true;
+            activeProjectiles.push(p);
         }
+        for (const [id] of clientProjectileCache.entries()) {
+            if (!seenIds.has(id)) {
+                clientProjectileCache.delete(id);
+            }
+        }
+        GAME_STATE.projectiles = activeProjectiles;
     }
 
     if (snapshot.enemyProjectiles) {
-        const count = snapshot.enemyProjectiles.length;
-        if (GAME_STATE.enemyProjectiles.length > count) {
-            GAME_STATE.enemyProjectiles.length = count;
-        }
-        for (let i = 0; i < count; i++) {
+        const seenIds = new Set();
+        const activeEnemyProjectiles = [];
+        for (let i = 0; i < snapshot.enemyProjectiles.length; i++) {
             const sep = snapshot.enemyProjectiles[i];
-            let ep = GAME_STATE.enemyProjectiles[i];
+            let id, x, y, r, color;
+            if (Array.isArray(sep)) {
+                if (sep.length >= 5) {
+                    // Modern format with _nid: [id, x, y, r, color]
+                    id = sep[0]; x = sep[1]; y = sep[2]; r = sep[3] || 4; color = sep[4] || '#ff3344';
+                } else {
+                    // Legacy format: [x, y, r, color]
+                    id = i + 1; x = sep[0]; y = sep[1]; r = sep[2] || 4; color = sep[3] || '#ff3344';
+                }
+            } else {
+                id = sep.id || (i + 1); x = sep.x; y = sep.y; r = sep.r || 4; color = sep.c || '#ff3344';
+            }
+            seenIds.add(id);
+            let ep = clientEnemyProjectileCache.get(id);
             if (!ep) {
                 ep = Object.create(NetworkEnemyProjectileProto);
-                GAME_STATE.enemyProjectiles[i] = ep;
-            }
-            const prevX = ep.x;
-            const prevY = ep.y;
-            if (Array.isArray(sep)) {
-                ep.x = sep[0];
-                ep.y = sep[1];
-                ep.r = sep[2] || 4;
-                ep.color = sep[3] || '#ff3344';
-            } else {
-                ep.x = sep.x;
-                ep.y = sep.y;
-                ep.r = sep.r || 4;
-                ep.color = sep.c || '#ff3344';
-            }
-            if (prevX !== undefined && prevY !== undefined) {
-                ep.vx = (ep.x - prevX) / 2.0;
-                ep.vy = (ep.y - prevY) / 2.0;
-            } else {
+                ep._nid = id;
+                ep.x = x;
+                ep.y = y;
+                ep.targetX = x;
+                ep.targetY = y;
                 ep.vx = 0;
                 ep.vy = 0;
+                clientEnemyProjectileCache.set(id, ep);
+            } else {
+                const prevX = ep.targetX !== undefined ? ep.targetX : ep.x;
+                const prevY = ep.targetY !== undefined ? ep.targetY : ep.y;
+                ep.vx = (x - prevX) / 2.0;
+                ep.vy = (y - prevY) / 2.0;
+                ep.targetX = x;
+                ep.targetY = y;
+                const d2 = (ep.x - x) ** 2 + (ep.y - y) ** 2;
+                if (d2 > 14400) {
+                    ep.x = x;
+                    ep.y = y;
+                }
             }
+            ep.r = r;
+            ep.color = color;
             ep.alive = true;
+            activeEnemyProjectiles.push(ep);
         }
+        for (const [id] of clientEnemyProjectileCache.entries()) {
+            if (!seenIds.has(id)) {
+                clientEnemyProjectileCache.delete(id);
+            }
+        }
+        GAME_STATE.enemyProjectiles = activeEnemyProjectiles;
     }
 
     // 4. Reconcile Gems, Health Packs & Supply Drops (In-place update with low-frequency payload check)
@@ -2573,6 +2637,149 @@ window.onOnlineVictory = function() {
     showVictory();
 };
 
+function interpolateNetworkWorld(renderTime, dtFactor = 1.0) {
+    if (typeof netManager === 'undefined' || !netManager.isClient) return;
+    if (!clientSnapshotBuffer || clientSnapshotBuffer.length < 2) return;
+
+    let s0 = null;
+    let s1 = null;
+
+    // Locate bounding snapshots s0 and s1 around renderTime
+    for (let i = clientSnapshotBuffer.length - 1; i >= 0; i--) {
+        const entry = clientSnapshotBuffer[i];
+        if (entry.clientTime <= renderTime) {
+            s0 = entry;
+            s1 = clientSnapshotBuffer[i + 1] || null;
+            break;
+        }
+    }
+
+    let alpha = 1.0;
+    let snapA = null;
+    let snapB = null;
+
+    if (s0 && s1) {
+        const span = Math.max(1, s1.clientTime - s0.clientTime);
+        alpha = Math.max(0, Math.min(1.0, (renderTime - s0.clientTime) / span));
+        snapA = s0.snapshot;
+        snapB = s1.snapshot;
+    } else if (!s0 && clientSnapshotBuffer.length >= 2) {
+        snapA = clientSnapshotBuffer[0].snapshot;
+        snapB = clientSnapshotBuffer[1].snapshot;
+        alpha = 0.0;
+    } else {
+        const len = clientSnapshotBuffer.length;
+        s0 = clientSnapshotBuffer[len - 2];
+        s1 = clientSnapshotBuffer[len - 1];
+        const span = Math.max(1, s1.clientTime - s0.clientTime);
+        const extrapMs = Math.min(66, Math.max(0, renderTime - s1.clientTime));
+        alpha = 1.0 + (extrapMs / span);
+        snapA = s0.snapshot;
+        snapB = s1.snapshot;
+    }
+
+    if (!snapA || !snapB) return;
+
+    // 1. Interpolate Remote Players
+    if (snapB.players) {
+        const pMapA = new Map();
+        if (snapA.players) {
+            for (const spA of snapA.players) pMapA.set(spA.i, spA);
+        }
+        for (const spB of snapB.players) {
+            if (spB.i === netManager.localPlayerIndex) continue;
+            const p = GAME_STATE.players[spB.i];
+            if (!p) continue;
+            const spA = pMapA.get(spB.i);
+            if (spA) {
+                p.x = spA.x + alpha * (spB.x - spA.x);
+                p.y = spA.y + alpha * (spB.y - spA.y);
+                if (spA.fa !== undefined && spB.fa !== undefined) {
+                    let da = spB.fa - spA.fa;
+                    while (da > Math.PI) da -= Math.PI * 2;
+                    while (da < -Math.PI) da += Math.PI * 2;
+                    p.facingAngle = spA.fa + da * alpha;
+                }
+            } else {
+                p.x = spB.x;
+                p.y = spB.y;
+                if (spB.fa !== undefined) p.facingAngle = spB.fa;
+            }
+        }
+    }
+
+    // 2. Interpolate Enemies
+    if (snapB.enemies) {
+        const eMapA = new Map();
+        if (snapA.enemies) {
+            for (const seA of snapA.enemies) {
+                const nid = Array.isArray(seA) ? seA[0] : seA.id;
+                eMapA.set(nid, seA);
+            }
+        }
+        for (const seB of snapB.enemies) {
+            const nid = Array.isArray(seB) ? seB[0] : seB.id;
+            const e = clientEnemyCache.get(nid);
+            if (!e) continue;
+            const seA = eMapA.get(nid);
+            const bx = Array.isArray(seB) ? seB[2] : seB.x;
+            const by = Array.isArray(seB) ? seB[3] : seB.y;
+            const bfa = Array.isArray(seB) ? seB[6] : seB.fa;
+            if (seA) {
+                const ax = Array.isArray(seA) ? seA[2] : seA.x;
+                const ay = Array.isArray(seA) ? seA[3] : seA.y;
+                const afa = Array.isArray(seA) ? seA[6] : seA.fa;
+                e.x = ax + alpha * (bx - ax);
+                e.y = ay + alpha * (by - ay);
+                if (afa !== undefined && bfa !== undefined) {
+                    let da = bfa - afa;
+                    while (da > Math.PI) da -= Math.PI * 2;
+                    while (da < -Math.PI) da += Math.PI * 2;
+                    e.facingAngle = afa + da * alpha;
+                }
+            } else {
+                e.x = bx;
+                e.y = by;
+                if (bfa !== undefined) e.facingAngle = bfa;
+            }
+        }
+    }
+
+    // 3. Interpolate Turrets
+    if (snapB.turrets) {
+        const tMapA = new Map();
+        if (snapA.turrets) {
+            for (const stA of snapA.turrets) tMapA.set(stA.id, stA);
+        }
+        for (const stB of snapB.turrets) {
+            const turret = (GAME_STATE.turrets || []).find(t => t && t._nid === stB.id);
+            if (!turret) continue;
+            const stA = tMapA.get(stB.id);
+            if (stA) {
+                turret.x = stA.x + alpha * (stB.x - stA.x);
+                turret.y = stA.y + alpha * (stB.y - stA.y);
+                if (stA.a !== undefined && stB.a !== undefined) {
+                    let da = stB.a - stA.a;
+                    while (da > Math.PI) da -= Math.PI * 2;
+                    while (da < -Math.PI) da += Math.PI * 2;
+                    turret.angle = stA.a + da * alpha;
+                }
+                if (stA.fa !== undefined && stB.fa !== undefined) {
+                    let dfa = stB.fa - stA.fa;
+                    while (dfa > Math.PI) dfa -= Math.PI * 2;
+                    while (dfa < -Math.PI) dfa += Math.PI * 2;
+                    turret.flameAngle = stA.fa + dfa * alpha;
+                }
+            } else {
+                turret.x = stB.x;
+                turret.y = stB.y;
+                if (stB.a !== undefined) turret.angle = stB.a;
+                if (stB.fa !== undefined) turret.flameAngle = stB.fa;
+            }
+        }
+    }
+}
+
 function recalculateDynamicDifficulty() {
     if (typeof GAME_STATE === 'undefined' || !GAME_STATE.players) return;
     const activePlayers = GAME_STATE.players.filter(p => !p.disconnected).length || 1;
@@ -2596,6 +2803,11 @@ if (typeof window !== 'undefined') {
     window.base64ToUint8 = base64ToUint8;
     window.despawnPlayerEntities = despawnPlayerEntities;
     window.recalculateDynamicDifficulty = recalculateDynamicDifficulty;
+    window.interpolateNetworkWorld = interpolateNetworkWorld;
+    window.clientSnapshotBuffer = clientSnapshotBuffer;
+    window.clientEnemyCache = clientEnemyCache;
+    window.clientProjectileCache = clientProjectileCache;
+    window.clientEnemyProjectileCache = clientEnemyProjectileCache;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -2607,6 +2819,11 @@ if (typeof module !== 'undefined' && module.exports) {
         packWorldSnapshotBinary,
         unpackWorldSnapshotBinary,
         despawnPlayerEntities,
-        recalculateDynamicDifficulty
+        recalculateDynamicDifficulty,
+        interpolateNetworkWorld,
+        clientSnapshotBuffer,
+        clientEnemyCache,
+        clientProjectileCache,
+        clientEnemyProjectileCache
     };
 }

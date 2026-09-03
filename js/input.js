@@ -274,6 +274,13 @@ function initInputSystem() {
             } else if (k === 'n' && typeof SoundEngine !== 'undefined') {
                 SoundEngine.init();
                 SoundEngine.toggleMusicMute();
+            } else if (k === '1' && (!e.target || (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA'))) {
+                if (typeof GAME_STATE !== 'undefined') {
+                    const isFpsVisible = (GAME_STATE.showFps !== undefined) ? GAME_STATE.showFps : Boolean(GAME_STATE.testingMode);
+                    GAME_STATE.showFps = !isFpsVisible;
+                    if (typeof updateFpsToggleBtn === 'function') updateFpsToggleBtn();
+                    if (typeof updateUI === 'function') updateUI();
+                }
             }
         }
 

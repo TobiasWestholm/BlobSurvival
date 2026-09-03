@@ -1184,6 +1184,21 @@ function showStartMenu() {
     if (startMenu) startMenu.classList.add('show');
 }
 
+function updateFpsToggleBtn() {
+    const btn = document.getElementById('fpsToggleBtn');
+    const label = document.getElementById('fpsToggleBtnLabel');
+    if (!btn || typeof GAME_STATE === 'undefined') return;
+    const isVisible = Boolean(GAME_STATE.showFps);
+    if (label) {
+        label.textContent = `FPS & Stats: ${isVisible ? 'ON' : 'OFF'}`;
+    }
+    if (isVisible) {
+        btn.classList.remove('disabled-state');
+    } else {
+        btn.classList.add('disabled-state');
+    }
+}
+
 function togglePause() {
     if (typeof GAME_STATE === 'undefined') return;
     if (GAME_STATE.current === STATES.GAMEPLAY) {
@@ -1193,6 +1208,7 @@ function togglePause() {
         }
         const zone = document.getElementById('joystickZone') || (typeof joystickZone !== 'undefined' ? joystickZone : (typeof window !== 'undefined' ? window.joystickZone : null));
         if (zone) zone.style.display = 'none';
+        updateFpsToggleBtn();
         const modal = document.getElementById('pauseModal');
         if (modal) modal.classList.add('show');
     } else if (GAME_STATE.current === STATES.PAUSED) {
@@ -1256,7 +1272,8 @@ function updateUI() {
     }
 
     if (fpsCounterEl) {
-        if (GAME_STATE.testingMode && GAME_STATE.current === STATES.GAMEPLAY) {
+        const isFpsVisible = (GAME_STATE.showFps !== undefined) ? GAME_STATE.showFps : Boolean(GAME_STATE.testingMode);
+        if (isFpsVisible && (GAME_STATE.current === STATES.GAMEPLAY || GAME_STATE.current === STATES.PAUSED)) {
             fpsCounterEl.style.display = 'block';
             const enemyCount = GAME_STATE.enemies ? GAME_STATE.enemies.length : 0;
             fpsCounterEl.innerHTML = `${GAME_STATE.currentFps || 60} FPS<br>Enemies: ${enemyCount}`;
@@ -1468,6 +1485,19 @@ function initUISystem() {
     const pauseQuitBtn = document.getElementById('pauseQuitBtn');
     if (pauseQuitBtn) pauseQuitBtn.onclick = showStartMenu;
 
+    const fpsToggleBtn = document.getElementById('fpsToggleBtn');
+    if (fpsToggleBtn) {
+        fpsToggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (typeof GAME_STATE !== 'undefined') {
+                const isFpsVisible = (GAME_STATE.showFps !== undefined) ? GAME_STATE.showFps : Boolean(GAME_STATE.testingMode);
+                GAME_STATE.showFps = !isFpsVisible;
+                updateFpsToggleBtn();
+                if (typeof updateUI === 'function') updateUI();
+            }
+        };
+    }
+
     const pauseMenuBtn = document.getElementById('pauseMenuBtn');
     if (pauseMenuBtn) {
         pauseMenuBtn.onclick = togglePause;
@@ -1517,6 +1547,7 @@ if (typeof window !== 'undefined') {
     window.showStartStep = showStartStep;
     window.showStartMenu = showStartMenu;
     window.joinOnlineRoom = joinOnlineRoom;
+    window.updateFpsToggleBtn = updateFpsToggleBtn;
     window.togglePause = togglePause;
     window.updateUI = updateUI;
     window.initUISystem = initUISystem;
@@ -1553,6 +1584,7 @@ if (typeof module !== 'undefined' && module.exports) {
         showStartStep,
         showStartMenu,
         joinOnlineRoom,
+        updateFpsToggleBtn,
         togglePause,
         updateUI,
         initUISystem
