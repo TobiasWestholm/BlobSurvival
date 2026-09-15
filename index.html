@@ -279,6 +279,9 @@
         transition: opacity 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
         z-index: 142;
     }
+    .player-panel.local-player-panel {
+        z-index: 200 !important;
+    }
     .player-panel.chosen {
         opacity: 0.28;
         background: rgba(10, 12, 16, 0.35);
@@ -289,7 +292,81 @@
         background: rgba(14, 16, 22, 0.85);
         box-shadow: 0 0 20px rgba(0, 255, 204, 0.25);
     }
-    .panel-title { margin: 0 0 1px; font-size: clamp(14px, 1.15vw, 24px); }
+    .panel-title { margin: 0 0 1px; font-size: clamp(14px, 1.15vw, 24px); padding: 0 38px; }
+    .panel-title.editable-name {
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: transform 0.15s ease, opacity 0.15s ease;
+        user-select: none;
+        padding-bottom: 2px;
+        border-bottom: 1.5px dashed transparent;
+    }
+    .panel-title.editable-name:hover {
+        border-bottom-color: currentColor;
+        transform: translateY(-1px);
+    }
+    .player-name-edit-icon {
+        font-size: 0.8em;
+        opacity: 0.65;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    .panel-title.editable-name:hover .player-name-edit-icon {
+        opacity: 1;
+        transform: scale(1.15);
+    }
+    .player-name-input {
+        background: rgba(14, 16, 24, 0.95);
+        border: 2px solid #00ffcc;
+        border-radius: 6px;
+        color: #00ffcc;
+        font-family: inherit;
+        font-size: clamp(13px, 1.1vw, 20px);
+        font-weight: bold;
+        text-align: center;
+        padding: 2px 8px;
+        max-width: min(80%, 220px);
+        box-sizing: border-box;
+        box-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
+        outline: none;
+        margin: 0 auto 1px;
+    }
+    .player-dialog-key-cluster {
+        position: absolute;
+        top: clamp(5px, 0.4vw, 8px);
+        right: clamp(6px, 0.5vw, 10px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5px;
+        pointer-events: none;
+        z-index: 20;
+    }
+    .player-dialog-key-cluster .key-cluster-row {
+        display: flex;
+        gap: 1.5px;
+        justify-content: center;
+    }
+    .player-dialog-key-cluster .key-cap {
+        width: clamp(10px, 0.82vw, 13px);
+        height: clamp(10px, 0.82vw, 13px);
+        background: rgba(14, 16, 24, 0.95);
+        border: 1px solid var(--p-color, #00ffcc);
+        border-radius: 2px;
+        color: var(--p-color, #00ffcc);
+        font-size: clamp(6.5px, 0.52vw, 8px);
+        font-weight: bold;
+        font-family: monospace, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        line-height: 1;
+        user-select: none;
+        text-shadow: 0 0 3px var(--p-color, #00ffcc);
+    }
     .panel-sub { font-size: clamp(9px, 0.70vw, 15px); color: #bbb; margin-bottom: 4px; }
     .panel-done { margin-top: 3px; font-weight: bold; font-size: clamp(11px, 0.86vw, 18px); }
     .player-panel .upgrade-btn {
@@ -1159,7 +1236,7 @@
 </div>
 <div id="timer" style="display: none;">0:00</div>
 <div id="fpsCounter" style="display: none;">60 FPS</div>
-<button id="pauseMenuBtn" title="Pause (P)" aria-label="Pause">☰</button>
+<button type="button" id="pauseMenuBtn" title="Pause (P)" aria-label="Pause">☰</button>
 
 <div id="startMenu" class="modal show">
     <h1>BLOB SURVIVAL</h1>
@@ -1168,15 +1245,15 @@
     <div id="modeStep">
         <p id="modePrompt">Select game mode:</p>
         <div class="difficulty-list">
-            <button class="upgrade-btn difficulty-card" id="btnModeSingle">
+            <button type="button" class="upgrade-btn difficulty-card" id="btnModeSingle">
                 <span class="name">SINGLEPLAYER</span>
                 <span class="desc">Survive alone against the relentless monster hordes</span>
             </button>
-            <button class="upgrade-btn difficulty-card" id="btnModeLocal">
+            <button type="button" class="upgrade-btn difficulty-card" id="btnModeLocal">
                 <span class="name">LOCAL MULTIPLAYER</span>
                 <span class="desc">Share the keyboard with 2–4 players on one screen</span>
             </button>
-            <button class="upgrade-btn difficulty-card" id="btnModeOnline">
+            <button type="button" class="upgrade-btn difficulty-card" id="btnModeOnline">
                 <span class="name">ONLINE MULTIPLAYER</span>
                 <span class="desc">Play online together with friends using invite codes</span>
             </button>
@@ -1187,16 +1264,16 @@
     <div id="onlineChoiceStep" style="display:none">
         <p>Online Multiplayer</p>
         <div class="difficulty-list">
-            <button class="upgrade-btn difficulty-card" id="btnOnlineHost">
+            <button type="button" class="upgrade-btn difficulty-card" id="btnOnlineHost">
                 <span class="name">HOST A ROOM</span>
                 <span class="desc">Create a new game and invite friends with a code or link</span>
             </button>
-            <button class="upgrade-btn difficulty-card" id="btnOnlineJoin">
+            <button type="button" class="upgrade-btn difficulty-card" id="btnOnlineJoin">
                 <span class="name">JOIN A ROOM</span>
                 <span class="desc">Enter a friend's room invite code to join their game</span>
             </button>
         </div>
-        <button class="upgrade-btn back-btn" id="backFromOnlineChoice"><span class="name">← Back</span></button>
+        <button type="button" class="upgrade-btn back-btn" id="backFromOnlineChoice"><span class="name">← Back</span></button>
     </div>
 
     <!-- Step 3: Join Room Dialog -->
@@ -1206,17 +1283,17 @@
             <input id="joinCodeInput" type="text" placeholder="e.g. 4821" maxlength="8" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" style="width: 85%; max-width: 320px; padding: 12px 16px; font-size: 20px; font-weight: bold; text-transform: uppercase; text-align: center; background: #1a1a24; color: #00ffcc; border: 2px solid #00ffcc; border-radius: 8px; box-sizing: border-box; outline: none;">
             <div id="joinStatus" style="font-size: 13px; color: #ffaa00; margin-top: 8px; min-height: 18px;"></div>
         </div>
-        <button class="upgrade-btn" id="btnSubmitJoin"><span class="name">CONNECT TO ROOM</span></button>
-        <button class="upgrade-btn back-btn" id="backFromJoin"><span class="name">← Back</span></button>
+        <button type="button" class="upgrade-btn" id="btnSubmitJoin"><span class="name">CONNECT TO ROOM</span></button>
+        <button type="button" class="upgrade-btn back-btn" id="backFromJoin"><span class="name">← Back</span></button>
     </div>
 
     <!-- Step 4: Player Count (for Local Multiplayer) -->
     <div id="playerStep" style="display:none">
         <p>Pick how many players will survive together:</p>
         <div class="player-grid">
-            <button class="upgrade-btn" data-players="2"><span class="name">2 PLAYERS</span></button>
-            <button class="upgrade-btn" data-players="3"><span class="name">3 PLAYERS</span></button>
-            <button class="upgrade-btn" data-players="4"><span class="name">4 PLAYERS</span></button>
+            <button type="button" class="upgrade-btn" data-players="2"><span class="name">2 PLAYERS</span></button>
+            <button type="button" class="upgrade-btn" data-players="3"><span class="name">3 PLAYERS</span></button>
+            <button type="button" class="upgrade-btn" data-players="4"><span class="name">4 PLAYERS</span></button>
         </div>
         <div class="controls-help" style="margin-top: 15px;">
             <div class="controls-title">LOCAL MOVEMENT CONTROLS</div>
@@ -1227,27 +1304,27 @@
                 <div><b>Player 4:</b> U H J K (up/left/down/right)</div>
             </div>
         </div>
-        <button class="upgrade-btn back-btn" id="backToModesFromPlayers"><span class="name">← Back</span></button>
+        <button type="button" class="upgrade-btn back-btn" id="backToModesFromPlayers"><span class="name">← Back</span></button>
     </div>
 
     <!-- Step 5: Difficulty Selection -->
     <div id="difficultyStep" style="display:none">
         <p id="difficultyPrompt">Select difficulty</p>
         <div class="difficulty-list">
-            <button class="upgrade-btn difficulty-card" data-difficulty="easy">
+            <button type="button" class="upgrade-btn difficulty-card" data-difficulty="easy">
                 <span class="name">EASY</span>
                 <span class="desc">Deal 400% dmg · take 25% dmg · much sharper aim · 150% movement speed</span>
             </button>
-            <button class="upgrade-btn difficulty-card" data-difficulty="normal">
+            <button type="button" class="upgrade-btn difficulty-card" data-difficulty="normal">
                 <span class="name">NORMAL</span>
                 <span class="desc">Deal 200% dmg · take 50% dmg · sharper aim · 125% movement speed</span>
             </button>
-            <button class="upgrade-btn difficulty-card" data-difficulty="hard">
+            <button type="button" class="upgrade-btn difficulty-card" data-difficulty="hard">
                 <span class="name">BRUTALLY HARD</span>
                 <span class="desc">Deal 100% dmg · take 100% dmg · standard aim · 100% movement speed</span>
             </button>
         </div>
-        <button class="upgrade-btn back-btn" id="backToPreviousFromDiff"><span class="name">← Back</span></button>
+        <button type="button" class="upgrade-btn back-btn" id="backToPreviousFromDiff"><span class="name">← Back</span></button>
     </div>
 </div>
 
@@ -1255,7 +1332,7 @@
 <div id="rotateHint" style="display: none;">
     <span class="rotate-hint-icon">📱↻</span>
     <span class="rotate-hint-text">Rotate device for widescreen view</span>
-    <button class="rotate-hint-close" onclick="dismissRotateHint()" aria-label="Dismiss">✕</button>
+    <button type="button" class="rotate-hint-close" onclick="dismissRotateHint()" aria-label="Dismiss">✕</button>
 </div>
 
 <!-- Floating Invite Code Banner (Hosted Online Multiplayer) -->
@@ -1266,8 +1343,8 @@
 </div>
 
 <!-- Floating Lobby Start Button (Host in Local & Online Multiplayer, Centered) -->
-<button id="lobbyStartBtn" disabled>START GAME</button>
-<button id="testingBtn" style="display: none; position: fixed; bottom: 20px; left: 20px; z-index: 10; background: #222; color: #00ffcc; border: 1px solid #00ffcc; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 0 10px rgba(0,255,200,0.3); pointer-events: auto;">TESTING</button>
+<button type="button" id="lobbyStartBtn" disabled>START GAME</button>
+<button type="button" id="testingBtn" style="display: none; position: fixed; bottom: 20px; left: 20px; z-index: 10; background: #222; color: #00ffcc; border: 1px solid #00ffcc; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 0 10px rgba(0,255,200,0.3); pointer-events: auto;">TESTING</button>
 
 
 <div id="testingModal" class="modal" style="width: 95%; max-width: 1450px; max-height: 85%; overflow-y: auto; padding: 25px; box-sizing: border-box;">
@@ -1280,22 +1357,22 @@
     
     <div style="border-top: 1px solid #333; padding-top: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <div style="display: flex; gap: 10px; align-items: center;">
-            <button class="upgrade-btn" id="resetTestingBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 10px 20px;">Reset All</button>
-            <button class="upgrade-btn" id="fxSoundsBtn" style="margin: 0; width: auto; background: #222; color: #ffcc00; border: 1px solid #ffcc00; padding: 10px 20px; font-weight: bold; box-shadow: 0 0 10px rgba(255,204,0,0.2);">FX Sounds</button>
+            <button type="button" class="upgrade-btn" id="resetTestingBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 10px 20px;">Reset All</button>
+            <button type="button" class="upgrade-btn" id="fxSoundsBtn" style="margin: 0; width: auto; background: #222; color: #ffcc00; border: 1px solid #ffcc00; padding: 10px 20px; font-weight: bold; box-shadow: 0 0 10px rgba(255,204,0,0.2);">FX Sounds</button>
         </div>
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <div id="selectedUpgradesWidget" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #aaa; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 8px 14px; font-family: monospace;">
                 <span style="color: #888; font-weight: bold; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">Selected:</span>
                 <strong id="selectedUpgradesCount" style="color: #00ffcc; font-size: 14px;">0</strong>
             </div>
-            <button class="upgrade-btn" id="expectedLevelsBtn" style="margin: 0; width: auto; background: #1a1a1a; color: #00ffcc; border: 1px solid #333; padding: 8px 14px; font-weight: bold; font-family: monospace; font-size: 13px; cursor: pointer; transition: all 0.2s;">📊 Expected Levels</button>
+            <button type="button" class="upgrade-btn" id="expectedLevelsBtn" style="margin: 0; width: auto; background: #1a1a1a; color: #00ffcc; border: 1px solid #333; padding: 8px 14px; font-weight: bold; font-family: monospace; font-size: 13px; cursor: pointer; transition: all 0.2s;">📊 Expected Levels</button>
             <div id="recommendedLevelWidget" style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #aaa; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 8px 14px; font-family: monospace;">
                 <span style="color: #888; font-weight: bold; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">Est. Minute:</span>
                 <strong id="recEstMinuteValue" style="color: #ffcc00; font-size: 14px;">0.0m</strong>
             </div>
-            <button class="upgrade-btn" id="presetTestingBtn" style="margin: 0; width: auto; background: #222; color: #00ffcc; border-color: #00ffcc; padding: 10px 20px; font-weight: bold;">Preset</button>
-            <button class="upgrade-btn" id="closeTestingBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 10px 20px;">Cancel</button>
-            <button class="upgrade-btn" id="tryUpgradesBtn" style="margin: 0; width: auto; background: #00ffcc; color: #000; font-weight: bold; border-color: #00ffcc; padding: 10px 20px; box-shadow: 0 0 12px rgba(0,255,200,0.3);">Try Upgrades</button>
+            <button type="button" class="upgrade-btn" id="presetTestingBtn" style="margin: 0; width: auto; background: #222; color: #00ffcc; border-color: #00ffcc; padding: 10px 20px; font-weight: bold;">Preset</button>
+            <button type="button" class="upgrade-btn" id="closeTestingBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 10px 20px;">Cancel</button>
+            <button type="button" class="upgrade-btn" id="tryUpgradesBtn" style="margin: 0; width: auto; background: #00ffcc; color: #000; font-weight: bold; border-color: #00ffcc; padding: 10px 20px; box-shadow: 0 0 12px rgba(0,255,200,0.3);">Try Upgrades</button>
         </div>
     </div>
 </div>
@@ -1306,7 +1383,7 @@
             <h2 style="margin: 0; color: #00ffcc; font-size: 22px; display: flex; align-items: center; gap: 8px;">📊 EXPECTED LEVEL PER MINUTE</h2>
             <p style="margin: 4px 0 0 0; color: #888; font-size: 13px;">XP progression calculated from monster spawn rates, wave events & XP gem yields.</p>
         </div>
-        <button class="upgrade-btn" id="closeExpectedLevelsBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 8px 16px;">Close</button>
+        <button type="button" class="upgrade-btn" id="closeExpectedLevelsBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 8px 16px;">Close</button>
     </div>
     
     <div id="expectedLevelsSelectionSummary" style="background: #111; border: 1px solid #2a2a2a; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-family: monospace; font-size: 13px;">
@@ -1337,8 +1414,8 @@
             <p style="margin: 4px 0 0 0; color: #888; font-size: 13px;">Procedural Web Audio & ZzFX synthesized sound effects.</p>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
-            <button class="upgrade-btn" id="playAllFxBtn" style="margin: 0; width: auto; background: #ffcc00; color: #000; font-weight: bold; border-color: #ffcc00; padding: 8px 16px;">▶ Play All</button>
-            <button class="upgrade-btn" id="closeFxSoundsBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 8px 16px;">Close</button>
+            <button type="button" class="upgrade-btn" id="playAllFxBtn" style="margin: 0; width: auto; background: #ffcc00; color: #000; font-weight: bold; border-color: #ffcc00; padding: 8px 16px;">▶ Play All</button>
+            <button type="button" class="upgrade-btn" id="closeFxSoundsBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 8px 16px;">Close</button>
         </div>
     </div>
     
@@ -1350,38 +1427,38 @@
 <div id="testingConfigModal" class="modal" style="max-width: 480px; padding: 25px; box-sizing: border-box; z-index: 100;">
     <h2 style="margin-top: 0; color: #00ffcc;">TESTING CONFIGURATION</h2>
     <div style="margin: 20px 0; text-align: left;">
-        <label style="display: block; font-weight: bold; margin-bottom: 8px; color: #00ffcc; font-size: 14px;">1. Choose Start Time (Minute):</label>
+        <div style="display: block; font-weight: bold; margin-bottom: 8px; color: #00ffcc; font-size: 14px;">1. Choose Start Time (Minute):</div>
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
-            <button class="time-preset-btn active" data-min="0">Min 0 (Base)</button>
-            <button class="time-preset-btn" data-min="2">Min 2 (Mega Brutes)</button>
-            <button class="time-preset-btn" data-min="3">Min 3 (Brute Lords)</button>
-            <button class="time-preset-btn" data-min="5">Min 5 (Meteorites)</button>
-            <button class="time-preset-btn" data-min="7.9">Min 8 (Octopus Boss)</button>
-            <button class="time-preset-btn" data-min="10">Min 10 (Spiky)</button>
-            <button class="time-preset-btn" data-min="11">Min 11 (Horde Boss)</button>
-            <button class="time-preset-btn" data-min="12">Min 12 (Baneling)</button>
-            <button class="time-preset-btn" data-min="13">Min 13 (Marauder)</button>
-            <button class="time-preset-btn" data-min="14">Min 14 (Stalker)</button>
-            <button class="time-preset-btn" data-min="18">Min 18 (Sentry)</button>
-            <button class="time-preset-btn" data-min="19">Min 19 (Medivac)</button>
-            <button class="time-preset-btn" data-min="20">Min 20 (Hellion)</button>
-            <button class="time-preset-btn" data-min="21">Min 21 (Warp Anomaly)</button>
-            <button class="time-preset-btn" data-min="22">Min 22 (Shield Bearer)</button>
-            <button class="time-preset-btn" data-min="23">Min 23 (Viper)</button>
-            <button class="time-preset-btn" data-min="23.9">Min 24 (Hive Behemoth)</button>
+            <button type="button" class="time-preset-btn active" data-min="0">Min 0 (Base)</button>
+            <button type="button" class="time-preset-btn" data-min="2">Min 2 (Mega Brutes)</button>
+            <button type="button" class="time-preset-btn" data-min="3">Min 3 (Brute Lords)</button>
+            <button type="button" class="time-preset-btn" data-min="5">Min 5 (Meteorites)</button>
+            <button type="button" class="time-preset-btn" data-min="7.9">Min 8 (Octopus Boss)</button>
+            <button type="button" class="time-preset-btn" data-min="10">Min 10 (Spiky)</button>
+            <button type="button" class="time-preset-btn" data-min="11">Min 11 (Horde Boss)</button>
+            <button type="button" class="time-preset-btn" data-min="12">Min 12 (Baneling)</button>
+            <button type="button" class="time-preset-btn" data-min="13">Min 13 (Marauder)</button>
+            <button type="button" class="time-preset-btn" data-min="14">Min 14 (Stalker)</button>
+            <button type="button" class="time-preset-btn" data-min="18">Min 18 (Sentry)</button>
+            <button type="button" class="time-preset-btn" data-min="19">Min 19 (Medivac)</button>
+            <button type="button" class="time-preset-btn" data-min="20">Min 20 (Hellion)</button>
+            <button type="button" class="time-preset-btn" data-min="21">Min 21 (Warp Anomaly)</button>
+            <button type="button" class="time-preset-btn" data-min="22">Min 22 (Shield Bearer)</button>
+            <button type="button" class="time-preset-btn" data-min="23">Min 23 (Viper)</button>
+            <button type="button" class="time-preset-btn" data-min="23.9">Min 24 (Hive Behemoth)</button>
         </div>
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px; border-bottom: 1px solid #333; padding-bottom: 15px;">
             <span style="font-size: 13px; color: #aaa;">Or enter custom minute:</span>
             <input type="number" id="testingCustomMinute" value="0" min="0" max="60" style="background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 6px 10px; width: 65px; text-align: center; font-size: 14px; font-weight: bold; color: #00ffcc;">
         </div>
         
-        <label style="display: block; font-weight: bold; margin-bottom: 8px; color: #00ffcc; font-size: 14px;">2. Choose Difficulty & Launch:</label>
-        <button class="upgrade-btn test-diff-btn" data-diff="easy" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">EASY</span> (200% dmg, 50% taken, 140% speed)</button>
-        <button class="upgrade-btn test-diff-btn" data-diff="normal" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">NORMAL</span> (150% dmg, 75% taken, 120% speed)</button>
-        <button class="upgrade-btn test-diff-btn" data-diff="hard" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">HARD</span> (100% dmg, 100% taken, 100% speed)</button>
+        <div style="display: block; font-weight: bold; margin-bottom: 8px; color: #00ffcc; font-size: 14px;">2. Choose Difficulty & Launch:</div>
+        <button type="button" class="upgrade-btn test-diff-btn" data-diff="easy" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">EASY</span> (200% dmg, 50% taken, 140% speed)</button>
+        <button type="button" class="upgrade-btn test-diff-btn" data-diff="normal" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">NORMAL</span> (150% dmg, 75% taken, 120% speed)</button>
+        <button type="button" class="upgrade-btn test-diff-btn" data-diff="hard" style="width: 100%; margin: 6px 0; text-align: left; padding: 10px 15px; display: block;"><span style="font-weight: bold; color: #00ffcc;">HARD</span> (100% dmg, 100% taken, 100% speed)</button>
     </div>
     <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
-        <button class="upgrade-btn" id="backToTreeBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 8px 16px;">Back</button>
+        <button type="button" class="upgrade-btn" id="backToTreeBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 8px 16px;">Back</button>
     </div>
 </div>
 
@@ -1390,13 +1467,13 @@
 <div id="upgradeDetailModal" class="modal" style="max-width: 520px; text-align: left; z-index: 500; padding: 22px; max-height: 85vh; overflow-y: auto; box-sizing: border-box;">
     <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 14px;">
         <div>
-            <h2 id="upgradeDetailTitle" style="margin: 0 0 6px 0; color: #00ffcc; font-size: 22px;"></h2>
+            <h2 id="upgradeDetailTitle" style="margin: 0 0 6px 0; color: #00ffcc; font-size: 22px;">Upgrade Details</h2>
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <div id="upgradeDetailBadge" style="display: inline-block; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 4px; background: rgba(0,255,204,0.15); color: #00ffcc; border: 1px solid rgba(0,255,204,0.4);"></div>
                 <span id="upgradeDetailTokenDesc" style="font-size: 12px; color: #bbb;"></span>
             </div>
         </div>
-        <button id="closeUpgradeDetailBtn" style="background: none; border: none; color: #aaa; font-size: 22px; cursor: pointer; padding: 0 5px; line-height: 1;">✕</button>
+        <button type="button" id="closeUpgradeDetailBtn" style="background: none; border: none; color: #aaa; font-size: 22px; cursor: pointer; padding: 0 5px; line-height: 1;">✕</button>
     </div>
 
     <div style="margin-bottom: 12px; background: rgba(255,255,255,0.03); border: 1px solid #333; border-radius: 6px; padding: 10px 12px;">
@@ -1415,34 +1492,34 @@
     </div>
 
     <div style="text-align: right;">
-        <button id="closeUpgradeDetailBtnBottom" class="upgrade-btn" style="margin: 0; display: inline-block; width: auto; background: #00ffcc; color: #000; font-weight: bold; padding: 8px 20px;">Got It</button>
+        <button type="button" id="closeUpgradeDetailBtnBottom" class="upgrade-btn" style="margin: 0; display: inline-block; width: auto; background: #00ffcc; color: #000; font-weight: bold; padding: 8px 20px;">Got It</button>
     </div>
 </div>
 
 <div id="gameOverModal" class="modal">
     <h2>GAME OVER</h2>
     <p id="gameOverStats"></p>
-    <button class="upgrade-btn" id="restartBtn"><span class="name">MAIN MENU</span></button>
+    <button type="button" class="upgrade-btn" id="restartBtn"><span class="name">MAIN MENU</span></button>
 </div>
 
 <div id="victoryModal" class="modal" style="border: 2px solid #44ff44;">
     <h2 style="color: #44ff44; text-shadow: 0 0 10px rgba(0,255,0,0.5);">VICTORY!</h2>
     <p id="victoryStats"></p>
-    <button class="upgrade-btn" id="victoryRestartBtn"><span class="name">MAIN MENU</span></button>
+    <button type="button" class="upgrade-btn" id="victoryRestartBtn"><span class="name">MAIN MENU</span></button>
 </div>
 
 <div id="pauseModal" class="modal" style="max-width: 400px; padding: 25px; box-sizing: border-box; text-align: center;">
     <h2 style="margin-top: 0; color: #00ffcc; text-shadow: 0 0 10px rgba(0,255,200,0.5);">GAME PAUSED</h2>
     <p style="color: #aaa; font-size: 14px; margin-bottom: 15px;">Press <b style="color: #fff;">Escape</b> or click below to resume</p>
     <div class="pause-audio-controls">
-        <button id="musicToggleBtn" title="Toggle Music (N)" aria-label="Toggle Music"><span class="audio-icon">🎵</span> <span class="audio-label">Music: ON</span></button>
-        <button id="soundToggleBtn" title="Toggle SFX (M)" aria-label="Toggle SFX"><span class="audio-icon">🔊</span> <span class="audio-label">SFX: ON</span></button>
+        <button type="button" id="musicToggleBtn" title="Toggle Music (N)" aria-label="Toggle Music"><span class="audio-icon">🎵</span> <span class="audio-label">Music: ON</span></button>
+        <button type="button" id="soundToggleBtn" title="Toggle SFX (M)" aria-label="Toggle SFX"><span class="audio-icon">🔊</span> <span class="audio-label">SFX: ON</span></button>
     </div>
-    <button id="fpsToggleBtn" class="disabled-state" title="Toggle FPS & Enemy Counter (1)" aria-label="Toggle FPS & Enemy Counter">
+    <button type="button" id="fpsToggleBtn" class="disabled-state" title="Toggle FPS & Enemy Counter (1)" aria-label="Toggle FPS & Enemy Counter">
         <span>📊</span> <span id="fpsToggleBtnLabel">FPS & Stats: OFF</span>
     </button>
-    <button class="upgrade-btn" id="resumeBtn" style="margin: 8px 0; width: 100%;"><span class="name">RESUME</span></button>
-    <button class="upgrade-btn" id="pauseQuitBtn" style="margin: 8px 0; width: 100%; background: #333; border-color: #555;"><span class="name">MAIN MENU</span></button>
+    <button type="button" class="upgrade-btn" id="resumeBtn" style="margin: 8px 0; width: 100%;"><span class="name">RESUME</span></button>
+    <button type="button" class="upgrade-btn" id="pauseQuitBtn" style="margin: 8px 0; width: 100%; background: #333; border-color: #555;"><span class="name">MAIN MENU</span></button>
 </div>
 
 <canvas id="gameCanvas"></canvas>
