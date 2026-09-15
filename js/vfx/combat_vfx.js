@@ -14,11 +14,21 @@ class CombatVFX {
      * @param {number} [duration=200] - Duration in ms
      * @param {number} [now] - Spawn timestamp
      */
-    constructor(x, y, duration = 200, now = (typeof gameClock !== 'undefined' ? gameClock : performance.now())) {
+    constructor(
+        x,
+        y,
+        duration = 200,
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+    ) {
         this.x = x;
         this.y = y;
         this.duration = Math.max(1, duration);
-        this.spawnTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        this.spawnTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         this.alive = true;
     }
 
@@ -27,9 +37,19 @@ class CombatVFX {
      * @param {number} [now]
      * @returns {number}
      */
-    getProgress(now = (typeof gameClock !== 'undefined' ? gameClock : performance.now())) {
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
-        return Math.min(1, Math.max(0, (curTime - this.spawnTime) / this.duration));
+    getProgress(
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+    ) {
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
+        return Math.min(
+            1,
+            Math.max(0, (curTime - this.spawnTime) / this.duration),
+        );
     }
 
     /**
@@ -46,8 +66,16 @@ class CombatVFX {
      * @param {number} dt
      * @param {number} [now]
      */
-    update(dt, now = (typeof gameClock !== 'undefined' ? gameClock : performance.now())) {
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+    update(
+        dt,
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+    ) {
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         if (curTime - this.spawnTime > this.duration) {
             this.alive = false;
         }
@@ -84,7 +112,13 @@ class ExplosionVFX extends CombatVFX {
      * @param {number} [duration=300]
      * @param {number} [now]
      */
-    constructor(x, y, r, duration = 300, now = (typeof gameClock !== 'undefined' ? gameClock : performance.now())) {
+    constructor(
+        x,
+        y,
+        r,
+        duration = 300,
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+    ) {
         super(x, y, duration, now);
         this.r = Math.max(0, r || 0);
     }
@@ -110,10 +144,20 @@ class MineExplosion extends ExplosionVFX {
      * @param {number} [now]
      * @param {Player} [player]
      */
-    constructor(x, y, r, now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), player = null) {
+    constructor(
+        x,
+        y,
+        r,
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        player = null,
+    ) {
         super(x, y, r, 300, now);
         this.player = player;
-        if (typeof SoundEngine !== 'undefined' && SoundEngine && typeof SoundEngine.mineExplosion === 'function') {
+        if (
+            typeof SoundEngine !== 'undefined' &&
+            SoundEngine &&
+            typeof SoundEngine.mineExplosion === 'function'
+        ) {
             SoundEngine.mineExplosion(r / 60);
         }
     }
@@ -122,21 +166,39 @@ class MineExplosion extends ExplosionVFX {
      * @param {number} [now]
      * @param {CanvasRenderingContext2D} [targetContext]
      */
-    draw(now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), targetContext) {
-        const renderCtx = targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+    draw(
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        targetContext,
+    ) {
+        const renderCtx =
+            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
         if (!renderCtx) return;
 
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         const t = this.getProgress(curTime);
         const currentR = this.getCurrentRadius(curTime);
 
         renderCtx.save();
-        
+
         // Inner shockwave fill with radial gradient transitioning from player color to original orange
         const defaultMineExplosionColor = '#55ff00';
         if (currentR > 0.01) {
-            const grad = renderCtx.createRadialGradient(this.x, this.y, 0, this.x, this.y, currentR);
-            const pColor = this.player ? this.player.color : defaultMineExplosionColor;
+            const grad = renderCtx.createRadialGradient(
+                this.x,
+                this.y,
+                0,
+                this.x,
+                this.y,
+                currentR,
+            );
+            const pColor = this.player
+                ? this.player.color
+                : defaultMineExplosionColor;
             grad.addColorStop(0, pColor);
             grad.addColorStop(0.8, pColor);
             grad.addColorStop(1.0, defaultMineExplosionColor);
@@ -144,12 +206,12 @@ class MineExplosion extends ExplosionVFX {
         } else {
             renderCtx.fillStyle = defaultMineExplosionColor;
         }
-        
-        renderCtx.globalAlpha = Math.max(0, Math.min(1, 0.20 * (1 - t)));
+
+        renderCtx.globalAlpha = Math.max(0, Math.min(1, 0.2 * (1 - t)));
         renderCtx.beginPath();
         renderCtx.arc(this.x, this.y, currentR, 0, Math.PI * 2);
         renderCtx.fill();
-        
+
         // Outer thick glowing border
         renderCtx.strokeStyle = '#ff3300';
         renderCtx.lineWidth = Math.max(0.1, 7 * (1 - t));
@@ -157,7 +219,7 @@ class MineExplosion extends ExplosionVFX {
         renderCtx.beginPath();
         renderCtx.arc(this.x, this.y, currentR, 0, Math.PI * 2);
         renderCtx.stroke();
-        
+
         // Inner sharp yellow/white border for extreme high-contrast outline
         renderCtx.strokeStyle = '#ffcc00';
         renderCtx.lineWidth = Math.max(0.1, 2.5 * (1 - t));
@@ -165,7 +227,7 @@ class MineExplosion extends ExplosionVFX {
         renderCtx.beginPath();
         renderCtx.arc(this.x, this.y, currentR, 0, Math.PI * 2);
         renderCtx.stroke();
-        
+
         renderCtx.restore();
     }
 }
@@ -180,9 +242,18 @@ class NukeExplosion extends ExplosionVFX {
      * @param {number} r
      * @param {number} [now]
      */
-    constructor(x, y, r, now = (typeof gameClock !== 'undefined' ? gameClock : performance.now())) {
+    constructor(
+        x,
+        y,
+        r,
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+    ) {
         super(x, y, r, 320, now);
-        if (typeof SoundEngine !== 'undefined' && SoundEngine && typeof SoundEngine.nukeExplosion === 'function') {
+        if (
+            typeof SoundEngine !== 'undefined' &&
+            SoundEngine &&
+            typeof SoundEngine.nukeExplosion === 'function'
+        ) {
             SoundEngine.nukeExplosion();
         }
     }
@@ -191,18 +262,34 @@ class NukeExplosion extends ExplosionVFX {
      * @param {number} [now]
      * @param {CanvasRenderingContext2D} [targetContext]
      */
-    draw(now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), targetContext) {
-        const renderCtx = targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+    draw(
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        targetContext,
+    ) {
+        const renderCtx =
+            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
         if (!renderCtx) return;
 
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         const t = this.getProgress(curTime);
         const currentR = this.getCurrentRadius(curTime);
 
         renderCtx.save();
 
         if (currentR > 0.01) {
-            const grad = renderCtx.createRadialGradient(this.x, this.y, 0, this.x, this.y, currentR);
+            const grad = renderCtx.createRadialGradient(
+                this.x,
+                this.y,
+                0,
+                this.x,
+                this.y,
+                currentR,
+            );
             grad.addColorStop(0, '#ff4422');
             grad.addColorStop(0.8, '#ff2200');
             grad.addColorStop(1.0, '#aa0000');
@@ -219,7 +306,7 @@ class NukeExplosion extends ExplosionVFX {
         // Outer thick glowing red border
         renderCtx.strokeStyle = '#ff1100';
         renderCtx.lineWidth = Math.max(0.1, 10 * (1 - t));
-        renderCtx.globalAlpha = Math.max(0, Math.min(1, 0.90 * (1 - t)));
+        renderCtx.globalAlpha = Math.max(0, Math.min(1, 0.9 * (1 - t)));
         renderCtx.beginPath();
         renderCtx.arc(this.x, this.y, currentR, 0, Math.PI * 2);
         renderCtx.stroke();
@@ -246,7 +333,12 @@ class FreezeBlastVisual extends ExplosionVFX {
      * @param {number} r
      * @param {number} [now]
      */
-    constructor(x, y, r, now = (typeof gameClock !== 'undefined' ? gameClock : performance.now())) {
+    constructor(
+        x,
+        y,
+        r,
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+    ) {
         super(x, y, r, 320, now);
     }
 
@@ -254,18 +346,34 @@ class FreezeBlastVisual extends ExplosionVFX {
      * @param {number} [now]
      * @param {CanvasRenderingContext2D} [targetContext]
      */
-    draw(now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), targetContext) {
-        const renderCtx = targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+    draw(
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        targetContext,
+    ) {
+        const renderCtx =
+            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
         if (!renderCtx) return;
 
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         const t = this.getProgress(curTime);
         const currentR = this.getCurrentRadius(curTime);
 
         renderCtx.save();
 
         if (currentR > 0.01) {
-            const grad = renderCtx.createRadialGradient(this.x, this.y, 0, this.x, this.y, currentR);
+            const grad = renderCtx.createRadialGradient(
+                this.x,
+                this.y,
+                0,
+                this.x,
+                this.y,
+                currentR,
+            );
             grad.addColorStop(0, '#00ffff');
             grad.addColorStop(0.8, '#0088ff');
             grad.addColorStop(1.0, '#0033cc');
@@ -282,7 +390,7 @@ class FreezeBlastVisual extends ExplosionVFX {
         // Outer thick glowing blue border
         renderCtx.strokeStyle = '#0066ff';
         renderCtx.lineWidth = Math.max(0.1, 10 * (1 - t));
-        renderCtx.globalAlpha = Math.max(0, Math.min(1, 0.90 * (1 - t)));
+        renderCtx.globalAlpha = Math.max(0, Math.min(1, 0.9 * (1 - t)));
         renderCtx.beginPath();
         renderCtx.arc(this.x, this.y, currentR, 0, Math.PI * 2);
         renderCtx.stroke();
@@ -315,7 +423,14 @@ class InstantHitImpact extends CombatVFX {
      * @param {number} [now]
      * @param {number} [monsterR=14] - Target radius
      */
-    constructor(x, y, hitAngle, color, now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), monsterR = 14) {
+    constructor(
+        x,
+        y,
+        hitAngle,
+        color,
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        monsterR = 14,
+    ) {
         super(x, y, 95, now);
         this.hitAngle = hitAngle;
         this.color = color || '#00ffff';
@@ -326,11 +441,20 @@ class InstantHitImpact extends CombatVFX {
      * @param {number} [now]
      * @param {CanvasRenderingContext2D} [targetContext]
      */
-    draw(now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), targetContext) {
-        const renderCtx = targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+    draw(
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        targetContext,
+    ) {
+        const renderCtx =
+            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
         if (!renderCtx) return;
 
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         const t = this.getProgress(curTime);
         const alpha = 1 - t;
 
@@ -340,7 +464,8 @@ class InstantHitImpact extends CombatVFX {
         renderCtx.rotate(this.hitAngle + Math.PI);
 
         // 1. Narrow piercing spike / lance penetrating into the monster
-        const pierceLen = (14 + Math.min(20, this.monsterR * 0.7)) * (0.85 + t * 0.25);
+        const pierceLen =
+            (14 + Math.min(20, this.monsterR * 0.7)) * (0.85 + t * 0.25);
         renderCtx.lineCap = 'round';
         renderCtx.strokeStyle = this.color;
         renderCtx.globalAlpha = 0.35 * alpha;
@@ -406,7 +531,15 @@ class InstantMuzzleFlash extends CombatVFX {
      * @param {Unit} [source=null]
      * @param {number} [shooterRadius=14]
      */
-    constructor(x, y, shootAngle, color, now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), source = null, shooterRadius = 14) {
+    constructor(
+        x,
+        y,
+        shootAngle,
+        color,
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        source = null,
+        shooterRadius = 14,
+    ) {
         super(x, y, 80, now);
         this.shootAngle = shootAngle;
         this.color = color || '#00ffff';
@@ -418,11 +551,20 @@ class InstantMuzzleFlash extends CombatVFX {
      * @param {number} [now]
      * @param {CanvasRenderingContext2D} [targetContext]
      */
-    draw(now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), targetContext) {
-        const renderCtx = targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+    draw(
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        targetContext,
+    ) {
+        const renderCtx =
+            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
         if (!renderCtx) return;
 
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         const t = this.getProgress(curTime);
         const alpha = 1 - t;
 
@@ -430,8 +572,10 @@ class InstantMuzzleFlash extends CombatVFX {
         let drawX = this.x;
         let drawY = this.y;
         if (this.source && (this.source.hp > 0 || this.source.alive)) {
-            drawX = this.source.x + Math.cos(this.shootAngle) * this.shooterRadius;
-            drawY = this.source.y + Math.sin(this.shootAngle) * this.shooterRadius;
+            drawX =
+                this.source.x + Math.cos(this.shootAngle) * this.shooterRadius;
+            drawY =
+                this.source.y + Math.sin(this.shootAngle) * this.shooterRadius;
         }
 
         renderCtx.save();
@@ -471,9 +615,15 @@ class InstantMuzzleFlash extends CombatVFX {
         renderCtx.globalAlpha = 0.75 * alpha;
         renderCtx.beginPath();
         renderCtx.moveTo(0, 0);
-        renderCtx.lineTo(Math.cos(flareSpread) * flareLen, Math.sin(flareSpread) * flareLen);
+        renderCtx.lineTo(
+            Math.cos(flareSpread) * flareLen,
+            Math.sin(flareSpread) * flareLen,
+        );
         renderCtx.moveTo(0, 0);
-        renderCtx.lineTo(Math.cos(-flareSpread) * flareLen, Math.sin(-flareSpread) * flareLen);
+        renderCtx.lineTo(
+            Math.cos(-flareSpread) * flareLen,
+            Math.sin(-flareSpread) * flareLen,
+        );
         renderCtx.stroke();
 
         // 4. Muzzle orifice flash dot
@@ -499,7 +649,15 @@ class SledgeHitVisual extends CombatVFX {
      * @param {number} [now]
      * @param {Player} [player]
      */
-    constructor(x, y, r, coneAngle, angle, now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), player = null) {
+    constructor(
+        x,
+        y,
+        r,
+        coneAngle,
+        angle,
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        player = null,
+    ) {
         super(x, y, 240, now);
         this.r = r;
         this.coneAngle = coneAngle;
@@ -511,22 +669,30 @@ class SledgeHitVisual extends CombatVFX {
      * @param {number} [now]
      * @param {CanvasRenderingContext2D} [targetContext]
      */
-    draw(now = (typeof gameClock !== 'undefined' ? gameClock : performance.now()), targetContext) {
-        const renderCtx = targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+    draw(
+        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        targetContext,
+    ) {
+        const renderCtx =
+            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
         if (!renderCtx) return;
 
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         const t = this.getProgress(curTime);
         const pColor = this.player ? this.player.color : '#00ffff';
         const ringColor = this.player ? this.player.ring : '#112222';
         const modifier = this.player ? this.player.meleeRangeModifier : 1.0;
 
         // Dynamically anchor to the moving player
-        const posX = (this.player && this.player.alive) ? this.player.x : this.x;
-        const posY = (this.player && this.player.alive) ? this.player.y : this.y;
+        const posX = this.player?.alive ? this.player.x : this.x;
+        const posY = this.player?.alive ? this.player.y : this.y;
 
         const handleW = 18 * modifier;
-        const headLength = this.r * 0.48;
         const handleLength = this.r * 0.52;
         const headWidth = this.r * 0.95;
 
@@ -537,10 +703,25 @@ class SledgeHitVisual extends CombatVFX {
 
         renderCtx.beginPath();
         renderCtx.moveTo(0, -handleW * 0.5);
-        renderCtx.quadraticCurveTo(handleLength * 0.5, -handleW * 0.7, handleLength, -headWidth * 0.45);
+        renderCtx.quadraticCurveTo(
+            handleLength * 0.5,
+            -handleW * 0.7,
+            handleLength,
+            -headWidth * 0.45,
+        );
         renderCtx.quadraticCurveTo(this.r * 0.85, -headWidth * 0.52, this.r, 0);
-        renderCtx.quadraticCurveTo(this.r * 0.85, headWidth * 0.52, handleLength, headWidth * 0.45);
-        renderCtx.quadraticCurveTo(handleLength * 0.5, handleW * 0.7, 0, handleW * 0.5);
+        renderCtx.quadraticCurveTo(
+            this.r * 0.85,
+            headWidth * 0.52,
+            handleLength,
+            headWidth * 0.45,
+        );
+        renderCtx.quadraticCurveTo(
+            handleLength * 0.5,
+            handleW * 0.7,
+            0,
+            handleW * 0.5,
+        );
         renderCtx.closePath();
 
         renderCtx.fillStyle = pColor;
@@ -577,10 +758,20 @@ class SledgeHitVisual extends CombatVFX {
             renderCtx.beginPath();
             // Left branch
             renderCtx.moveTo(this.r * 0.75, 0);
-            renderCtx.quadraticCurveTo(this.r * 0.88, -headWidth * 0.28 * branchT, this.r * 0.95, -headWidth * 0.42 * branchT);
+            renderCtx.quadraticCurveTo(
+                this.r * 0.88,
+                -headWidth * 0.28 * branchT,
+                this.r * 0.95,
+                -headWidth * 0.42 * branchT,
+            );
             // Right branch
             renderCtx.moveTo(this.r * 0.75, 0);
-            renderCtx.quadraticCurveTo(this.r * 0.88, headWidth * 0.28 * branchT, this.r * 0.95, headWidth * 0.42 * branchT);
+            renderCtx.quadraticCurveTo(
+                this.r * 0.88,
+                headWidth * 0.28 * branchT,
+                this.r * 0.95,
+                headWidth * 0.42 * branchT,
+            );
             renderCtx.stroke();
         }
         renderCtx.restore();
@@ -593,18 +784,25 @@ class SledgeHitVisual extends CombatVFX {
         const shockR = this.r * (0.35 + 0.65 * t);
         renderCtx.strokeStyle = '#ffffff';
         renderCtx.lineWidth = 3.5 * (1 - t);
-        renderCtx.globalAlpha = 0.80 * (1 - t);
+        renderCtx.globalAlpha = 0.8 * (1 - t);
         renderCtx.beginPath();
-        renderCtx.arc(this.r * 0.65, 0, shockR * 0.45, -Math.PI * 0.45, Math.PI * 0.45);
+        renderCtx.arc(
+            this.r * 0.65,
+            0,
+            shockR * 0.45,
+            -Math.PI * 0.45,
+            Math.PI * 0.45,
+        );
         renderCtx.stroke();
         renderCtx.restore();
 
         // 4. Massive Muscular Cytoplasmic Hammer Limb (Crushing Bio-Slam)
         const slamT = Math.min(1, t / 0.38);
         const swingEase = Math.sin(slamT * Math.PI * 0.5);
-        const currentSwingAngle = this.angle - (1 - swingEase) * (Math.PI * 0.35);
+        const currentSwingAngle =
+            this.angle - (1 - swingEase) * (Math.PI * 0.35);
 
-        const armReach = (this.r * 0.82) * (0.55 + 0.45 * swingEase);
+        const armReach = this.r * 0.82 * (0.55 + 0.45 * swingEase);
         const hx = posX + Math.cos(currentSwingAngle) * armReach;
         const hy = posY + Math.sin(currentSwingAngle) * armReach;
 
@@ -616,17 +814,30 @@ class SledgeHitVisual extends CombatVFX {
         const midW = 15 * modifier * (1 - t * 0.35);
 
         renderCtx.beginPath();
-        renderCtx.moveTo(posX + armNormX * (baseW * 0.5), posY + armNormY * (baseW * 0.5));
+        renderCtx.moveTo(
+            posX + armNormX * (baseW * 0.5),
+            posY + armNormY * (baseW * 0.5),
+        );
         renderCtx.quadraticCurveTo(
-            posX + Math.cos(currentSwingAngle) * (armReach * 0.5) + armNormX * (midW * 0.5),
-            posY + Math.sin(currentSwingAngle) * (armReach * 0.5) + armNormY * (midW * 0.5),
-            hx + armNormX * 10, hy + armNormY * 10
+            posX +
+                Math.cos(currentSwingAngle) * (armReach * 0.5) +
+                armNormX * (midW * 0.5),
+            posY +
+                Math.sin(currentSwingAngle) * (armReach * 0.5) +
+                armNormY * (midW * 0.5),
+            hx + armNormX * 10,
+            hy + armNormY * 10,
         );
         renderCtx.lineTo(hx - armNormX * 10, hy - armNormY * 10);
         renderCtx.quadraticCurveTo(
-            posX + Math.cos(currentSwingAngle) * (armReach * 0.5) - armNormX * (midW * 0.5),
-            posY + Math.sin(currentSwingAngle) * (armReach * 0.5) - armNormY * (midW * 0.5),
-            posX - armNormX * (baseW * 0.5), posY - armNormY * (baseW * 0.5)
+            posX +
+                Math.cos(currentSwingAngle) * (armReach * 0.5) -
+                armNormX * (midW * 0.5),
+            posY +
+                Math.sin(currentSwingAngle) * (armReach * 0.5) -
+                armNormY * (midW * 0.5),
+            posX - armNormX * (baseW * 0.5),
+            posY - armNormY * (baseW * 0.5),
         );
         renderCtx.closePath();
 
@@ -641,10 +852,15 @@ class SledgeHitVisual extends CombatVFX {
         renderCtx.translate(hx, hy);
         renderCtx.rotate(currentSwingAngle);
 
-        const headR = (25 * modifier) * (1 - t * 0.25);
+        const headR = 25 * modifier * (1 - t * 0.25);
         renderCtx.beginPath();
         renderCtx.arc(0, 0, headR, -Math.PI * 0.5, Math.PI * 0.5);
-        renderCtx.quadraticCurveTo(headR * 0.4, headR * 0.7, -headR * 0.6, headR * 0.4);
+        renderCtx.quadraticCurveTo(
+            headR * 0.4,
+            headR * 0.7,
+            -headR * 0.6,
+            headR * 0.4,
+        );
         renderCtx.lineTo(-headR * 0.6, -headR * 0.4);
         renderCtx.quadraticCurveTo(headR * 0.4, -headR * 0.7, 0, -headR * 0.5);
         renderCtx.closePath();
@@ -659,15 +875,16 @@ class SledgeHitVisual extends CombatVFX {
         // Hardened chitinous impact crests on the forward striking face
         renderCtx.strokeStyle = '#ffffff';
         renderCtx.lineWidth = 2.0;
-        renderCtx.globalAlpha = 0.80 * (1 - t * 0.5);
+        renderCtx.globalAlpha = 0.8 * (1 - t * 0.5);
         renderCtx.beginPath();
         renderCtx.arc(0, 0, headR * 0.92, -Math.PI * 0.35, Math.PI * 0.35);
         renderCtx.stroke();
 
         // Glowing internal organelle core (flashes bright on impact)
-        const coreFlash = (t >= 0.25 && t <= 0.65) ? (1 - Math.abs(t - 0.45) / 0.20) : 0;
+        const coreFlash =
+            t >= 0.25 && t <= 0.65 ? 1 - Math.abs(t - 0.45) / 0.2 : 0;
         renderCtx.fillStyle = '#ffffff';
-        renderCtx.globalAlpha = 0.70 + 0.30 * coreFlash;
+        renderCtx.globalAlpha = 0.7 + 0.3 * coreFlash;
         renderCtx.beginPath();
         renderCtx.arc(0, 0, 5.5 + 4.0 * coreFlash, 0, Math.PI * 2);
         renderCtx.fill();
@@ -697,6 +914,6 @@ if (typeof module !== 'undefined' && module.exports) {
         FreezeBlastVisual,
         InstantHitImpact,
         InstantMuzzleFlash,
-        SledgeHitVisual
+        SledgeHitVisual,
     };
 }

@@ -6,9 +6,9 @@
 /**
  * Cache for calculated organic blob contour points to eliminate redundant computation per frame.
  */
-let _blobPathCache = {
+const _blobPathCache = {
     key: '',
-    points: []
+    points: [],
 };
 
 /**
@@ -54,7 +54,7 @@ function drawOrganicBlobPath(
     mineLaunchDeform = null,
     rocketDeform = null,
     dashLaunchDeform = null,
-    laserSnailDeform = null
+    laserSnailDeform = null,
 ) {
     const segments = 32;
     const cacheKey = `${centerX.toFixed(1)}_${centerY.toFixed(1)}_${radius.toFixed(1)}_${now.toFixed(1)}_${facingAngle.toFixed(2)}_${moveSpeed.toFixed(2)}`;
@@ -66,17 +66,20 @@ function drawOrganicBlobPath(
         points = [];
         for (let i = 0; i < segments; i++) {
             const angle = (i / segments) * Math.PI * 2;
-            
+
             // 1. Viscous liquid breathing ripples
             const wave1 = Math.sin(now * 0.0035 + angle * 2) * (radius * 0.05);
             const wave2 = Math.cos(now * 0.0055 - angle * 3) * (radius * 0.035);
-            
+
             // 2. Velocity elongation / compression (squash & stretch in movement direction)
             let stretch = 0;
             if (moveSpeed > 0) {
                 const angleDiff = angle - facingAngle;
                 // Stretch along facingAngle, compress perpendicular
-                stretch = Math.cos(angleDiff * 2) * Math.min(0.22, moveSpeed * 0.04) * radius;
+                stretch =
+                    Math.cos(angleDiff * 2) *
+                    Math.min(0.22, moveSpeed * 0.04) *
+                    radius;
             }
 
             // 3. Budding protrusions (lava lamp surface pulling towards separating daughter drops)
@@ -88,7 +91,9 @@ function drawOrganicBlobPath(
                     while (diff < -Math.PI) diff += Math.PI * 2;
                     const distAngle = Math.abs(diff);
                     if (distAngle < Math.PI * 0.45) {
-                        const factor = Math.cos(distAngle * (Math.PI / (Math.PI * 0.45)));
+                        const factor = Math.cos(
+                            distAngle * (Math.PI / (Math.PI * 0.45)),
+                        );
                         const elapsed = now - bud.time;
                         if (elapsed < bud.duration) {
                             const progress = elapsed / bud.duration;
@@ -106,7 +111,7 @@ function drawOrganicBlobPath(
                 while (diff > Math.PI) diff -= Math.PI * 2;
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 const distAngle = Math.abs(diff);
-                const hw = pseudopod.halfWidth || 0.40;
+                const hw = pseudopod.halfWidth || 0.4;
                 if (distAngle < hw) {
                     // Main protruding pseudopod arm (tighter, leaner profile)
                     const tNorm = distAngle / hw; // 0 at center, 1 at base
@@ -118,17 +123,19 @@ function drawOrganicBlobPath(
                     const cosDiff = Math.cos(distAngle);
                     if (cosDiff > 0) {
                         // Flank pull
-                        pseudopodOffset = (pseudopod.reach * 0.12) * Math.sin(distAngle * 2);
+                        pseudopodOffset =
+                            pseudopod.reach * 0.12 * Math.sin(distAngle * 2);
                     } else {
                         // Rear suction / indentation (volume conservation)
-                        pseudopodOffset = -(pseudopod.reach * 0.22) * Math.pow(-cosDiff, 1.5);
+                        pseudopodOffset =
+                            -(pseudopod.reach * 0.22) * Math.pow(-cosDiff, 1.5);
                     }
                 }
             }
 
             // 5. Flagellum Tail Root Deformation (muscular socket pulled by whip tension)
             let flagellumOffset = 0;
-            if (flagellum && flagellum.active && flagellum.tension > 0) {
+            if (flagellum?.active && flagellum.tension > 0) {
                 let diff = angle - flagellum.angle;
                 while (diff > Math.PI) diff -= Math.PI * 2;
                 while (diff < -Math.PI) diff += Math.PI * 2;
@@ -137,7 +144,10 @@ function drawOrganicBlobPath(
                 if (distAngle < hw) {
                     const tNorm = distAngle / hw;
                     const factor = Math.cos(tNorm * Math.PI * 0.5);
-                    flagellumOffset = flagellum.tension * (radius * 0.22) * Math.pow(factor, 2.0);
+                    flagellumOffset =
+                        flagellum.tension *
+                        (radius * 0.22) *
+                        Math.pow(factor, 2.0);
                 }
             }
 
@@ -154,7 +164,10 @@ function drawOrganicBlobPath(
                     if (distAngle < hw) {
                         const tNorm = distAngle / hw;
                         const factor = Math.cos(tNorm * Math.PI * 0.5);
-                        deflectorOffset += root.growth * (radius * 0.14) * Math.pow(factor, 2.0);
+                        deflectorOffset +=
+                            root.growth *
+                            (radius * 0.14) *
+                            Math.pow(factor, 2.0);
                     }
                 }
             }
@@ -166,22 +179,31 @@ function drawOrganicBlobPath(
                 while (diff > Math.PI) diff -= Math.PI * 2;
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 const distAngle = Math.abs(diff);
-                
+
                 // Along the shot direction: violent long snout elongation (up to 3.2x radius extension)
                 const hw = 0.44;
                 if (distAngle < hw) {
                     const tNorm = distAngle / hw;
                     const factor = Math.cos(tNorm * Math.PI * 0.5);
-                    sniperOffset += sniperDeform.intensity * (radius * 3.2) * Math.pow(factor, 2.4);
+                    sniperOffset +=
+                        sniperDeform.intensity *
+                        (radius * 3.2) *
+                        Math.pow(factor, 2.4);
                 } else {
                     // Violent lateral constriction (flanks pull in tight) and rear volume suction
                     const cosDiff = Math.cos(distAngle);
                     if (cosDiff > 0) {
                         // Flank suction / pinch
-                        sniperOffset -= sniperDeform.intensity * (radius * 0.48) * Math.sin(distAngle * 2);
+                        sniperOffset -=
+                            sniperDeform.intensity *
+                            (radius * 0.48) *
+                            Math.sin(distAngle * 2);
                     } else {
                         // Rear collapse / indentation
-                        sniperOffset -= sniperDeform.intensity * (radius * 0.35) * Math.pow(-cosDiff, 1.8);
+                        sniperOffset -=
+                            sniperDeform.intensity *
+                            (radius * 0.35) *
+                            Math.pow(-cosDiff, 1.8);
                     }
                 }
             }
@@ -199,12 +221,18 @@ function drawOrganicBlobPath(
                 if (distAngle < hw) {
                     const tNorm = distAngle / hw;
                     const factor = Math.cos(tNorm * Math.PI * 0.5);
-                    hatchOffset += hatchDeform.intensity * (radius * 0.85) * Math.pow(factor, 1.6);
+                    hatchOffset +=
+                        hatchDeform.intensity *
+                        (radius * 0.85) *
+                        Math.pow(factor, 1.6);
                 } else {
                     // Reactive body constriction
                     const cosDiff = Math.cos(distAngle);
                     if (cosDiff > 0) {
-                        hatchOffset -= hatchDeform.intensity * (radius * 0.25) * Math.sin(distAngle * 2);
+                        hatchOffset -=
+                            hatchDeform.intensity *
+                            (radius * 0.25) *
+                            Math.sin(distAngle * 2);
                     }
                 }
             }
@@ -220,9 +248,15 @@ function drawOrganicBlobPath(
                 // Frontal compression flattening + violent lateral outward expulsion
                 const cosDiff = Math.cos(distAngle);
                 if (cosDiff > 0) {
-                    sledgeOffset -= sledgeDeform.intensity * (radius * 0.40) * Math.pow(cosDiff, 2.0);
+                    sledgeOffset -=
+                        sledgeDeform.intensity *
+                        (radius * 0.4) *
+                        Math.pow(cosDiff, 2.0);
                 } else {
-                    sledgeOffset += sledgeDeform.intensity * (radius * 0.30) * Math.sin(distAngle * 2);
+                    sledgeOffset +=
+                        sledgeDeform.intensity *
+                        (radius * 0.3) *
+                        Math.sin(distAngle * 2);
                 }
             }
 
@@ -234,11 +268,14 @@ function drawOrganicBlobPath(
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 const distAngle = Math.abs(diff);
 
-                const hw = 0.50;
+                const hw = 0.5;
                 if (distAngle < hw) {
                     const tNorm = distAngle / hw;
                     const factor = Math.cos(tNorm * Math.PI * 0.5);
-                    mineLaunchOffset += mineLaunchDeform.intensity * (radius * 0.70) * Math.pow(factor, 1.8);
+                    mineLaunchOffset +=
+                        mineLaunchDeform.intensity *
+                        (radius * 0.7) *
+                        Math.pow(factor, 1.8);
                 }
             }
 
@@ -254,7 +291,10 @@ function drawOrganicBlobPath(
                 if (distAngle < hw) {
                     const tNorm = distAngle / hw;
                     const factor = Math.cos(tNorm * Math.PI * 0.5);
-                    rocketOffset += rocketDeform.intensity * (radius * 0.60) * Math.pow(factor, 1.8);
+                    rocketOffset +=
+                        rocketDeform.intensity *
+                        (radius * 0.6) *
+                        Math.pow(factor, 1.8);
                 }
             }
 
@@ -271,16 +311,22 @@ function drawOrganicBlobPath(
                 if (distAngle < hwFwd) {
                     const tNorm = distAngle / hwFwd;
                     const factor = Math.cos(tNorm * Math.PI * 0.5);
-                    dashLaunchOffset += dashLaunchDeform.intensity * (radius * 0.65) * Math.pow(factor, 1.8);
+                    dashLaunchOffset +=
+                        dashLaunchDeform.intensity *
+                        (radius * 0.65) *
+                        Math.pow(factor, 1.8);
                 }
 
                 // Rear muscular socket elongation towards start location
                 const rearDiff = Math.abs(Math.PI - distAngle);
-                const hwRear = 0.50;
+                const hwRear = 0.5;
                 if (rearDiff < hwRear) {
                     const tNorm = rearDiff / hwRear;
                     const factor = Math.cos(tNorm * Math.PI * 0.5);
-                    dashLaunchOffset += dashLaunchDeform.intensity * (radius * 0.55) * Math.pow(factor, 1.8);
+                    dashLaunchOffset +=
+                        dashLaunchDeform.intensity *
+                        (radius * 0.55) *
+                        Math.pow(factor, 1.8);
                 }
             }
 
@@ -294,7 +340,10 @@ function drawOrganicBlobPath(
                     const rearReach = radius * 0.55;
                     const targetDist = Math.hypot(rearReach, 22);
                     const tailAngleOffset = Math.atan2(22, rearReach);
-                    const tailExtension = Math.max(radius * 0.55, targetDist - radius + 4);
+                    const tailExtension = Math.max(
+                        radius * 0.55,
+                        targetDist - radius + 4,
+                    );
 
                     // 1. Left and right lateral tail peaks
                     for (const side of [-1, 1]) {
@@ -307,8 +356,14 @@ function drawOrganicBlobPath(
                         const hwTail = Math.PI * 0.22;
                         if (distSide < hwTail) {
                             const tNorm = distSide / hwTail;
-                            const tipFactor = Math.pow(Math.cos(tNorm * Math.PI * 0.5), 2.8);
-                            laserSnailOffset += laserSnailDeform.intensity * tailExtension * tipFactor;
+                            const tipFactor = Math.pow(
+                                Math.cos(tNorm * Math.PI * 0.5),
+                                2.8,
+                            );
+                            laserSnailOffset +=
+                                laserSnailDeform.intensity *
+                                tailExtension *
+                                tipFactor;
                         }
                     }
 
@@ -321,7 +376,10 @@ function drawOrganicBlobPath(
                     if (distCenter < hwCenter) {
                         const tNorm = distCenter / hwCenter;
                         const notchDepth = Math.cos(tNorm * Math.PI * 0.5);
-                        laserSnailOffset -= laserSnailDeform.intensity * (radius * 0.16) * notchDepth;
+                        laserSnailOffset -=
+                            laserSnailDeform.intensity *
+                            (radius * 0.16) *
+                            notchDepth;
                     }
 
                     // 3. Smooth rounded forward dome bulb (distAngle > 0.65*PI)
@@ -332,7 +390,10 @@ function drawOrganicBlobPath(
                     if (distFwd < Math.PI * 0.35) {
                         const domeT = distFwd / (Math.PI * 0.35);
                         const domeBulb = Math.cos(domeT * Math.PI * 0.5);
-                        laserSnailOffset += laserSnailDeform.intensity * (radius * 0.05) * domeBulb;
+                        laserSnailOffset +=
+                            laserSnailDeform.intensity *
+                            (radius * 0.05) *
+                            domeBulb;
                     }
                 } else {
                     // Single central teardrop tail
@@ -342,35 +403,66 @@ function drawOrganicBlobPath(
                     const distAngle = Math.abs(diff);
 
                     // 1. Sharp, very thin teardrop pointed tail apex at the rear (tight angular profile)
-                    const hwTail = Math.PI * 0.20;
+                    const hwTail = Math.PI * 0.2;
                     if (distAngle < hwTail) {
                         const tNorm = distAngle / hwTail;
-                        const tipFactor = Math.pow(Math.cos(tNorm * Math.PI * 0.5), 3.8);
-                        laserSnailOffset += laserSnailDeform.intensity * (radius * 0.48) * tipFactor;
+                        const tipFactor = Math.pow(
+                            Math.cos(tNorm * Math.PI * 0.5),
+                            3.8,
+                        );
+                        laserSnailOffset +=
+                            laserSnailDeform.intensity *
+                            (radius * 0.48) *
+                            tipFactor;
                     }
 
                     // 2. Concave inward slope on shoulders/waist (distAngle between 0.12*PI and 0.55*PI)
                     const minWaist = Math.PI * 0.12;
                     const maxWaist = Math.PI * 0.55;
                     if (distAngle >= minWaist && distAngle <= maxWaist) {
-                        const waistT = (distAngle - minWaist) / (maxWaist - minWaist);
+                        const waistT =
+                            (distAngle - minWaist) / (maxWaist - minWaist);
                         const waistPinch = Math.sin(waistT * Math.PI);
-                        laserSnailOffset -= laserSnailDeform.intensity * (radius * 0.10) * waistPinch;
+                        laserSnailOffset -=
+                            laserSnailDeform.intensity *
+                            (radius * 0.1) *
+                            waistPinch;
                     }
 
                     // 3. Smooth rounded forward dome bulb (distAngle > 0.65*PI)
                     if (distAngle > Math.PI * 0.65) {
-                        const domeT = (distAngle - Math.PI * 0.65) / (Math.PI * 0.35);
+                        const domeT =
+                            (distAngle - Math.PI * 0.65) / (Math.PI * 0.35);
                         const domeBulb = Math.sin(domeT * Math.PI);
-                        laserSnailOffset += laserSnailDeform.intensity * (radius * 0.05) * domeBulb;
+                        laserSnailOffset +=
+                            laserSnailDeform.intensity *
+                            (radius * 0.05) *
+                            domeBulb;
                     }
                 }
             }
-            
-            const r = Math.max(2, radius + wave1 + wave2 + stretch + budOffset + pseudopodOffset + flagellumOffset + deflectorOffset + sniperOffset + hatchOffset + sledgeOffset + mineLaunchOffset + rocketOffset + dashLaunchOffset + laserSnailOffset);
+
+            const r = Math.max(
+                2,
+                radius +
+                    wave1 +
+                    wave2 +
+                    stretch +
+                    budOffset +
+                    pseudopodOffset +
+                    flagellumOffset +
+                    deflectorOffset +
+                    sniperOffset +
+                    hatchOffset +
+                    sledgeOffset +
+                    mineLaunchOffset +
+                    rocketOffset +
+                    dashLaunchOffset +
+                    laserSnailOffset,
+            );
             points.push({
                 x: centerX + Math.cos(angle) * r,
-                y: centerY + Math.sin(angle) * r
+                y: centerY + Math.sin(angle) * r,
             });
         }
         _blobPathCache.key = cacheKey;
@@ -381,14 +473,14 @@ function drawOrganicBlobPath(
     ctx.beginPath();
     const firstMid = {
         x: (points[0].x + points[segments - 1].x) / 2,
-        y: (points[0].y + points[segments - 1].y) / 2
+        y: (points[0].y + points[segments - 1].y) / 2,
     };
     ctx.moveTo(firstMid.x, firstMid.y);
     for (let i = 0; i < segments; i++) {
         const next = points[(i + 1) % segments];
         const mid = {
             x: (points[i].x + next.x) / 2,
-            y: (points[i].y + next.y) / 2
+            y: (points[i].y + next.y) / 2,
         };
         ctx.quadraticCurveTo(points[i].x, points[i].y, mid.x, mid.y);
     }
@@ -403,6 +495,6 @@ if (typeof window !== 'undefined') {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-        drawOrganicBlobPath
+        drawOrganicBlobPath,
     };
 }

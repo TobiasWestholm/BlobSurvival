@@ -23,7 +23,8 @@ class Entity {
 
     collidesWith(other, extraPadding = 0) {
         if (!other || !this.isAlive()) return false;
-        const isOtherAlive = typeof other.isAlive === 'function' ? other.isAlive() : other.alive;
+        const isOtherAlive =
+            typeof other.isAlive === 'function' ? other.isAlive() : other.alive;
         if (!isOtherAlive) return false;
         const maxDist = this.r + (other.r || 0) + extraPadding;
         return this.distanceToSq(other) <= maxDist * maxDist;
@@ -34,7 +35,13 @@ class Entity {
         return Math.atan2((other.y || 0) - this.y, (other.x || 0) - this.x);
     }
 
-    clampToArena(minX = 0, minY = 0, maxX = (typeof W !== 'undefined' ? W : 1512), maxY = (typeof H !== 'undefined' ? H : 900), margin = 0) {
+    clampToArena(
+        minX = 0,
+        minY = 0,
+        maxX = typeof W !== 'undefined' ? W : 1512,
+        maxY = typeof H !== 'undefined' ? H : 900,
+        margin = 0,
+    ) {
         const rad = this.r + margin;
         this.x = Math.max(minX + rad, Math.min(maxX - rad, this.x));
         this.y = Math.max(minY + rad, Math.min(maxY - rad, this.y));
@@ -50,7 +57,8 @@ class Entity {
         for (let i = 0; i < entities.length; i++) {
             const e = entities[i];
             if (!e) continue;
-            const isAlive = typeof e.isAlive === 'function' ? e.isAlive() : e.alive;
+            const isAlive =
+                typeof e.isAlive === 'function' ? e.isAlive() : e.alive;
             if (!isAlive) continue;
             if (filterFn && !filterFn(e)) continue;
             const d2 = source.distanceToSq(e);

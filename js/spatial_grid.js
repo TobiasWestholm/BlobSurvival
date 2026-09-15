@@ -1,6 +1,6 @@
 /**
  * BlobSurvival - 2D Spatial Partitioning Grid & Collision Geometry
- * 
+ *
  * Provides O(1) local enemy queries for projectiles, hazards, and AoE weapons,
  * reducing collision checks across hundreds of active entities by over 95%.
  * Also encapsulates 2D spatial math, raycasting, and obstacle intersection algorithms.
@@ -14,7 +14,7 @@ const SPATIAL_GRID = {
     cols: 0,
     rows: 0,
     cells: [],
-    
+
     init(w, h) {
         this.cols = Math.ceil((w || 1512) * this.invCellSize) + 2;
         this.rows = Math.ceil((h || 900) * this.invCellSize) + 2;
@@ -24,57 +24,59 @@ const SPATIAL_GRID = {
             for (let i = 0; i < total; i++) this.cells[i] = [];
         }
     },
-    
+
     clear() {
         const total = this.cols * this.rows;
         for (let i = 0; i < total; i++) {
             if (this.cells[i]) this.cells[i].length = 0;
         }
     },
-    
+
     rebuild() {
         const total = this.cols * this.rows;
         if (total === 0 || this.cells.length < total) {
-            const curW = (typeof W !== "undefined") ? W : 1512;
-            const curH = (typeof H !== "undefined") ? H : 900;
+            const curW = typeof W !== 'undefined' ? W : 1512;
+            const curH = typeof H !== 'undefined' ? H : 900;
             this.init(curW, curH);
         }
         this.clear();
-        if (typeof GAME_STATE === "undefined" || !GAME_STATE.enemies) return;
+        if (typeof GAME_STATE === 'undefined' || !GAME_STATE.enemies) return;
         const enemies = GAME_STATE.enemies;
         const count = enemies.length;
         const inv = this.invCellSize;
         const cols = this.cols;
         const rows = this.rows;
-        
+
         for (let i = 0; i < count; i++) {
             const e = enemies[i];
             if (e.hp <= 0) continue;
             let cx = Math.floor(e.x * inv) + 1;
             let cy = Math.floor(e.y * inv) + 1;
-            if (cx < 0) cx = 0; else if (cx >= cols) cx = cols - 1;
-            if (cy < 0) cy = 0; else if (cy >= rows) cy = rows - 1;
-            
+            if (cx < 0) cx = 0;
+            else if (cx >= cols) cx = cols - 1;
+            if (cy < 0) cy = 0;
+            else if (cy >= rows) cy = rows - 1;
+
             this.cells[cy * cols + cx].push(e);
         }
     },
-    
+
     queryBox(minX, maxX, minY, maxY, callback) {
         const inv = this.invCellSize;
         const cols = this.cols;
         const rows = this.rows;
         if (cols === 0 || rows === 0) return true;
-        
+
         let minCX = Math.floor(minX * inv) + 1;
         let maxCX = Math.floor(maxX * inv) + 1;
         let minCY = Math.floor(minY * inv) + 1;
         let maxCY = Math.floor(maxY * inv) + 1;
-        
+
         if (minCX < 0) minCX = 0;
         if (maxCX >= cols) maxCX = cols - 1;
         if (minCY < 0) minCY = 0;
         if (maxCY >= rows) maxCY = rows - 1;
-        
+
         for (let cy = minCY; cy <= maxCY; cy++) {
             const rowOffset = cy * cols;
             for (let cx = minCX; cx <= maxCX; cx++) {
@@ -94,7 +96,7 @@ const SPATIAL_GRID = {
 
     queryCircle(x, y, radius, callback) {
         const pad = radius + this.MAX_ENEMY_RADIUS;
-        return this.queryBox(x - pad, x + pad, y - pad, y + pad, e => {
+        return this.queryBox(x - pad, x + pad, y - pad, y + pad, (e) => {
             const dx = e.x - x;
             const dy = e.y - y;
             const touch = radius + (e.r || 0);
@@ -102,16 +104,18 @@ const SPATIAL_GRID = {
                 return callback(e);
             }
         });
-    }
+    },
 };
 
 // ---------------- 2D Spatial & Geometric Intersection Helpers ----------------
 
 function isOnPlayableArea(entity) {
     if (!entity) return false;
-    const curW = (typeof W !== "undefined") ? W : 1920;
-    const curH = (typeof H !== "undefined") ? H : 1080;
-    return (entity.x >= 0 && entity.x <= curW && entity.y >= 0 && entity.y <= curH);
+    const curW = typeof W !== 'undefined' ? W : 1920;
+    const curH = typeof H !== 'undefined' ? H : 1080;
+    return (
+        entity.x >= 0 && entity.x <= curW && entity.y >= 0 && entity.y <= curH
+    );
 }
 
 function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
@@ -124,7 +128,18 @@ function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
     return Math.hypot(px - projX, py - projY);
 }
 
-function testShieldArcHit(prevX, prevY, nextX, nextY, projR, cx, cy, arcRadius, facingAngle, halfArc = Math.PI * 0.5) {
+function testShieldArcHit(
+    prevX,
+    prevY,
+    nextX,
+    nextY,
+    projR,
+    cx,
+    cy,
+    arcRadius,
+    facingAngle,
+    halfArc = Math.PI * 0.5,
+) {
     const sR = arcRadius || 100;
     const facing = facingAngle || 0;
     const sArc = halfArc;
@@ -142,7 +157,10 @@ function testShieldArcHit(prevX, prevY, nextX, nextY, projR, cx, cy, arcRadius, 
         const disc = b * b - 4 * a * c;
         if (disc >= 0) {
             const sqrtDisc = Math.sqrt(disc);
-            const tValues = [(-b - sqrtDisc) / (2 * a), (-b + sqrtDisc) / (2 * a)];
+            const tValues = [
+                (-b - sqrtDisc) / (2 * a),
+                (-b + sqrtDisc) / (2 * a),
+            ];
             for (const t of tValues) {
                 if (t >= -0.05 && t <= 1.05) {
                     const ix = prevX + t * dx;
@@ -161,7 +179,8 @@ function testShieldArcHit(prevX, prevY, nextX, nextY, projR, cx, cy, arcRadius, 
     }
 
     // 2. Proximity check on the curved wall boundary at next position
-    const dx2 = nextX - cx, dy2 = nextY - cy;
+    const dx2 = nextX - cx,
+        dy2 = nextY - cy;
     const dist2 = Math.hypot(dx2, dy2);
     const wallThick = 4 + (projR || 2);
     if (Math.abs(dist2 - sR) <= wallThick) {
@@ -180,7 +199,8 @@ function testShieldArcHit(prevX, prevY, nextX, nextY, projR, cx, cy, arcRadius, 
         const tipAngle = facing + side * sArc;
         const tx = cx + Math.cos(tipAngle) * sR;
         const ty = cy + Math.sin(tipAngle) * sR;
-        const tdx = nextX - tx, tdy = nextY - ty;
+        const tdx = nextX - tx,
+            tdy = nextY - ty;
         if (tdx * tdx + tdy * tdy <= tipMinDist * tipMinDist) {
             return { hit: true, hitX: nextX, hitY: nextY, t: 1.0 };
         }
@@ -189,7 +209,18 @@ function testShieldArcHit(prevX, prevY, nextX, nextY, projR, cx, cy, arcRadius, 
     return { hit: false };
 }
 
-function testOrientedBoxHit(prevX, prevY, nextX, nextY, projR, boxX, boxY, halfW, halfH, angle) {
+function testOrientedBoxHit(
+    prevX,
+    prevY,
+    nextX,
+    nextY,
+    projR,
+    boxX,
+    boxY,
+    halfW,
+    halfH,
+    angle,
+) {
     const cos = Math.cos(-angle);
     const sin = Math.sin(-angle);
 
@@ -259,10 +290,11 @@ function testOrientedBoxHit(prevX, prevY, nextX, nextY, projR, boxX, boxY, halfW
 }
 
 function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
-    if (typeof GAME_STATE === "undefined") return { blocked: false };
-    const hasShieldBearers = GAME_STATE.shieldBearers && GAME_STATE.shieldBearers.length > 0;
+    if (typeof GAME_STATE === 'undefined') return { blocked: false };
+    const hasShieldBearers =
+        GAME_STATE.shieldBearers && GAME_STATE.shieldBearers.length > 0;
     const hasTerrains = GAME_STATE.terrains && GAME_STATE.terrains.length > 0;
-    const isBehemothActive = (GAME_STATE.activeBoss === "behemoth");
+    const isBehemothActive = GAME_STATE.activeBoss === 'behemoth';
 
     // O(1) Fast Exit: zero shields, zero obstacles on map -> no allocation, no loop
     if (!hasShieldBearers && !hasTerrains && !isBehemothActive) {
@@ -280,9 +312,20 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
             const sR = e.shieldRadius || 100;
             const sFacing = e.facingAngle || 0;
             const sHalfArc = e.shieldHalfArc || Math.PI * 0.5;
-            const test = testShieldArcHit(x1, y1, x2, y2, 2, e.x, e.y, sR, sFacing, sHalfArc);
+            const test = testShieldArcHit(
+                x1,
+                y1,
+                x2,
+                y2,
+                2,
+                e.x,
+                e.y,
+                sR,
+                sFacing,
+                sHalfArc,
+            );
             if (test.hit) {
-                const t = (typeof test.t === "number") ? test.t : 0.5;
+                const t = typeof test.t === 'number' ? test.t : 0.5;
                 if (t < minT) {
                     minT = t;
                     closestIntersection = {
@@ -290,7 +333,7 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
                         hitX: test.hitX,
                         hitY: test.hitY,
                         shieldBearer: e,
-                        t: t
+                        t: t,
                     };
                 }
             }
@@ -302,9 +345,20 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
         for (let i = 0; i < GAME_STATE.terrains.length; i++) {
             const t = GAME_STATE.terrains[i];
             if (t.isWallObstacle) {
-                const test = testOrientedBoxHit(x1, y1, x2, y2, 2, t.x, t.y, t.halfW || 95, t.halfH || 22, t.angle || 0);
+                const test = testOrientedBoxHit(
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    2,
+                    t.x,
+                    t.y,
+                    t.halfW || 95,
+                    t.halfH || 22,
+                    t.angle || 0,
+                );
                 if (test.hit) {
-                    const tVal = (typeof test.t === "number") ? test.t : 0.5;
+                    const tVal = typeof test.t === 'number' ? test.t : 0.5;
                     if (tVal < minT) {
                         minT = tVal;
                         closestIntersection = {
@@ -313,17 +367,34 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
                             hitY: test.hitY,
                             shieldBearer: t,
                             isWallObstacle: true,
-                            t: tVal
+                            t: tVal,
                         };
                     }
                 }
-            } else if (!t.isExpired || !t.isExpired(typeof gameClock !== "undefined" ? gameClock : performance.now())) {
+            } else if (
+                !t.isExpired?.(
+                    typeof gameClock !== 'undefined'
+                        ? gameClock
+                        : performance.now(),
+                )
+            ) {
                 const sR = t.r || 100;
                 const sFacing = t.facingAngle || 0;
                 const sHalfArc = t.shieldHalfArc || Math.PI * 0.5;
-                const test = testShieldArcHit(x1, y1, x2, y2, 2, t.x, t.y, sR, sFacing, sHalfArc);
+                const test = testShieldArcHit(
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    2,
+                    t.x,
+                    t.y,
+                    sR,
+                    sFacing,
+                    sHalfArc,
+                );
                 if (test.hit) {
-                    const t = (typeof test.t === "number") ? test.t : 0.5;
+                    const t = typeof test.t === 'number' ? test.t : 0.5;
                     if (t < minT) {
                         minT = t;
                         closestIntersection = {
@@ -331,7 +402,7 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
                             hitX: test.hitX,
                             hitY: test.hitY,
                             shieldBearer: t,
-                            t: t
+                            t: t,
                         };
                     }
                 }
@@ -343,10 +414,26 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
     if (isBehemothActive && GAME_STATE.enemies) {
         for (let i = 0; i < GAME_STATE.enemies.length; i++) {
             const e = GAME_STATE.enemies[i];
-            if (e.type === "behemoth" && e.behemothState === "tongue_dragging_wall" && e.hp > 0 && typeof e.wallPieceX === "number") {
-                const test = testOrientedBoxHit(x1, y1, x2, y2, 2, e.wallPieceX, e.wallPieceY, 95, 22, e.wallPieceAngle || 0);
+            if (
+                e.type === 'behemoth' &&
+                e.behemothState === 'tongue_dragging_wall' &&
+                e.hp > 0 &&
+                typeof e.wallPieceX === 'number'
+            ) {
+                const test = testOrientedBoxHit(
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    2,
+                    e.wallPieceX,
+                    e.wallPieceY,
+                    95,
+                    22,
+                    e.wallPieceAngle || 0,
+                );
                 if (test.hit) {
-                    const tVal = (typeof test.t === "number") ? test.t : 0.5;
+                    const tVal = typeof test.t === 'number' ? test.t : 0.5;
                     if (tVal < minT) {
                         minT = tVal;
                         closestIntersection = {
@@ -355,7 +442,7 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
                             hitY: test.hitY,
                             shieldBearer: e,
                             isWallObstacle: true,
-                            t: tVal
+                            t: tVal,
                         };
                     }
                 }
@@ -367,7 +454,7 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
 }
 
 // ---------------- Global Window / Module Exports ----------------
-if (typeof window !== "undefined") {
+if (typeof window !== 'undefined') {
     window.SPATIAL_GRID_CELL_SIZE = SPATIAL_GRID_CELL_SIZE;
     window.SPATIAL_GRID = SPATIAL_GRID;
     window.isOnPlayableArea = isOnPlayableArea;
@@ -377,7 +464,7 @@ if (typeof window !== "undefined") {
     window.findShieldArcIntersection = findShieldArcIntersection;
 }
 
-if (typeof module !== "undefined" && module.exports) {
+if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         SPATIAL_GRID_CELL_SIZE,
         SPATIAL_GRID,
@@ -385,6 +472,6 @@ if (typeof module !== "undefined" && module.exports) {
         pointToSegmentDistance,
         testShieldArcHit,
         testOrientedBoxHit,
-        findShieldArcIntersection
+        findShieldArcIntersection,
     };
 }

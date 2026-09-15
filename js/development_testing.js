@@ -5,86 +5,310 @@ let chosenTestMinute = 0;
 // Organize upgrades into tree branches
 const TREE_BRANCHES = [
     {
-        title: "Ranged",
+        title: 'Ranged',
         nodes: [
-            { id: "unlock_missile", name: "Magic Missile", desc: "Unlock magic missiles" },
-            { id: "accuracy", name: "Accurate Shot", desc: "Reduce spread to zero and make projectiles travel 50% faster" },
-            { id: "instant_missile_upgrade", name: "Instant Precision", desc: "Missiles, Lasers and Cluster Shots hit instantly (also Turrets)" },
-            { id: "sniper_shot_upgrade", name: "Sniper Shot", desc: `Every ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL === 3 ? '3rd' : GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL + 'th'} volley fires a piercing beam at the strongest enemy` },
-            { id: "laser_sniper_upgrade", name: "Laser Sniper", desc: `Sniper Shot deals ${GAME_CONFIG.UPGRADES.LASER_SNIPER_DAMAGE_MULT}x damage and leaves a laser trail` },
-            { id: "multishot", name: "Multishot", desc: "+1 Magic Missile per volley" },
-            { id: "buckshot_upgrade", name: "Buckshot Volley", desc: `Spawns ${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} forward shrapnel on hit dealing 1/${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} damage` },
-            { id: "cluster_shot_upgrade", name: "Cluster Shot", desc: "Magic Missile and Buckshot shrapnel explode on hit" },
-            { id: "projectile_lifedrain_upgrade", name: "Warlock darts", desc: `Gain ${GAME_CONFIG.UPGRADES.PROJECTILE_LIFEDRAIN_PCT}% of projectile damage` },
-            { id: "rocket_upgrade", name: "Seeking Rocket", desc: `${GAME_CONFIG.UPGRADES.ROCKET_PLAYER_CHANCE_PCT}% chance to launch homing rocket` },
-            { id: "dash", name: "Phase Dash", desc: "Double tap to dash & fire missiles" },
-            { id: "dash_lvl2", name: "Phase Mastery", desc: `+${GAME_CONFIG.DASH.LVL2_RANGE_BOOST_PCT}% dash range, reduce CD & gain fire trail` },
-            { id: "phase_detonation_upgrade", name: "Phase Detonation", desc: "Phase Dash landing explodes and releases explosive missiles" },
-        ]
+            {
+                id: 'unlock_missile',
+                name: 'Magic Missile',
+                desc: 'Unlock magic missiles',
+            },
+            {
+                id: 'accuracy',
+                name: 'Accurate Shot',
+                desc: 'Reduce spread to zero and make projectiles travel 50% faster',
+            },
+            {
+                id: 'instant_missile_upgrade',
+                name: 'Instant Precision',
+                desc: 'Missiles, Lasers and Cluster Shots hit instantly (also Turrets)',
+            },
+            {
+                id: 'sniper_shot_upgrade',
+                name: 'Sniper Shot',
+                desc: `Every ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL === 3 ? '3rd' : GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL + 'th'} volley fires a piercing beam at the strongest enemy`,
+            },
+            {
+                id: 'laser_sniper_upgrade',
+                name: 'Laser Sniper',
+                desc: `Sniper Shot deals ${GAME_CONFIG.UPGRADES.LASER_SNIPER_DAMAGE_MULT}x damage and leaves a laser trail`,
+            },
+            {
+                id: 'multishot',
+                name: 'Multishot',
+                desc: '+1 Magic Missile per volley',
+            },
+            {
+                id: 'buckshot_upgrade',
+                name: 'Buckshot Volley',
+                desc: `Spawns ${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} forward shrapnel on hit dealing 1/${GAME_CONFIG.UPGRADES.BUCKSHOT_SHRAPNEL_COUNT} damage`,
+            },
+            {
+                id: 'cluster_shot_upgrade',
+                name: 'Cluster Shot',
+                desc: 'Magic Missile and Buckshot shrapnel explode on hit',
+            },
+            {
+                id: 'projectile_lifedrain_upgrade',
+                name: 'Warlock darts',
+                desc: `Gain ${GAME_CONFIG.UPGRADES.PROJECTILE_LIFEDRAIN_PCT}% of projectile damage`,
+            },
+            {
+                id: 'rocket_upgrade',
+                name: 'Seeking Rocket',
+                desc: `${GAME_CONFIG.UPGRADES.ROCKET_PLAYER_CHANCE_PCT}% chance to launch homing rocket`,
+            },
+            {
+                id: 'dash',
+                name: 'Phase Dash',
+                desc: 'Double tap to dash & fire missiles',
+            },
+            {
+                id: 'dash_lvl2',
+                name: 'Phase Mastery',
+                desc: `+${GAME_CONFIG.DASH.LVL2_RANGE_BOOST_PCT}% dash range, reduce CD & gain fire trail`,
+            },
+            {
+                id: 'phase_detonation_upgrade',
+                name: 'Phase Detonation',
+                desc: 'Phase Dash landing explodes and releases explosive missiles',
+            },
+        ],
     },
     {
-        title: "Explosives",
+        title: 'Explosives',
         nodes: [
-            { id: "unlock_mine", name: "Proximity Mine", desc: "Unlock proximity mines" },
-            { id: "mine_aoe_upgrade", name: "Volatile Powder", desc: `Increase mine radius (stacks, max ${GAME_CONFIG.UPGRADES.MINE_AOE_MAX_STACKS})` },
-            { id: "mine_scatter_upgrade", name: "Scatter Charges", desc: `${GAME_CONFIG.UPGRADES.MINE_SCATTER_CHANCE_PCT}% chance to drop ${GAME_CONFIG.UPGRADES.MINE_SCATTER_MIN}-${GAME_CONFIG.UPGRADES.MINE_SCATTER_MAX} extra mines` },
-            { id: "mine_launcher_upgrade", name: "Mine Launcher", desc: "Throw one mine forward in addition to the normal mine" },
-            { id: "explosion_heal_upgrade", name: "Blast Mending", desc: `Explosions heal players in blast radius for ${GAME_CONFIG.UPGRADES.EXPLOSION_HEAL_PCT}% of damage dealt & unlocks Magnetic Core` },
-            { id: "mine_attract_upgrade", name: "Magnetic Core", desc: `${GAME_CONFIG.UPGRADES.MINE_ATTRACT_CHANCE_PCT}% of mines attract enemies` },
-            { id: "mine_ring", name: "Explosive Ring", desc: "Replace the fire ring with spinning explosive charges" },
-            { id: "phase_detonation_upgrade", name: "Phase Detonation", desc: "Phase Dash landing explodes and releases explosive missiles" },
-            { id: "cluster_shot_upgrade", name: "Cluster Shot", desc: "Magic Missile and Buckshot shrapnel explode on hit" },
-            { id: "rocket_upgrade", name: "Seeking Rocket", desc: `${GAME_CONFIG.UPGRADES.ROCKET_PLAYER_CHANCE_PCT}% chance to launch homing rocket` },
-            { id: "final_blast", name: "Martyrdom", desc: "Nuclear blast upon death" },
-            { id: "martyrdom_aura_upgrade", name: "Martyr's Aura", desc: "Healing/damaging/slowing aura when dead" },
-            { id: "martyrs_presence_upgrade", name: "Martyr's Presence", desc: "Larger aura, knockback explosion & provokes nearby enemies" },
-            { id: "sacrificial_aegis_upgrade", name: "Sacrificial Aegis", desc: `Protect allies (-${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT}% dmg taken, you absorb it), reduce respawn time` },
-            { id: "cryo_mine_upgrade", name: "Polar Blast", desc: "Double mine freeze duration" }
-        ]
+            {
+                id: 'unlock_mine',
+                name: 'Proximity Mine',
+                desc: 'Unlock proximity mines',
+            },
+            {
+                id: 'mine_aoe_upgrade',
+                name: 'Volatile Powder',
+                desc: `Increase mine radius (stacks, max ${GAME_CONFIG.UPGRADES.MINE_AOE_MAX_STACKS})`,
+            },
+            {
+                id: 'mine_scatter_upgrade',
+                name: 'Scatter Charges',
+                desc: `${GAME_CONFIG.UPGRADES.MINE_SCATTER_CHANCE_PCT}% chance to drop ${GAME_CONFIG.UPGRADES.MINE_SCATTER_MIN}-${GAME_CONFIG.UPGRADES.MINE_SCATTER_MAX} extra mines`,
+            },
+            {
+                id: 'mine_launcher_upgrade',
+                name: 'Mine Launcher',
+                desc: 'Throw one mine forward in addition to the normal mine',
+            },
+            {
+                id: 'explosion_heal_upgrade',
+                name: 'Blast Mending',
+                desc: `Explosions heal players in blast radius for ${GAME_CONFIG.UPGRADES.EXPLOSION_HEAL_PCT}% of damage dealt & unlocks Magnetic Core`,
+            },
+            {
+                id: 'mine_attract_upgrade',
+                name: 'Magnetic Core',
+                desc: `${GAME_CONFIG.UPGRADES.MINE_ATTRACT_CHANCE_PCT}% of mines attract enemies`,
+            },
+            {
+                id: 'mine_ring',
+                name: 'Explosive Ring',
+                desc: 'Replace the fire ring with spinning explosive charges',
+            },
+            {
+                id: 'phase_detonation_upgrade',
+                name: 'Phase Detonation',
+                desc: 'Phase Dash landing explodes and releases explosive missiles',
+            },
+            {
+                id: 'cluster_shot_upgrade',
+                name: 'Cluster Shot',
+                desc: 'Magic Missile and Buckshot shrapnel explode on hit',
+            },
+            {
+                id: 'rocket_upgrade',
+                name: 'Seeking Rocket',
+                desc: `${GAME_CONFIG.UPGRADES.ROCKET_PLAYER_CHANCE_PCT}% chance to launch homing rocket`,
+            },
+            {
+                id: 'final_blast',
+                name: 'Martyrdom',
+                desc: 'Nuclear blast upon death',
+            },
+            {
+                id: 'martyrdom_aura_upgrade',
+                name: "Martyr's Aura",
+                desc: 'Healing/damaging/slowing aura when dead',
+            },
+            {
+                id: 'martyrs_presence_upgrade',
+                name: "Martyr's Presence",
+                desc: 'Larger aura, knockback explosion & provokes nearby enemies',
+            },
+            {
+                id: 'sacrificial_aegis_upgrade',
+                name: 'Sacrificial Aegis',
+                desc: `Protect allies (-${GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT}% dmg taken, you absorb it), reduce respawn time`,
+            },
+            {
+                id: 'cryo_mine_upgrade',
+                name: 'Polar Blast',
+                desc: 'Double mine freeze duration',
+            },
+        ],
     },
     {
-        title: "Melee",
+        title: 'Melee',
         nodes: [
-            { id: "unlock_melee", name: "Melee Sweep", desc: "Unlock close-range sweep" },
-            { id: "melee_sledge_upgrade", name: "Sledge Hammer", desc: "Heavy hammer slam in movement direction" },
-            { id: "melee_chain_upgrade", name: "Scourge Flail", desc: "Heavy spiked flail dragged behind you" },
-            { id: "flail_laser_upgrade", name: "Laser Flail", desc: "Scourge Flail leaves a laser trail" },
-            { id: "melee_shield_upgrade", name: "Iron Carapace", desc: `Reduce all incoming damage by ${GAME_CONFIG.UPGRADES.MELEE_SHIELD_DAMAGE_REDUCTION_PCT}%` },
-            { id: "melee_reflect_upgrade", name: "Barbed Carapace", desc: `Reflect ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT}% max HP damage when hit` },
-            { id: "carapace_healer_upgrade", name: "Sympathetic Shell", desc: `Grow size ${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_SIZE_BOOST_PCT}%, heal all ${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_TEAM_HEAL_PCT}% when hit` },
-            { id: "melee_range_upgrade", name: "Extended Joints", desc: `Increase melee attack range by ${GAME_CONFIG.UPGRADES.MELEE_RANGE_BOOST_PCT}%` }
-        ]
+            {
+                id: 'unlock_melee',
+                name: 'Melee Sweep',
+                desc: 'Unlock close-range sweep',
+            },
+            {
+                id: 'melee_sledge_upgrade',
+                name: 'Sledge Hammer',
+                desc: 'Heavy hammer slam in movement direction',
+            },
+            {
+                id: 'melee_chain_upgrade',
+                name: 'Scourge Flail',
+                desc: 'Heavy spiked flail dragged behind you',
+            },
+            {
+                id: 'flail_laser_upgrade',
+                name: 'Laser Flail',
+                desc: 'Scourge Flail leaves a laser trail',
+            },
+            {
+                id: 'melee_shield_upgrade',
+                name: 'Iron Carapace',
+                desc: `Reduce all incoming damage by ${GAME_CONFIG.UPGRADES.MELEE_SHIELD_DAMAGE_REDUCTION_PCT}%`,
+            },
+            {
+                id: 'melee_reflect_upgrade',
+                name: 'Barbed Carapace',
+                desc: `Reflect ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT}% max HP damage when hit`,
+            },
+            {
+                id: 'carapace_healer_upgrade',
+                name: 'Sympathetic Shell',
+                desc: `Grow size ${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_SIZE_BOOST_PCT}%, heal all ${GAME_CONFIG.UPGRADES.CARAPACE_HEALER_TEAM_HEAL_PCT}% when hit`,
+            },
+            {
+                id: 'melee_range_upgrade',
+                name: 'Extended Joints',
+                desc: `Increase melee attack range by ${GAME_CONFIG.UPGRADES.MELEE_RANGE_BOOST_PCT}%`,
+            },
+        ],
     },
     {
-        title: "Turrets",
+        title: 'Turrets',
         nodes: [
-            { id: "unlock_turret", name: "Auto-Turret", desc: "Unlock deployable turrets" },
-            { id: "laser_walls_upgrade", name: "Laser Fences", desc: `Turret laser fences deal ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage/sec to monsters passing through, while slowing them ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%` },
-            { id: "building_duration_upgrade", name: "Fortified Structures", desc: `Increases the duration of all turrets by ${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% (stacks)` },
-            { id: "turret_cooldown_upgrade", name: "Rapid Deployment", desc: `Reduces turret placement, dispenser & expansion timers by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% (stacks)` },
-            { id: "turret_dispenser_upgrade", name: "Supply Dispenser", desc: `Turrets have ${GAME_CONFIG.TURRET.DISPENSER_CHANCE_PCT}% chance every ${GAME_CONFIG.TURRET.DISPENSER_INTERVAL_SEC}s to dispense supplies with equal probability` },
-            { id: "turret_flamethrower_upgrade", name: "Flamethrower Turret", desc: `Adds 2nd head firing a ${GAME_CONFIG.TURRET.FLAME_BASE_RANGE}px ${GAME_CONFIG.TURRET.FLAME_BASE_CONE_DEG}° ${GAME_CONFIG.TURRET.FLAME_DAMAGE_MULT}x damage flame cone every ${GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS === 4 ? '4th' : GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS + 'th'} attack` },
-            { id: "turret_inferno_ring_upgrade", name: "Inferno Nova", desc: `Flamethrower Turret sweeps full 360° with ${GAME_CONFIG.TURRET.FLAME_SWEEP_RANGE}px radius` },
-            { id: "turret_saw_upgrade", name: "Sawblade Turrets", desc: `Turrets gain rotating sawblades dealing continuous ${GAME_CONFIG.TURRET.SAW_DPS} dmg/s to monsters within ${GAME_CONFIG.TURRET.SAW_RADIUS}px (scales with Extended Joints)` },
-            { id: "turret_network_upgrade", name: "Autonomous Network", desc: `Every ${GAME_CONFIG.TURRET.NETWORK_INTERVAL_SEC}s, turrets with free links spawn a connected turret (50-300px away)` }
-        ]
+            {
+                id: 'unlock_turret',
+                name: 'Auto-Turret',
+                desc: 'Unlock deployable turrets',
+            },
+            {
+                id: 'laser_walls_upgrade',
+                name: 'Laser Fences',
+                desc: `Turret laser fences deal ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage/sec to monsters passing through, while slowing them ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%`,
+            },
+            {
+                id: 'building_duration_upgrade',
+                name: 'Fortified Structures',
+                desc: `Increases the duration of all turrets by ${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% (stacks)`,
+            },
+            {
+                id: 'turret_cooldown_upgrade',
+                name: 'Rapid Deployment',
+                desc: `Reduces turret placement, dispenser & expansion timers by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% (stacks)`,
+            },
+            {
+                id: 'turret_dispenser_upgrade',
+                name: 'Supply Dispenser',
+                desc: `Turrets have ${GAME_CONFIG.TURRET.DISPENSER_CHANCE_PCT}% chance every ${GAME_CONFIG.TURRET.DISPENSER_INTERVAL_SEC}s to dispense supplies with equal probability`,
+            },
+            {
+                id: 'turret_flamethrower_upgrade',
+                name: 'Flamethrower Turret',
+                desc: `Adds 2nd head firing a ${GAME_CONFIG.TURRET.FLAME_BASE_RANGE}px ${GAME_CONFIG.TURRET.FLAME_BASE_CONE_DEG}° ${GAME_CONFIG.TURRET.FLAME_DAMAGE_MULT}x damage flame cone every ${GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS === 4 ? '4th' : GAME_CONFIG.TURRET.FLAME_INTERVAL_ATTACKS + 'th'} attack`,
+            },
+            {
+                id: 'turret_inferno_ring_upgrade',
+                name: 'Inferno Nova',
+                desc: `Flamethrower Turret sweeps full 360° with ${GAME_CONFIG.TURRET.FLAME_SWEEP_RANGE}px radius`,
+            },
+            {
+                id: 'turret_saw_upgrade',
+                name: 'Sawblade Turrets',
+                desc: `Turrets gain rotating sawblades dealing continuous ${GAME_CONFIG.TURRET.SAW_DPS} dmg/s to monsters within ${GAME_CONFIG.TURRET.SAW_RADIUS}px (scales with Extended Joints)`,
+            },
+            {
+                id: 'turret_network_upgrade',
+                name: 'Autonomous Network',
+                desc: `Every ${GAME_CONFIG.TURRET.NETWORK_INTERVAL_SEC}s, turrets with free links spawn a connected turret (50-300px away)`,
+            },
+        ],
     },
     {
-        title: "Utility & Stats",
+        title: 'Utility & Stats',
         nodes: [
-            { id: "speed", name: "Agility Boost", desc: `Increase movement speed by ${GAME_CONFIG.UPGRADES.SPEED_BOOST_PCT}%` },
-            { id: "speed_lvl2", name: "Temporal Drift", desc: "Leave damaging speed laser trail" },
-            { id: "ice_trail_upgrade", name: "Glacial Slide", desc: `Ice trail slows enemies, +${GAME_CONFIG.UPGRADES.ICE_TRAIL_SPEED_BOOST_PCT}% speed, fire immunity on ice` },
-            { id: "unlock_ring", name: "Fire Ring", desc: "Orbiting fireballs barrier" },
-            { id: "projectile_shield", name: "Deflector Orbiters", desc: `Orbiting shields block projectiles (${GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_RESPAWN_SEC}s respawn, scales with Attack Speed)` },
-            { id: "freeze_upgrade", name: "Cryo Freeze", desc: "Freeze enemies on hit" },
-            { id: "damage", name: "Heavy Impact", desc: `Increase damage by ${GAME_CONFIG.UPGRADES.DAMAGE_WEAPONS_BOOST_PCT}% (mines ${GAME_CONFIG.UPGRADES.DAMAGE_MINES_BOOST_PCT}%) (stacks)` },
-            { id: "cooldown", name: "Hyper-drive", desc: `Increase attack speed (stacks, max ${GAME_CONFIG.UPGRADES.ATTACK_SPEED_MAX_STACKS})` },
-            { id: "heal", name: "Second Wind", desc: "Full heal and double max HP" },
-            { id: "heal_pack_upgrade", name: "Siphon Cells", desc: "Slain enemies drop health pack" },
-            { id: "campervan", name: "Campervan Rampage", desc: "Campervan form when <50% HP" }
-        ]
-    }
+            {
+                id: 'speed',
+                name: 'Agility Boost',
+                desc: `Increase movement speed by ${GAME_CONFIG.UPGRADES.SPEED_BOOST_PCT}%`,
+            },
+            {
+                id: 'speed_lvl2',
+                name: 'Temporal Drift',
+                desc: 'Leave damaging speed laser trail',
+            },
+            {
+                id: 'ice_trail_upgrade',
+                name: 'Glacial Slide',
+                desc: `Ice trail slows enemies, +${GAME_CONFIG.UPGRADES.ICE_TRAIL_SPEED_BOOST_PCT}% speed, fire immunity on ice`,
+            },
+            {
+                id: 'unlock_ring',
+                name: 'Fire Ring',
+                desc: 'Orbiting fireballs barrier',
+            },
+            {
+                id: 'projectile_shield',
+                name: 'Deflector Orbiters',
+                desc: `Orbiting shields block projectiles (${GAME_CONFIG.UPGRADES.DEFLECTOR_ORBITERS_RESPAWN_SEC}s respawn, scales with Attack Speed)`,
+            },
+            {
+                id: 'freeze_upgrade',
+                name: 'Cryo Freeze',
+                desc: 'Freeze enemies on hit',
+            },
+            {
+                id: 'damage',
+                name: 'Heavy Impact',
+                desc: `Increase damage by ${GAME_CONFIG.UPGRADES.DAMAGE_WEAPONS_BOOST_PCT}% (mines ${GAME_CONFIG.UPGRADES.DAMAGE_MINES_BOOST_PCT}%) (stacks)`,
+            },
+            {
+                id: 'cooldown',
+                name: 'Hyper-drive',
+                desc: `Increase attack speed (stacks, max ${GAME_CONFIG.UPGRADES.ATTACK_SPEED_MAX_STACKS})`,
+            },
+            {
+                id: 'heal',
+                name: 'Second Wind',
+                desc: 'Full heal and double max HP',
+            },
+            {
+                id: 'heal_pack_upgrade',
+                name: 'Siphon Cells',
+                desc: 'Slain enemies drop health pack',
+            },
+            {
+                id: 'campervan',
+                name: 'Campervan Rampage',
+                desc: 'Campervan form when <50% HP',
+            },
+        ],
+    },
 ];
 
 function selectDependenciesTest(id) {
@@ -103,10 +327,12 @@ function deselectChildrenTest(id) {
     let changed = true;
     while (changed) {
         changed = false;
-        for (const [selId, count] of selectedTestUpgrades.entries()) {
+        for (const selId of selectedTestUpgrades.keys()) {
             const deps = UPGRADE_DEPENDENCIES[selId];
             if (deps) {
-                const depMissing = deps.some(depId => !selectedTestUpgrades.get(depId));
+                const depMissing = deps.some(
+                    (depId) => !selectedTestUpgrades.get(depId),
+                );
                 if (depMissing) {
                     selectedTestUpgrades.delete(selId);
                     changed = true;
@@ -118,7 +344,7 @@ function deselectChildrenTest(id) {
 
 function playTestUpgradeSound(id) {
     if (!SoundEngine) return;
-    
+
     // 1. Specific distinct sounds that override their branch defaults
     switch (id) {
         // Laser beams & sniper shots (distinct from Magic Missile)
@@ -126,7 +352,7 @@ function playTestUpgradeSound(id) {
         case 'laser_sniper_upgrade':
             SoundEngine.laserSniper();
             return;
-            
+
         // Seeking Rocket
         case 'rocket_upgrade':
             SoundEngine.rocketLaunch();
@@ -178,7 +404,7 @@ function playTestUpgradeSound(id) {
         case 'melee_reflect_upgrade':
         case 'carapace_healer_upgrade':
             return;
-            
+
         // Standard melee sweep active attack
         case 'unlock_melee':
             SoundEngine.meleeSweep(false);
@@ -252,11 +478,16 @@ function playTestUpgradeSound(id) {
 }
 
 function selectUpgradeTest(id, event) {
-    if (event && event.target.classList.contains('upgrade-node-btn')) return;
-    
-    const upgradeDef = UPGRADE_POOL.find(u => u.id === id);
-    const isOneShot = upgradeDef ? !!upgradeDef.oneShot : (id !== 'unlock_ring' && id !== 'multishot' && id !== 'damage' && id !== 'cooldown');
-    
+    if (event?.target.classList.contains('upgrade-node-btn')) return;
+
+    const upgradeDef = UPGRADE_POOL.find((u) => u.id === id);
+    const isOneShot = upgradeDef
+        ? !!upgradeDef.oneShot
+        : id !== 'unlock_ring' &&
+          id !== 'multishot' &&
+          id !== 'damage' &&
+          id !== 'cooldown';
+
     if (isOneShot) {
         if (selectedTestUpgrades.get(id) === 1) {
             selectedTestUpgrades.delete(id);
@@ -282,18 +513,23 @@ function selectUpgradeTest(id, event) {
 
 function adjustStackCount(id, delta, event) {
     if (event) event.stopPropagation();
-    
-    const upgradeDef = UPGRADE_POOL.find(u => u.id === id);
-    const isOneShot = upgradeDef ? !!upgradeDef.oneShot : (id !== 'unlock_ring' && id !== 'multishot' && id !== 'damage' && id !== 'cooldown');
+
+    const upgradeDef = UPGRADE_POOL.find((u) => u.id === id);
+    const isOneShot = upgradeDef
+        ? !!upgradeDef.oneShot
+        : id !== 'unlock_ring' &&
+          id !== 'multishot' &&
+          id !== 'damage' &&
+          id !== 'cooldown';
     if (isOneShot) return;
-    
-    let current = selectedTestUpgrades.get(id) || 0;
+
+    const current = selectedTestUpgrades.get(id) || 0;
     let next = current + delta;
-    
+
     if (next < 0) next = 0;
     if (id === 'cooldown' && next > 6) next = 6;
     if (id === 'mine_aoe_upgrade' && next > 3) next = 3;
-    
+
     if (next === 0) {
         selectedTestUpgrades.delete(id);
         deselectChildrenTest(id);
@@ -310,69 +546,76 @@ function adjustStackCount(id, delta, event) {
 function renderUpgradeTree() {
     const grid = document.getElementById('testingTreeGrid');
     grid.innerHTML = '';
-    
+
     for (const branch of TREE_BRANCHES) {
         const branchCol = document.createElement('div');
         branchCol.className = 'tree-branch';
-        
+
         const title = document.createElement('div');
         title.className = 'tree-branch-title';
         title.textContent = branch.title;
         branchCol.appendChild(title);
-        
+
         for (const node of branch.nodes) {
-            const upgradeDef = UPGRADE_POOL.find(u => u.id === node.id);
-            const isOneShot = upgradeDef ? !!upgradeDef.oneShot : (node.id !== 'unlock_ring' && node.id !== 'multishot' && node.id !== 'damage' && node.id !== 'cooldown');
+            const upgradeDef = UPGRADE_POOL.find((u) => u.id === node.id);
+            const isOneShot = upgradeDef
+                ? !!upgradeDef.oneShot
+                : node.id !== 'unlock_ring' &&
+                  node.id !== 'multishot' &&
+                  node.id !== 'damage' &&
+                  node.id !== 'cooldown';
             const count = selectedTestUpgrades.get(node.id) || 0;
-            
+
             const card = document.createElement('div');
             card.className = `upgrade-node ${count > 0 ? 'active' : ''}`;
             card.onclick = (e) => selectUpgradeTest(node.id, e);
-            
+
             const nTitle = document.createElement('div');
             nTitle.className = 'upgrade-node-title';
-            nTitle.textContent = node.name + (isOneShot && count > 0 ? ' ✓' : '');
+            nTitle.textContent =
+                node.name + (isOneShot && count > 0 ? ' ✓' : '');
             card.appendChild(nTitle);
-            
+
             const nDesc = document.createElement('div');
             nDesc.className = 'upgrade-node-desc';
             nDesc.textContent = node.desc;
             card.appendChild(nDesc);
-            
+
             if (!isOneShot) {
                 const controls = document.createElement('div');
                 controls.className = 'upgrade-node-controls';
-                
+
                 const countBadge = document.createElement('span');
                 countBadge.className = 'upgrade-node-count';
-                countBadge.textContent = count > 0 ? `Stacks: x${count}` : 'Not selected';
+                countBadge.textContent =
+                    count > 0 ? `Stacks: x${count}` : 'Not selected';
                 controls.appendChild(countBadge);
-                
+
                 const btnGroup = document.createElement('div');
                 btnGroup.style.display = 'flex';
                 btnGroup.style.gap = '4px';
-                
+
                 const btnMinus = document.createElement('button');
                 btnMinus.className = 'upgrade-node-btn';
                 btnMinus.textContent = '-';
                 btnMinus.onclick = (e) => adjustStackCount(node.id, -1, e);
                 btnGroup.appendChild(btnMinus);
-                
+
                 const btnPlus = document.createElement('button');
                 btnPlus.className = 'upgrade-node-btn';
                 btnPlus.textContent = '+';
                 btnPlus.onclick = (e) => adjustStackCount(node.id, 1, e);
                 btnGroup.appendChild(btnPlus);
-                
+
                 controls.appendChild(btnGroup);
                 card.appendChild(controls);
             }
-            
+
             branchCol.appendChild(card);
         }
         grid.appendChild(branchCol);
     }
-    
+
     let totalSelected = 0;
     for (const count of selectedTestUpgrades.values()) {
         totalSelected += count;
@@ -395,7 +638,8 @@ function calculateMeanXPGemYield(xpValue) {
         const testGems = [];
         GAME_STATE.gems = testGems;
         XPGem.createXPGems(0, 0, xpValue);
-        for (let i = 0; i < testGems.length; i++) total += (testGems[i].value || 0);
+        for (let i = 0; i < testGems.length; i++)
+            total += testGems[i].value || 0;
     }
     GAME_STATE.gems = oldGems;
     return total / trials;
@@ -405,45 +649,105 @@ function getSpawnProbabilitiesAtTime(e) {
     const probs = {};
     if (e >= 720000) {
         if (e >= 1380000) {
-            probs.viper = 0.007; probs.shield_bearer = 0.018; probs.warp_anomaly = 0.012;
-            probs.hellion = 0.111; probs.medivac = 0.03; probs.sentry = 0.007;
-            probs.spine_crawler = 0.135; probs.stalker = 0.18; probs.marauder = 0.22; probs.baneling = 0.28;
+            probs.viper = 0.007;
+            probs.shield_bearer = 0.018;
+            probs.warp_anomaly = 0.012;
+            probs.hellion = 0.111;
+            probs.medivac = 0.03;
+            probs.sentry = 0.007;
+            probs.spine_crawler = 0.135;
+            probs.stalker = 0.18;
+            probs.marauder = 0.22;
+            probs.baneling = 0.28;
         } else if (e >= 1320000) {
-            probs.shield_bearer = 0.018; probs.warp_anomaly = 0.012; probs.hellion = 0.108;
-            probs.medivac = 0.03; probs.sentry = 0.007; probs.spine_crawler = 0.145;
-            probs.stalker = 0.18; probs.marauder = 0.22; probs.baneling = 0.28;
+            probs.shield_bearer = 0.018;
+            probs.warp_anomaly = 0.012;
+            probs.hellion = 0.108;
+            probs.medivac = 0.03;
+            probs.sentry = 0.007;
+            probs.spine_crawler = 0.145;
+            probs.stalker = 0.18;
+            probs.marauder = 0.22;
+            probs.baneling = 0.28;
         } else if (e >= 1260000) {
-            probs.warp_anomaly = 0.015; probs.hellion = 0.113; probs.medivac = 0.03;
-            probs.sentry = 0.007; probs.spine_crawler = 0.135; probs.stalker = 0.20;
-            probs.marauder = 0.20; probs.baneling = 0.30;
+            probs.warp_anomaly = 0.015;
+            probs.hellion = 0.113;
+            probs.medivac = 0.03;
+            probs.sentry = 0.007;
+            probs.spine_crawler = 0.135;
+            probs.stalker = 0.2;
+            probs.marauder = 0.2;
+            probs.baneling = 0.3;
         } else if (e >= 1200000) {
-            probs.hellion = 0.13; probs.medivac = 0.03; probs.sentry = 0.008;
-            probs.spine_crawler = 0.132; probs.stalker = 0.20; probs.marauder = 0.20; probs.baneling = 0.30;
+            probs.hellion = 0.13;
+            probs.medivac = 0.03;
+            probs.sentry = 0.008;
+            probs.spine_crawler = 0.132;
+            probs.stalker = 0.2;
+            probs.marauder = 0.2;
+            probs.baneling = 0.3;
         } else if (e >= 1140000) {
-            probs.medivac = 0.03; probs.sentry = 0.008; probs.spine_crawler = 0.15;
-            probs.stalker = 0.252; probs.marauder = 0.24; probs.baneling = 0.32;
+            probs.medivac = 0.03;
+            probs.sentry = 0.008;
+            probs.spine_crawler = 0.15;
+            probs.stalker = 0.252;
+            probs.marauder = 0.24;
+            probs.baneling = 0.32;
         } else if (e >= 1080000) {
-            probs.sentry = 0.008; probs.spine_crawler = 0.16; probs.stalker = 0.252;
-            probs.marauder = 0.26; probs.baneling = 0.32;
+            probs.sentry = 0.008;
+            probs.spine_crawler = 0.16;
+            probs.stalker = 0.252;
+            probs.marauder = 0.26;
+            probs.baneling = 0.32;
         } else if (e >= 900000) {
-            probs.spine_crawler = 0.15; probs.stalker = 0.27; probs.marauder = 0.28; probs.baneling = 0.30;
+            probs.spine_crawler = 0.15;
+            probs.stalker = 0.27;
+            probs.marauder = 0.28;
+            probs.baneling = 0.3;
         } else if (e >= 840000) {
-            probs.stalker = 0.30; probs.marauder = 0.35; probs.baneling = 0.35;
+            probs.stalker = 0.3;
+            probs.marauder = 0.35;
+            probs.baneling = 0.35;
         } else if (e >= 780000) {
-            probs.marauder = 0.45; probs.baneling = 0.55;
+            probs.marauder = 0.45;
+            probs.baneling = 0.55;
         } else {
             probs.baneling = 1.0;
         }
     } else {
         let rem = 1.0;
-        if (e > 540000) { probs.spiky = 0.08; rem *= (1 - 0.08); }
-        if (e > 360000) { probs.dasher = rem * 0.12; rem *= (1 - 0.12); }
-        if (e > 420000) { probs.shooter = rem * 0.12; rem *= (1 - 0.12); }
-        if (e > 300000) { probs.meteor = rem * 0.10; rem *= (1 - 0.10); }
-        if (e > 180000) { probs.brute_lord = rem * 0.05; rem *= (1 - 0.05); }
-        if (e > 240000) { probs.speeder = rem * 0.20; rem *= (1 - 0.20); }
-        if (e > 120000) { probs.mega_brute = rem * 0.10; rem *= (1 - 0.10); }
-        if (e > 40000) { probs.brute = rem * 0.30; rem *= (1 - 0.30); }
+        if (e > 540000) {
+            probs.spiky = 0.08;
+            rem *= 1 - 0.08;
+        }
+        if (e > 360000) {
+            probs.dasher = rem * 0.12;
+            rem *= 1 - 0.12;
+        }
+        if (e > 420000) {
+            probs.shooter = rem * 0.12;
+            rem *= 1 - 0.12;
+        }
+        if (e > 300000) {
+            probs.meteor = rem * 0.1;
+            rem *= 1 - 0.1;
+        }
+        if (e > 180000) {
+            probs.brute_lord = rem * 0.05;
+            rem *= 1 - 0.05;
+        }
+        if (e > 240000) {
+            probs.speeder = rem * 0.2;
+            rem *= 1 - 0.2;
+        }
+        if (e > 120000) {
+            probs.mega_brute = rem * 0.1;
+            rem *= 1 - 0.1;
+        }
+        if (e > 40000) {
+            probs.brute = rem * 0.3;
+            rem *= 1 - 0.3;
+        }
         probs.swarm = rem;
     }
     return probs;
@@ -453,7 +757,7 @@ function calculateExpectedPlayerLevel(targetMinutes) {
     const targetMs = targetMinutes * 60000;
     let totalExpectedXp = 0;
     const SC2_START = 720000;
-    
+
     // Cache mean gem yield for each unique xpValue
     const meanYieldCache = {};
     for (const key of Object.keys(MONSTER_BASE_XP)) {
@@ -462,31 +766,43 @@ function calculateExpectedPlayerLevel(targetMinutes) {
             meanYieldCache[val] = calculateMeanXPGemYield(val);
         }
     }
-    
+
     // Step through spawning schedule
     const spawnInterval = 2000;
     for (let t = spawnInterval; t <= targetMs; t += spawnInterval) {
         if (t >= 480000 && t < 540000) {
-            if (t === 510000) totalExpectedXp += (meanYieldCache[MONSTER_BASE_XP.octopus] || 0);
+            if (t === 510000)
+                totalExpectedXp += meanYieldCache[MONSTER_BASE_XP.octopus] || 0;
             continue;
         }
         if (t >= 660000 && t < 717000) {
-            if (t === 660000) totalExpectedXp += 40 * (meanYieldCache[MONSTER_BASE_XP.swarm] || 0);
+            if (t === 660000)
+                totalExpectedXp +=
+                    40 * (meanYieldCache[MONSTER_BASE_XP.swarm] || 0);
             const elapsedEvent = t - 660000;
             const waveIdx = Math.floor((elapsedEvent - 4000) / 2000);
             if (waveIdx === 0) totalExpectedXp += 45 * (meanYieldCache[2] || 0);
-            else if (waveIdx === 1) totalExpectedXp += 35 * (meanYieldCache[4] || 0);
-            else if (waveIdx === 2) totalExpectedXp += 25 * (meanYieldCache[6] || 0);
-            else if (waveIdx === 3) totalExpectedXp += 15 * (meanYieldCache[8] || 0);
-            else if (waveIdx === 4) totalExpectedXp += 30 * (meanYieldCache[8] || 0);
-            else if (waveIdx === 5) totalExpectedXp += 20 * (meanYieldCache[10] || 0);
-            else if (waveIdx === 6) totalExpectedXp += 18 * (meanYieldCache[12] || 0);
-            else if (waveIdx === 7) totalExpectedXp += 18 * (meanYieldCache[10] || 0);
-            else if (waveIdx === 8) totalExpectedXp += 15 * (meanYieldCache[14] || 0);
-            else if (waveIdx > 8) totalExpectedXp += 30 * (meanYieldCache[8] || 0);
+            else if (waveIdx === 1)
+                totalExpectedXp += 35 * (meanYieldCache[4] || 0);
+            else if (waveIdx === 2)
+                totalExpectedXp += 25 * (meanYieldCache[6] || 0);
+            else if (waveIdx === 3)
+                totalExpectedXp += 15 * (meanYieldCache[8] || 0);
+            else if (waveIdx === 4)
+                totalExpectedXp += 30 * (meanYieldCache[8] || 0);
+            else if (waveIdx === 5)
+                totalExpectedXp += 20 * (meanYieldCache[10] || 0);
+            else if (waveIdx === 6)
+                totalExpectedXp += 18 * (meanYieldCache[12] || 0);
+            else if (waveIdx === 7)
+                totalExpectedXp += 18 * (meanYieldCache[10] || 0);
+            else if (waveIdx === 8)
+                totalExpectedXp += 15 * (meanYieldCache[14] || 0);
+            else if (waveIdx > 8)
+                totalExpectedXp += 30 * (meanYieldCache[8] || 0);
             continue;
         }
-        
+
         const rampElapsed = t >= SC2_START ? t - SC2_START : t;
         const count = 1 + Math.floor(rampElapsed / 30000);
         const probs = getSpawnProbabilitiesAtTime(t);
@@ -497,7 +813,7 @@ function calculateExpectedPlayerLevel(targetMinutes) {
             totalExpectedXp += count * prob * meanYield;
         }
     }
-    
+
     let level = 1;
     let xp = totalExpectedXp;
     let nextXp = LVL2_XP;
@@ -510,32 +826,32 @@ function calculateExpectedPlayerLevel(targetMinutes) {
 }
 
 const MINUTE_EVENT_HIGHLIGHTS = {
-    0: "Game Starts (Base Swarm)",
-    1: "Swarm & Brutes",
-    2: "Mega Brutes Spawn",
-    3: "Brute Lords Spawn",
-    4: "Speeders Spawn",
-    5: "Meteorites",
-    6: "Dashers",
-    7: "Shooters",
-    8: "🐙 Boss: Octopus",
-    9: "Boss or Spiky if cleared",
-    10: "Spiky",
-    11: "⚔️ Boss: Horde",
-    12: "Banelings",
-    13: "Marauders",
-    14: "Stalkers",
-    15: "Spine Crawlers",
-    16: "Boss: Felhound",
-    17: "Boss: Felhound or cleared",
-    18: "Sentries",
-    19: "Medivacs",
-    20: "Hellions",
-    21: "Warp Anomalies",
-    22: "Shield Bearers",
-    23: "Vipers",
-    24: "🏆 Boss: Behemoth",
-    25: "🏆 Boss killed"
+    0: 'Game Starts (Base Swarm)',
+    1: 'Swarm & Brutes',
+    2: 'Mega Brutes Spawn',
+    3: 'Brute Lords Spawn',
+    4: 'Speeders Spawn',
+    5: 'Meteorites',
+    6: 'Dashers',
+    7: 'Shooters',
+    8: '🐙 Boss: Octopus',
+    9: 'Boss or Spiky if cleared',
+    10: 'Spiky',
+    11: '⚔️ Boss: Horde',
+    12: 'Banelings',
+    13: 'Marauders',
+    14: 'Stalkers',
+    15: 'Spine Crawlers',
+    16: 'Boss: Felhound',
+    17: 'Boss: Felhound or cleared',
+    18: 'Sentries',
+    19: 'Medivacs',
+    20: 'Hellions',
+    21: 'Warp Anomalies',
+    22: 'Shield Bearers',
+    23: 'Vipers',
+    24: '🏆 Boss: Behemoth',
+    25: '🏆 Boss killed',
 };
 
 let cachedExpectedLevelsTable = null;
@@ -545,7 +861,10 @@ function getExpectedLevelMinuteTable() {
     const table = [];
     for (let m = 0; m <= 30; m += 0.1) {
         const roundedM = Math.round(m * 10) / 10;
-        table.push({ m: roundedM, lvl: calculateExpectedPlayerLevel(roundedM) });
+        table.push({
+            m: roundedM,
+            lvl: calculateExpectedPlayerLevel(roundedM),
+        });
     }
     cachedExpectedLevelsTable = table;
     return table;
@@ -602,12 +921,17 @@ function renderExpectedLevelsModal() {
     for (let m = 1; m <= 25; m++) {
         const lvl = calculateExpectedPlayerLevel(m);
         const totalUpgrades = lvl; // +1 upgrade because starting weapon is selected at Lv 1
-        const highlight = MINUTE_EVENT_HIGHLIGHTS[m] || "Endless Wave Progression";
-        const isCurrentMatch = (Math.abs(estMin - m) < 0.55);
+        const highlight =
+            MINUTE_EVENT_HIGHLIGHTS[m] || 'Endless Wave Progression';
+        const isCurrentMatch = Math.abs(estMin - m) < 0.55;
 
         const tr = document.createElement('tr');
         tr.style.borderBottom = '1px solid #222';
-        tr.style.background = isCurrentMatch ? 'rgba(0, 255, 204, 0.12)' : (m % 2 === 0 ? '#191919' : '#141414');
+        tr.style.background = isCurrentMatch
+            ? 'rgba(0, 255, 204, 0.12)'
+            : m % 2 === 0
+              ? '#191919'
+              : '#141414';
         if (isCurrentMatch) {
             tr.style.borderLeft = '3px solid #00ffcc';
         }
@@ -624,53 +948,326 @@ function renderExpectedLevelsModal() {
 
 // ---------------- FX Soundboard ----------------
 const FX_SOUND_CATALOG = [
-    { id: 'playerDeath', name: 'Player Death', category: 'CRITICAL', icon: '💀', desc: 'Sub-bass descending thud & flatline tone', fn: () => SoundEngine.playerDeath() },
-    { id: 'playerRevived', name: 'Player Revived', category: 'CRITICAL', icon: '✨', desc: '4-note uplifting major chord chime', fn: () => SoundEngine.playerRevived() },
-    { id: 'levelUp', name: 'Level Up', category: 'CRITICAL', icon: '⭐', desc: 'Sparkling ascending major arpeggio', fn: () => SoundEngine.levelUp() },
-    { id: 'nukeExplosion', name: 'Nuclear Blast', category: 'CRITICAL', icon: '☢️', desc: 'Deep sub-bass shockwave rumble', fn: () => SoundEngine.nukeExplosion() },
-    { id: 'bossWarning', name: 'Boss Pre-Wave Alarm', category: 'CRITICAL', icon: '🚨', desc: '4-pulse countdown alarm 5s before boss', fn: () => SoundEngine.bossWarning() },
-    { id: 'campervan', name: 'Campervan Rampage', category: 'CRITICAL', icon: '🚐', desc: 'Retro dual-tone vehicle horn', fn: () => SoundEngine.campervan() },
-    { id: 'playerDamaged', name: 'Player Damaged', category: 'HIGH', icon: '🩸', desc: 'Visceral impact thud', fn: () => SoundEngine.playerDamaged() },
-    { id: 'phaseDash', name: 'Phase Dash', category: 'HIGH', icon: '💨', desc: 'ZzFX warp displacement whoosh', fn: () => SoundEngine.phaseDash() },
-    { id: 'shieldBlock', name: 'Deflector Shield', category: 'HIGH', icon: '🛡️', desc: 'Resonant metallic laser block ring', fn: () => SoundEngine.shieldBlock() },
-    { id: 'supplyDrop', name: 'Supply Drop', category: 'HIGH', icon: '📦', desc: 'Crisp high double-ping landing & dispenser chime', fn: () => SoundEngine.supplyDrop() },
-    { id: 'medivacHeal', name: 'Medivac Heal Beam', category: 'HIGH', icon: '💉', desc: 'ZzFX soothing bio-energy restorative beam pulse', fn: () => SoundEngine.medivacHeal() },
-    { id: 'behemothCleave', name: 'Titan Kaiser Cleave / Cone', category: 'HIGH', icon: '🪓', desc: 'ZzFX heavy frontal cone impact strike', fn: () => SoundEngine.behemothCleave() },
-    { id: 'behemothBurrow', name: 'Behemoth Burrow', category: 'HIGH', icon: '🕳️', desc: 'Subterranean rumble dive into earth', fn: () => SoundEngine.behemothBurrow() },
-    { id: 'titanSprint', name: 'Titan Sprint Launch', category: 'HIGH', icon: '🦏', desc: 'ZzFX heavy thundering trample charge launch', fn: () => SoundEngine.titanSprint() },
-    { id: 'titanUnderground', name: 'Titan Subterranean Rumble', category: 'HIGH', icon: '⛏️', desc: 'ZzFX continuous subterranean seismic grinding pulse', fn: () => SoundEngine.titanUnderground() },
-    { id: 'meteorFall', name: 'Meteorite Entry', category: 'HIGH', icon: '☄️', desc: 'ZzFX atmospheric reentry rush scaled to fall duration', fn: () => SoundEngine.meteorFall() },
-    { id: 'dasherJump', name: 'Dasher / Jumper Leap', category: 'HIGH', icon: '🐾', desc: 'ZzFX aggressive attack jump screech & pounce', fn: () => SoundEngine.dasherJump() },
-    { id: 'shooterFire', name: 'Shooter Dark Missile', category: 'HIGH', icon: '🟣', desc: 'Darker, slower resonant SFXR enemy projectile', fn: () => SoundEngine.shooterFire() },
-    { id: 'tentacleLash', name: 'Octopus Tentacle Lash', category: 'HIGH', icon: '🐙', desc: 'Visceral whipping tentacle strike', fn: () => SoundEngine.tentacleLash() },
-    { id: 'stalkerBlink', name: 'Stalker Blink', category: 'HIGH', icon: '⚡', desc: 'ZzFX warp teleport phase displacement', fn: () => SoundEngine.stalkerBlink() },
-    { id: 'warpAnomaly', name: 'Warp Anomaly Detonation', category: 'HIGH', icon: '🌀', desc: 'ZzFX cosmic gravitational singularity pulse', fn: () => SoundEngine.warpAnomaly() },
-    { id: 'viperTongue', name: 'Viper / Titan Tongue', category: 'HIGH', icon: '👅', desc: 'ZzFX fleshy abduct tongue whip launch', fn: () => SoundEngine.viperTongue() },
-    { id: 'felhoundGallop', name: 'Felhound Gallop', category: 'HIGH', icon: '🐕', desc: 'ZzFX aggressive bounding beast footstep gallop', fn: () => SoundEngine.felhoundGallop() },
-    { id: 'mineExplosion', name: 'Mine Explosion', category: 'MEDIUM', icon: '💣', desc: 'Low-pass shockwave noise blast', fn: () => SoundEngine.mineExplosion() },
-    { id: 'meleeSweep', name: 'Melee Sweep (Blade)', category: 'MEDIUM', icon: '⚔️', desc: 'ZzFX high-speed blade whoosh', fn: () => SoundEngine.meleeSweep(false) },
-    { id: 'sledgeHammer', name: 'Sledge Hammer', category: 'MEDIUM', icon: '🔨', desc: 'Lowpass resonant blunt cone slam', fn: () => SoundEngine.meleeSweep(true) },
-    { id: 'flamethrower', name: 'Flamethrower', category: 'MEDIUM', icon: '🔥', desc: 'ZzFX roaring continuous flame stream', fn: () => SoundEngine.flamethrower() },
-    { id: 'hellionFlame', name: 'Hellion Flame Jet', category: 'MEDIUM', icon: '🏎️', desc: 'ZzFX burst flame jet roar (adapted flamethrower)', fn: () => SoundEngine.hellionFlame() },
-    { id: 'rocketLaunch', name: 'Seeking Rocket', category: 'MEDIUM', icon: '🚀', desc: 'Thruster ignition punch & exhaust sweep', fn: () => SoundEngine.rocketLaunch() },
-    { id: 'flailHit', name: 'Scourge Flail Hit', category: 'MEDIUM', icon: '⛓️', desc: 'Deep visceral flesh impact & squelch', fn: () => SoundEngine.flailHit() },
-    { id: 'autonomousNetwork', name: 'Autonomous Network', category: 'MEDIUM', icon: '🏗️', desc: 'Mechanical ratchet clicks & pneumatic weld tone', fn: () => SoundEngine.autonomousNetwork() },
-    { id: 'missileFire', name: 'Magic Missile', category: 'MEDIUM', icon: '✨', desc: 'SFXR rapid missile launch chirp', fn: () => SoundEngine.missileFire() },
-    { id: 'laserSniper', name: 'Sniper Shot', category: 'MEDIUM', icon: '🎯', desc: 'SFXR high-pitched laser chirp with long release', fn: () => SoundEngine.laserSniper() },
-    { id: 'behemothMortar', name: 'Behemoth Mortar', category: 'MEDIUM', icon: '☄️', desc: 'Arcing bio-artillery mortar launch', fn: () => SoundEngine.behemothMortar() },
-    { id: 'enemyFreeze', name: 'Enemy Freeze', category: 'LOW', icon: '❄️', desc: 'Crisp crystalline frost snap & shimmer', fn: () => SoundEngine.enemyFreeze() },
-    { id: 'fireRingHit', name: 'Fire Ring Hit', category: 'LOW', icon: '🔥', desc: 'Soft and short flame puff on impact', fn: () => SoundEngine.fireRingHit() },
-    { id: 'playerHeal', name: 'Heal / Health Pack', category: 'LOW', icon: '❤️', desc: 'Restorative bio-energy chime (low on pack, medium on Second Wind)', fn: () => SoundEngine.heal('medium') },
-    { id: 'gemPickup', name: 'XP Gem Pickup', category: 'LOW', icon: '💎', desc: 'Pentatonic crystal sine bell combo', fn: () => SoundEngine.gemPickup() },
-    { id: 'uiClick', name: 'UI Button Click', category: 'LOW', icon: '🖱️', desc: 'Crisp highpass mechanical click', fn: () => SoundEngine.uiClick() }
+    {
+        id: 'playerDeath',
+        name: 'Player Death',
+        category: 'CRITICAL',
+        icon: '💀',
+        desc: 'Sub-bass descending thud & flatline tone',
+        fn: () => SoundEngine.playerDeath(),
+    },
+    {
+        id: 'playerRevived',
+        name: 'Player Revived',
+        category: 'CRITICAL',
+        icon: '✨',
+        desc: '4-note uplifting major chord chime',
+        fn: () => SoundEngine.playerRevived(),
+    },
+    {
+        id: 'levelUp',
+        name: 'Level Up',
+        category: 'CRITICAL',
+        icon: '⭐',
+        desc: 'Sparkling ascending major arpeggio',
+        fn: () => SoundEngine.levelUp(),
+    },
+    {
+        id: 'nukeExplosion',
+        name: 'Nuclear Blast',
+        category: 'CRITICAL',
+        icon: '☢️',
+        desc: 'Deep sub-bass shockwave rumble',
+        fn: () => SoundEngine.nukeExplosion(),
+    },
+    {
+        id: 'bossWarning',
+        name: 'Boss Pre-Wave Alarm',
+        category: 'CRITICAL',
+        icon: '🚨',
+        desc: '4-pulse countdown alarm 5s before boss',
+        fn: () => SoundEngine.bossWarning(),
+    },
+    {
+        id: 'campervan',
+        name: 'Campervan Rampage',
+        category: 'CRITICAL',
+        icon: '🚐',
+        desc: 'Retro dual-tone vehicle horn',
+        fn: () => SoundEngine.campervan(),
+    },
+    {
+        id: 'playerDamaged',
+        name: 'Player Damaged',
+        category: 'HIGH',
+        icon: '🩸',
+        desc: 'Visceral impact thud',
+        fn: () => SoundEngine.playerDamaged(),
+    },
+    {
+        id: 'phaseDash',
+        name: 'Phase Dash',
+        category: 'HIGH',
+        icon: '💨',
+        desc: 'ZzFX warp displacement whoosh',
+        fn: () => SoundEngine.phaseDash(),
+    },
+    {
+        id: 'shieldBlock',
+        name: 'Deflector Shield',
+        category: 'HIGH',
+        icon: '🛡️',
+        desc: 'Resonant metallic laser block ring',
+        fn: () => SoundEngine.shieldBlock(),
+    },
+    {
+        id: 'supplyDrop',
+        name: 'Supply Drop',
+        category: 'HIGH',
+        icon: '📦',
+        desc: 'Crisp high double-ping landing & dispenser chime',
+        fn: () => SoundEngine.supplyDrop(),
+    },
+    {
+        id: 'medivacHeal',
+        name: 'Medivac Heal Beam',
+        category: 'HIGH',
+        icon: '💉',
+        desc: 'ZzFX soothing bio-energy restorative beam pulse',
+        fn: () => SoundEngine.medivacHeal(),
+    },
+    {
+        id: 'behemothCleave',
+        name: 'Titan Kaiser Cleave / Cone',
+        category: 'HIGH',
+        icon: '🪓',
+        desc: 'ZzFX heavy frontal cone impact strike',
+        fn: () => SoundEngine.behemothCleave(),
+    },
+    {
+        id: 'behemothBurrow',
+        name: 'Behemoth Burrow',
+        category: 'HIGH',
+        icon: '🕳️',
+        desc: 'Subterranean rumble dive into earth',
+        fn: () => SoundEngine.behemothBurrow(),
+    },
+    {
+        id: 'titanSprint',
+        name: 'Titan Sprint Launch',
+        category: 'HIGH',
+        icon: '🦏',
+        desc: 'ZzFX heavy thundering trample charge launch',
+        fn: () => SoundEngine.titanSprint(),
+    },
+    {
+        id: 'titanUnderground',
+        name: 'Titan Subterranean Rumble',
+        category: 'HIGH',
+        icon: '⛏️',
+        desc: 'ZzFX continuous subterranean seismic grinding pulse',
+        fn: () => SoundEngine.titanUnderground(),
+    },
+    {
+        id: 'meteorFall',
+        name: 'Meteorite Entry',
+        category: 'HIGH',
+        icon: '☄️',
+        desc: 'ZzFX atmospheric reentry rush scaled to fall duration',
+        fn: () => SoundEngine.meteorFall(),
+    },
+    {
+        id: 'dasherJump',
+        name: 'Dasher / Jumper Leap',
+        category: 'HIGH',
+        icon: '🐾',
+        desc: 'ZzFX aggressive attack jump screech & pounce',
+        fn: () => SoundEngine.dasherJump(),
+    },
+    {
+        id: 'shooterFire',
+        name: 'Shooter Dark Missile',
+        category: 'HIGH',
+        icon: '🟣',
+        desc: 'Darker, slower resonant SFXR enemy projectile',
+        fn: () => SoundEngine.shooterFire(),
+    },
+    {
+        id: 'tentacleLash',
+        name: 'Octopus Tentacle Lash',
+        category: 'HIGH',
+        icon: '🐙',
+        desc: 'Visceral whipping tentacle strike',
+        fn: () => SoundEngine.tentacleLash(),
+    },
+    {
+        id: 'stalkerBlink',
+        name: 'Stalker Blink',
+        category: 'HIGH',
+        icon: '⚡',
+        desc: 'ZzFX warp teleport phase displacement',
+        fn: () => SoundEngine.stalkerBlink(),
+    },
+    {
+        id: 'warpAnomaly',
+        name: 'Warp Anomaly Detonation',
+        category: 'HIGH',
+        icon: '🌀',
+        desc: 'ZzFX cosmic gravitational singularity pulse',
+        fn: () => SoundEngine.warpAnomaly(),
+    },
+    {
+        id: 'viperTongue',
+        name: 'Viper / Titan Tongue',
+        category: 'HIGH',
+        icon: '👅',
+        desc: 'ZzFX fleshy abduct tongue whip launch',
+        fn: () => SoundEngine.viperTongue(),
+    },
+    {
+        id: 'felhoundGallop',
+        name: 'Felhound Gallop',
+        category: 'HIGH',
+        icon: '🐕',
+        desc: 'ZzFX aggressive bounding beast footstep gallop',
+        fn: () => SoundEngine.felhoundGallop(),
+    },
+    {
+        id: 'mineExplosion',
+        name: 'Mine Explosion',
+        category: 'MEDIUM',
+        icon: '💣',
+        desc: 'Low-pass shockwave noise blast',
+        fn: () => SoundEngine.mineExplosion(),
+    },
+    {
+        id: 'meleeSweep',
+        name: 'Melee Sweep (Blade)',
+        category: 'MEDIUM',
+        icon: '⚔️',
+        desc: 'ZzFX high-speed blade whoosh',
+        fn: () => SoundEngine.meleeSweep(false),
+    },
+    {
+        id: 'sledgeHammer',
+        name: 'Sledge Hammer',
+        category: 'MEDIUM',
+        icon: '🔨',
+        desc: 'Lowpass resonant blunt cone slam',
+        fn: () => SoundEngine.meleeSweep(true),
+    },
+    {
+        id: 'flamethrower',
+        name: 'Flamethrower',
+        category: 'MEDIUM',
+        icon: '🔥',
+        desc: 'ZzFX roaring continuous flame stream',
+        fn: () => SoundEngine.flamethrower(),
+    },
+    {
+        id: 'hellionFlame',
+        name: 'Hellion Flame Jet',
+        category: 'MEDIUM',
+        icon: '🏎️',
+        desc: 'ZzFX burst flame jet roar (adapted flamethrower)',
+        fn: () => SoundEngine.hellionFlame(),
+    },
+    {
+        id: 'rocketLaunch',
+        name: 'Seeking Rocket',
+        category: 'MEDIUM',
+        icon: '🚀',
+        desc: 'Thruster ignition punch & exhaust sweep',
+        fn: () => SoundEngine.rocketLaunch(),
+    },
+    {
+        id: 'flailHit',
+        name: 'Scourge Flail Hit',
+        category: 'MEDIUM',
+        icon: '⛓️',
+        desc: 'Deep visceral flesh impact & squelch',
+        fn: () => SoundEngine.flailHit(),
+    },
+    {
+        id: 'autonomousNetwork',
+        name: 'Autonomous Network',
+        category: 'MEDIUM',
+        icon: '🏗️',
+        desc: 'Mechanical ratchet clicks & pneumatic weld tone',
+        fn: () => SoundEngine.autonomousNetwork(),
+    },
+    {
+        id: 'missileFire',
+        name: 'Magic Missile',
+        category: 'MEDIUM',
+        icon: '✨',
+        desc: 'SFXR rapid missile launch chirp',
+        fn: () => SoundEngine.missileFire(),
+    },
+    {
+        id: 'laserSniper',
+        name: 'Sniper Shot',
+        category: 'MEDIUM',
+        icon: '🎯',
+        desc: 'SFXR high-pitched laser chirp with long release',
+        fn: () => SoundEngine.laserSniper(),
+    },
+    {
+        id: 'behemothMortar',
+        name: 'Behemoth Mortar',
+        category: 'MEDIUM',
+        icon: '☄️',
+        desc: 'Arcing bio-artillery mortar launch',
+        fn: () => SoundEngine.behemothMortar(),
+    },
+    {
+        id: 'enemyFreeze',
+        name: 'Enemy Freeze',
+        category: 'LOW',
+        icon: '❄️',
+        desc: 'Crisp crystalline frost snap & shimmer',
+        fn: () => SoundEngine.enemyFreeze(),
+    },
+    {
+        id: 'fireRingHit',
+        name: 'Fire Ring Hit',
+        category: 'LOW',
+        icon: '🔥',
+        desc: 'Soft and short flame puff on impact',
+        fn: () => SoundEngine.fireRingHit(),
+    },
+    {
+        id: 'playerHeal',
+        name: 'Heal / Health Pack',
+        category: 'LOW',
+        icon: '❤️',
+        desc: 'Restorative bio-energy chime (low on pack, medium on Second Wind)',
+        fn: () => SoundEngine.heal('medium'),
+    },
+    {
+        id: 'gemPickup',
+        name: 'XP Gem Pickup',
+        category: 'LOW',
+        icon: '💎',
+        desc: 'Pentatonic crystal sine bell combo',
+        fn: () => SoundEngine.gemPickup(),
+    },
+    {
+        id: 'uiClick',
+        name: 'UI Button Click',
+        category: 'LOW',
+        icon: '🖱️',
+        desc: 'Crisp highpass mechanical click',
+        fn: () => SoundEngine.uiClick(),
+    },
 ];
 
 function renderFxSoundboard() {
     const grid = document.getElementById('fxSoundsGrid');
     if (!grid) return;
     grid.innerHTML = '';
-    
-    FX_SOUND_CATALOG.forEach(sound => {
+
+    FX_SOUND_CATALOG.forEach((sound) => {
         const card = document.createElement('div');
         card.style.background = '#1a1a1a';
         card.style.border = '1px solid #333';
@@ -754,7 +1351,11 @@ function initTestingLabBindings() {
     const testingBtn = document.getElementById('testingBtn');
     if (testingBtn) {
         testingBtn.onclick = () => {
-            if (typeof ENABLE_TESTING_LAB !== 'undefined' && !ENABLE_TESTING_LAB) return;
+            if (
+                typeof ENABLE_TESTING_LAB !== 'undefined' &&
+                !ENABLE_TESTING_LAB
+            )
+                return;
             testingBtn.style.display = 'none';
             const sMenu = document.getElementById('startMenu');
             if (sMenu) sMenu.classList.remove('show');
@@ -847,9 +1448,15 @@ function initTestingLabBindings() {
     }
 
     // Preset minute click handlers
-    for (const btn of document.querySelectorAll('#testingConfigModal .time-preset-btn')) {
+    for (const btn of document.querySelectorAll(
+        '#testingConfigModal .time-preset-btn',
+    )) {
         btn.onclick = () => {
-            document.querySelectorAll('#testingConfigModal .time-preset-btn').forEach(b => b.classList.remove('active'));
+            document
+                .querySelectorAll('#testingConfigModal .time-preset-btn')
+                .forEach((b) => {
+                    b.classList.remove('active');
+                });
             btn.classList.add('active');
             const customMin = document.getElementById('testingCustomMinute');
             if (customMin) customMin.value = btn.dataset.min;
@@ -860,13 +1467,19 @@ function initTestingLabBindings() {
     const customMinInput = document.getElementById('testingCustomMinute');
     if (customMinInput) {
         customMinInput.oninput = (e) => {
-            document.querySelectorAll('#testingConfigModal .time-preset-btn').forEach(b => b.classList.remove('active'));
+            document
+                .querySelectorAll('#testingConfigModal .time-preset-btn')
+                .forEach((b) => {
+                    b.classList.remove('active');
+                });
             chosenTestMinute = parseFloat(e.target.value) || 0;
         };
     }
 
     // Start tests when clicking difficulty
-    for (const btn of document.querySelectorAll('#testingConfigModal .test-diff-btn')) {
+    for (const btn of document.querySelectorAll(
+        '#testingConfigModal .test-diff-btn',
+    )) {
         btn.onclick = () => {
             const cfgModal = document.getElementById('testingConfigModal');
             if (cfgModal) cfgModal.classList.remove('show');

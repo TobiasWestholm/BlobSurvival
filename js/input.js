@@ -1,6 +1,6 @@
 /**
  * BlobSurvival - Input & Control Management
- * 
+ *
  * Manages keyboard input mapping, multi-key state, double-tap dash initiation,
  * mobile virtual joystick mechanics, network client input serialization,
  * audio unlock gestures, and visibility change tab listeners.
@@ -20,24 +20,36 @@ function anyKey(list) {
 
 // Double-tapping a movement key triggers a dash for the player that owns that key.
 function handleDoubleTap(k) {
-    if (typeof GAME_STATE === 'undefined' || GAME_STATE.current !== STATES.GAMEPLAY) return;
+    if (
+        typeof GAME_STATE === 'undefined' ||
+        GAME_STATE.current !== STATES.GAMEPLAY
+    )
+        return;
     const tnow = performance.now();
-    const isOnline = (GAME_STATE.gameMode === 'online');
-    const myLocalIndex = isOnline ? (typeof netManager !== 'undefined' && netManager ? netManager.localPlayerIndex : 0) : null;
-    const doubleTapMs = (typeof DOUBLE_TAP_MS !== 'undefined') ? DOUBLE_TAP_MS : 250;
+    const isOnline = GAME_STATE.gameMode === 'online';
+    const myLocalIndex = isOnline
+        ? typeof netManager !== 'undefined' && netManager
+            ? netManager.localPlayerIndex
+            : 0
+        : null;
+    const doubleTapMs =
+        typeof DOUBLE_TAP_MS !== 'undefined' ? DOUBLE_TAP_MS : 250;
 
     if (GAME_STATE.players) {
         for (const p of GAME_STATE.players) {
-            if (!p || !p.alive || !p.dashEnabled) continue;
+            if (!p?.alive || !p.dashEnabled) continue;
             if (isOnline && p.index !== myLocalIndex) continue;
             let dir = null;
             if (p.keymap) {
                 for (const d of ['up', 'down', 'left', 'right']) {
-                    if (p.keymap[d] && p.keymap[d].includes(k)) { dir = d; break; }
+                    if (p.keymap[d]?.includes(k)) {
+                        dir = d;
+                        break;
+                    }
                 }
             }
             if (!dir) continue;
-            if (p.lastTapDir === dir && (tnow - p.lastTapTime) < doubleTapMs) {
+            if (p.lastTapDir === dir && tnow - p.lastTapTime < doubleTapMs) {
                 p.lastTapDir = null; // consume so a third tap can't immediately re-fire
                 tryStartDash(p);
             } else {
@@ -51,17 +63,34 @@ function handleDoubleTap(k) {
 
 function tryStartDash(p) {
     if (!p) return;
-    const curTime = (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+    const curTime =
+        typeof gameClock !== 'undefined' ? gameClock : performance.now();
     if (p.dashing || curTime < (p.dashCooldownUntil || 0)) return;
-    let dx = 0, dy = 0;
+    let dx = 0,
+        dy = 0;
 
-    const isOnline = (typeof netManager !== 'undefined' && netManager && (netManager.isOnline || (typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online')));
-    const localIndex = isOnline ? (typeof netManager !== 'undefined' && netManager ? netManager.localPlayerIndex : 0) : 0;
+    const isOnline =
+        typeof netManager !== 'undefined' &&
+        netManager &&
+        (netManager.isOnline ||
+            (typeof GAME_STATE !== 'undefined' &&
+                GAME_STATE.gameMode === 'online'));
+    const localIndex = isOnline
+        ? typeof netManager !== 'undefined' && netManager
+            ? netManager.localPlayerIndex
+            : 0
+        : 0;
 
     // In online mode, local dash key/touch inputs only trigger dash on the local player instance
     if (isOnline && p.index !== localIndex) return;
 
-    if (p.index === localIndex && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
+    if (
+        p.index === localIndex &&
+        typeof joystickInstance !== 'undefined' &&
+        joystickInstance &&
+        joystickInstance.vector &&
+        joystickInstance.vector.active
+    ) {
         dx = joystickInstance.vector.x;
         dy = joystickInstance.vector.y;
     } else if (p.keymap) {
@@ -78,8 +107,9 @@ function tryStartDash(p) {
     const len = Math.hypot(dx, dy);
     if (len < 0.001) return;
 
-    const dashMs = (typeof PLAYER_DASH_MS !== 'undefined') ? PLAYER_DASH_MS : 300;
-    const baseDashSpeed = (typeof PLAYER_DASH_SPEED !== 'undefined') ? PLAYER_DASH_SPEED : 7.0;
+    const dashMs = typeof PLAYER_DASH_MS !== 'undefined' ? PLAYER_DASH_MS : 300;
+    const baseDashSpeed =
+        typeof PLAYER_DASH_SPEED !== 'undefined' ? PLAYER_DASH_SPEED : 7.0;
 
     p.dashing = true;
     p.dashBurstFired = false;
@@ -93,7 +123,7 @@ function tryStartDash(p) {
         angle: Math.atan2(dy, dx),
         startTime: curTime,
         duration: dashMs + 220,
-        dashDuration: dashMs
+        dashDuration: dashMs,
     };
     if (typeof SoundEngine !== 'undefined' && SoundEngine.phaseDash) {
         SoundEngine.phaseDash();
@@ -115,16 +145,22 @@ class JoystickController {
 
         this.zone.addEventListener('pointerdown', (e) => this.onPointerDown(e));
         if (typeof window !== 'undefined') {
-            window.addEventListener('pointermove', (e) => this.onPointerMove(e));
+            window.addEventListener('pointermove', (e) =>
+                this.onPointerMove(e),
+            );
             window.addEventListener('pointerup', (e) => this.onPointerUp(e));
-            window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+            window.addEventListener('pointercancel', (e) =>
+                this.onPointerUp(e),
+            );
         }
     }
 
     onPointerDown(e) {
         this.active = true;
         this.pointerId = e.pointerId;
-        try { this.zone.setPointerCapture(e.pointerId); } catch (err) {}
+        try {
+            this.zone.setPointerCapture(e.pointerId);
+        } catch {}
         this.cachedRect = this.zone.getBoundingClientRect();
         this.updatePosition(e);
     }
@@ -136,17 +172,22 @@ class JoystickController {
 
     onPointerUp(e) {
         if (!this.active) return;
-        if (e && this.pointerId !== null && e.pointerId !== this.pointerId) return;
+        if (e && this.pointerId !== null && e.pointerId !== this.pointerId)
+            return;
         this.active = false;
         this.pointerId = null;
-        if (this.thumb && this.thumb.style) {
+        if (this.thumb?.style) {
             this.thumb.style.transform = 'translate(0px, 0px)';
         }
         this.vector = { x: 0, y: 0, angle: 0, distance: 0, active: false };
     }
 
     updatePosition(e) {
-        const rect = this.cachedRect || (this.zone ? this.zone.getBoundingClientRect() : { left: 0, top: 0, width: 100, height: 100 });
+        const rect =
+            this.cachedRect ||
+            (this.zone
+                ? this.zone.getBoundingClientRect()
+                : { left: 0, top: 0, width: 100, height: 100 });
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         const dx = e.clientX - centerX;
@@ -154,11 +195,13 @@ class JoystickController {
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
 
-        const maxR = (this.zone && this.zone.clientWidth) ? (this.zone.clientWidth * 0.32) : this.maxRange;
+        const maxR = this.zone?.clientWidth
+            ? this.zone.clientWidth * 0.32
+            : this.maxRange;
         const visualDist = Math.min(dist, maxR);
         const vx = Math.cos(angle) * visualDist;
         const vy = Math.sin(angle) * visualDist;
-        if (this.thumb && this.thumb.style) {
+        if (this.thumb?.style) {
             this.thumb.style.transform = `translate(${vx}px, ${vy}px)`;
         }
 
@@ -169,7 +212,7 @@ class JoystickController {
                 y: Math.sin(angle),
                 angle: angle,
                 distance: 1.0,
-                active: true
+                active: true,
             };
         } else {
             this.vector = { x: 0, y: 0, angle: 0, distance: 0, active: false };
@@ -180,37 +223,61 @@ class JoystickController {
 // ---------------- 3. Network Client Input Sender ----------------
 
 function sendClientLocalInput() {
-    if (typeof netManager === 'undefined' || !netManager || !netManager.isClient) return;
+    if (
+        typeof netManager === 'undefined' ||
+        !netManager ||
+        !netManager.isClient
+    )
+        return;
     if (typeof GAME_STATE === 'undefined' || !GAME_STATE.players) return;
     const myIndex = netManager.localPlayerIndex;
     const myPlayer = GAME_STATE.players[myIndex];
     if (!myPlayer) return;
 
-    let moveX = 0, moveY = 0;
+    let moveX = 0,
+        moveY = 0;
     let hasJoystick = false;
-    if (typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
+    if (joystickInstance?.vector?.active) {
         moveX = joystickInstance.vector.x;
         moveY = joystickInstance.vector.y;
         myPlayer.facingAngle = joystickInstance.vector.angle;
         hasJoystick = true;
     }
     if (!hasJoystick) {
-        let dx = 0, dy = 0;
-        const upKeys = (myPlayer.keymap && myPlayer.keymap.up) ? myPlayer.keymap.up : ['w', 'arrowup'];
-        const downKeys = (myPlayer.keymap && myPlayer.keymap.down) ? myPlayer.keymap.down : ['s', 'arrowdown'];
-        const leftKeys = (myPlayer.keymap && myPlayer.keymap.left) ? myPlayer.keymap.left : ['a', 'arrowleft'];
-        const rightKeys = (myPlayer.keymap && myPlayer.keymap.right) ? myPlayer.keymap.right : ['d', 'arrowright'];
+        let dx = 0,
+            dy = 0;
+        const upKeys = myPlayer.keymap?.up
+            ? myPlayer.keymap.up
+            : ['w', 'arrowup'];
+        const downKeys = myPlayer.keymap?.down
+            ? myPlayer.keymap.down
+            : ['s', 'arrowdown'];
+        const leftKeys = myPlayer.keymap?.left
+            ? myPlayer.keymap.left
+            : ['a', 'arrowleft'];
+        const rightKeys = myPlayer.keymap?.right
+            ? myPlayer.keymap.right
+            : ['d', 'arrowright'];
 
         if (anyKey(upKeys)) dy -= 1;
         if (anyKey(downKeys)) dy += 1;
         if (anyKey(leftKeys)) dx -= 1;
         if (anyKey(rightKeys)) dx += 1;
         if (dx !== 0 || dy !== 0) {
-            if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
-            moveX = dx; moveY = dy;
+            if (dx !== 0 && dy !== 0) {
+                dx *= Math.SQRT1_2;
+                dy *= Math.SQRT1_2;
+            }
+            moveX = dx;
+            moveY = dy;
         }
     }
-    netManager.sendLocalInput(moveX, moveY, myPlayer.facingAngle, myPlayer.dashing);
+    netManager.sendLocalInput(
+        moveX,
+        moveY,
+        myPlayer.facingAngle,
+        myPlayer.dashing,
+    );
 }
 
 // ---------------- 4. Global Input Event Listeners Setup ----------------
@@ -220,12 +287,17 @@ let joystickThumb = null;
 let joystickInstance = null;
 
 function initInputSystem() {
-    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    if (typeof document === 'undefined' || typeof window === 'undefined')
+        return;
 
     joystickZone = document.getElementById('joystickZone');
     joystickThumb = document.getElementById('joystickThumb');
     if (joystickZone && joystickThumb) {
-        joystickInstance = new JoystickController(joystickZone, joystickThumb, 45);
+        joystickInstance = new JoystickController(
+            joystickZone,
+            joystickThumb,
+            45,
+        );
         if (typeof window !== 'undefined') {
             window.joystickZone = joystickZone;
             window.joystickThumb = joystickThumb;
@@ -234,15 +306,26 @@ function initInputSystem() {
     }
 
     // Audio gesture unlocks on first user gesture
-    ['pointerdown', 'keydown', 'click'].forEach(evt => {
-        window.addEventListener(evt, () => {
-            if (typeof SoundEngine !== 'undefined' && SoundEngine.init) {
-                SoundEngine.init();
-                if (typeof GAME_STATE !== 'undefined' && (GAME_STATE.current === STATES.START_MENU || GAME_STATE.current === STATES.WEAPON_SELECT) && (!SoundEngine.isMusicPlaying || SoundEngine.musicMode !== 'menu') && !SoundEngine.isMusicMuted) {
-                    SoundEngine.startMenuMusic();
+    ['pointerdown', 'keydown', 'click'].forEach((evt) => {
+        window.addEventListener(
+            evt,
+            () => {
+                if (typeof SoundEngine !== 'undefined' && SoundEngine.init) {
+                    SoundEngine.init();
+                    if (
+                        typeof GAME_STATE !== 'undefined' &&
+                        (GAME_STATE.current === STATES.START_MENU ||
+                            GAME_STATE.current === STATES.WEAPON_SELECT) &&
+                        (!SoundEngine.isMusicPlaying ||
+                            SoundEngine.musicMode !== 'menu') &&
+                        !SoundEngine.isMusicMuted
+                    ) {
+                        SoundEngine.startMenuMusic();
+                    }
                 }
-            }
-        }, { once: false, passive: true });
+            },
+            { once: false, passive: true },
+        );
     });
 
     // Auto-suspend audio on tab blur/hide
@@ -258,14 +341,26 @@ function initInputSystem() {
 
     // Hotkeys & keyup / keydown handlers
     window.addEventListener('keydown', (e) => {
+        if (
+            e.target &&
+            (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')
+        ) {
+            return;
+        }
         if (e.key && !e.repeat) {
             const k = e.key.toLowerCase();
             // Feature flag: toggle testing lab with section sign '§' or '`' / '~' (on start menu)
-            if ((k === '§' || k === '`' || k === '~') && typeof GAME_STATE !== 'undefined' && GAME_STATE.current === STATES.START_MENU) {
+            if (
+                (k === '§' || k === '`' || k === '~') &&
+                typeof GAME_STATE !== 'undefined' &&
+                GAME_STATE.current === STATES.START_MENU
+            ) {
                 ENABLE_TESTING_LAB = !Boolean(window.ENABLE_TESTING_LAB);
-                if (typeof window !== 'undefined') window.ENABLE_TESTING_LAB = ENABLE_TESTING_LAB;
+                if (typeof window !== 'undefined')
+                    window.ENABLE_TESTING_LAB = ENABLE_TESTING_LAB;
                 const tBtn = document.getElementById('testingBtn');
-                if (tBtn) tBtn.style.display = ENABLE_TESTING_LAB ? 'block' : 'none';
+                if (tBtn)
+                    tBtn.style.display = ENABLE_TESTING_LAB ? 'block' : 'none';
             }
             // Audio toggle hotkeys
             if (k === 'm' && typeof SoundEngine !== 'undefined') {
@@ -274,11 +369,20 @@ function initInputSystem() {
             } else if (k === 'n' && typeof SoundEngine !== 'undefined') {
                 SoundEngine.init();
                 SoundEngine.toggleMusicMute();
-            } else if (k === '1' && (!e.target || (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA'))) {
+            } else if (
+                k === '1' &&
+                (!e.target ||
+                    (e.target.tagName !== 'INPUT' &&
+                        e.target.tagName !== 'TEXTAREA'))
+            ) {
                 if (typeof GAME_STATE !== 'undefined') {
-                    const isFpsVisible = (GAME_STATE.showFps !== undefined) ? GAME_STATE.showFps : Boolean(GAME_STATE.testingMode);
+                    const isFpsVisible =
+                        GAME_STATE.showFps !== undefined
+                            ? GAME_STATE.showFps
+                            : Boolean(GAME_STATE.testingMode);
                     GAME_STATE.showFps = !isFpsVisible;
-                    if (typeof updateFpsToggleBtn === 'function') updateFpsToggleBtn();
+                    if (typeof updateFpsToggleBtn === 'function')
+                        updateFpsToggleBtn();
                     if (typeof updateUI === 'function') updateUI();
                 }
             }
@@ -286,7 +390,11 @@ function initInputSystem() {
 
         // Escape handling
         if (e.key === 'Escape' || e.key === 'Esc') {
-            if (typeof GAME_STATE !== 'undefined' && (GAME_STATE.current === STATES.GAMEPLAY || GAME_STATE.current === STATES.PAUSED)) {
+            if (
+                typeof GAME_STATE !== 'undefined' &&
+                (GAME_STATE.current === STATES.GAMEPLAY ||
+                    GAME_STATE.current === STATES.PAUSED)
+            ) {
                 if (typeof togglePause === 'function') {
                     togglePause();
                     return;
@@ -296,30 +404,42 @@ function initInputSystem() {
                 const fxModal = document.getElementById('fxSoundsModal');
                 const cfgModal = document.getElementById('testingConfigModal');
                 const testModal = document.getElementById('testingModal');
-                if (expModal && expModal.classList.contains('show')) {
+                if (expModal?.classList.contains('show')) {
                     expModal.classList.remove('show');
                     return;
-                } else if (fxModal && fxModal.classList.contains('show')) {
+                } else if (fxModal?.classList.contains('show')) {
                     fxModal.classList.remove('show');
                     return;
-                } else if (cfgModal && cfgModal.classList.contains('show')) {
+                } else if (cfgModal?.classList.contains('show')) {
                     cfgModal.classList.remove('show');
                     if (testModal) testModal.classList.add('show');
                     return;
-                } else if (testModal && testModal.classList.contains('show')) {
+                } else if (testModal?.classList.contains('show')) {
                     testModal.classList.remove('show');
                     if (typeof showStartMenu === 'function') {
                         showStartMenu();
                     } else {
                         const tBtn = document.getElementById('testingBtn');
-                        if (tBtn && typeof ENABLE_TESTING_LAB !== 'undefined') tBtn.style.display = ENABLE_TESTING_LAB ? 'block' : 'none';
+                        if (tBtn && typeof ENABLE_TESTING_LAB !== 'undefined')
+                            tBtn.style.display = ENABLE_TESTING_LAB
+                                ? 'block'
+                                : 'none';
                         const sMenu = document.getElementById('startMenu');
                         if (sMenu) sMenu.classList.add('show');
                     }
                     return;
-                } else if (document.getElementById('startMenu') && document.getElementById('startMenu').classList.contains('show')) {
+                } else if (
+                    document
+                        .getElementById('startMenu')
+                        ?.classList.contains('show')
+                ) {
                     const diffStep = document.getElementById('difficultyStep');
-                    if (diffStep && diffStep.style.display !== 'none' && (typeof isMobile === 'undefined' || !isMobile) && typeof showStartStep === 'function') {
+                    if (
+                        diffStep &&
+                        diffStep.style.display !== 'none' &&
+                        (typeof isMobile === 'undefined' || !isMobile) &&
+                        typeof showStartStep === 'function'
+                    ) {
                         showStartStep('players');
                         return;
                     }
@@ -334,6 +454,12 @@ function initInputSystem() {
     });
 
     window.addEventListener('keyup', (e) => {
+        if (
+            e.target &&
+            (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')
+        ) {
+            return;
+        }
         keys[e.key.toLowerCase()] = false;
     });
 
@@ -389,6 +515,6 @@ if (typeof module !== 'undefined' && module.exports) {
         tryStartDash,
         JoystickController,
         sendClientLocalInput,
-        initInputSystem
+        initInputSystem,
     };
 }

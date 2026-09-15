@@ -1,8 +1,12 @@
 function aliveCentroid() {
-    let sx = 0, sy = 0, n = 0;
+    let sx = 0,
+        sy = 0,
+        n = 0;
     for (const p of GAME_STATE.players) {
         if (!p.alive) continue;
-        sx += p.x; sy += p.y; n++;
+        sx += p.x;
+        sy += p.y;
+        n++;
     }
     if (n === 0) return { x: W / 2, y: H / 2 };
     return { x: sx / n, y: sy / n };
@@ -19,25 +23,30 @@ function spawnEnemy(now) {
             // Minute 23+: Vipers join the mix (rare elite spellcaster, 0.7% chance)
             const r = Math.random();
             if (r < 0.007) type = 'viper';
-            else if (r < 0.025) type = 'shield_bearer'; // 1.8%
-            else if (r < 0.037) type = 'warp_anomaly'; // 1.2%
+            else if (r < 0.025)
+                type = 'shield_bearer'; // 1.8%
+            else if (r < 0.037)
+                type = 'warp_anomaly'; // 1.2%
             else if (r < 0.14) type = 'hellion';
             else if (r < 0.17) type = 'medivac';
-            else if (r < 0.177) type = 'sentry'; // rare support drone (0.7% chance)
+            else if (r < 0.177)
+                type = 'sentry'; // rare support drone (0.7% chance)
             else if (r < 0.32) type = 'spine_crawler';
-            else if (r < 0.50) type = 'stalker';
+            else if (r < 0.5) type = 'stalker';
             else if (r < 0.72) type = 'marauder';
             else type = 'baneling';
         } else if (e >= 1320000) {
             // Minute 22–23: Shield Bearers join the mix (rare elite unit, 1.8% chance)
             const r = Math.random();
             if (r < 0.018) type = 'shield_bearer';
-            else if (r < 0.030) type = 'warp_anomaly'; // very rare unit (1.2% chance)
+            else if (r < 0.03)
+                type = 'warp_anomaly'; // very rare unit (1.2% chance)
             else if (r < 0.13) type = 'hellion';
             else if (r < 0.16) type = 'medivac';
-            else if (r < 0.167) type = 'sentry'; // rare support drone (0.7% chance)
+            else if (r < 0.167)
+                type = 'sentry'; // rare support drone (0.7% chance)
             else if (r < 0.32) type = 'spine_crawler';
-            else if (r < 0.50) type = 'stalker';
+            else if (r < 0.5) type = 'stalker';
             else if (r < 0.72) type = 'marauder';
             else type = 'baneling';
         } else if (e >= 1260000) {
@@ -46,27 +55,30 @@ function spawnEnemy(now) {
             if (r < 0.015) type = 'warp_anomaly';
             else if (r < 0.12) type = 'hellion';
             else if (r < 0.15) type = 'medivac';
-            else if (r < 0.157) type = 'sentry'; // rare support drone (0.7% chance)
-            else if (r < 0.30) type = 'spine_crawler';
-            else if (r < 0.50) type = 'stalker';
-            else if (r < 0.70) type = 'marauder';
+            else if (r < 0.157)
+                type = 'sentry'; // rare support drone (0.7% chance)
+            else if (r < 0.3) type = 'spine_crawler';
+            else if (r < 0.5) type = 'stalker';
+            else if (r < 0.7) type = 'marauder';
             else type = 'baneling';
         } else if (e >= 1200000) {
             // Minute 20–21: Hellions join the mix
             const r = Math.random();
             if (r < 0.12) type = 'hellion';
             else if (r < 0.15) type = 'medivac';
-            else if (r < 0.158) type = 'sentry'; // rare support drone (0.8% chance)
-            else if (r < 0.30) type = 'spine_crawler';
-            else if (r < 0.50) type = 'stalker';
-            else if (r < 0.70) type = 'marauder';
+            else if (r < 0.158)
+                type = 'sentry'; // rare support drone (0.8% chance)
+            else if (r < 0.3) type = 'spine_crawler';
+            else if (r < 0.5) type = 'stalker';
+            else if (r < 0.7) type = 'marauder';
             else type = 'baneling';
         } else if (e >= 1140000) {
             // Minute 19–20: Medivacs join the mix
             const r = Math.random();
             if (r < 0.03) type = 'medivac';
-            else if (r < 0.038) type = 'sentry'; // rare support drone (0.8% chance)
-            else if (r < 0.20) type = 'spine_crawler';
+            else if (r < 0.038)
+                type = 'sentry'; // rare support drone (0.8% chance)
+            else if (r < 0.2) type = 'spine_crawler';
             else if (r < 0.44) type = 'stalker';
             else if (r < 0.68) type = 'marauder';
             else type = 'baneling';
@@ -83,12 +95,12 @@ function spawnEnemy(now) {
             const r = Math.random();
             if (r < 0.15) type = 'spine_crawler';
             else if (r < 0.42) type = 'stalker';
-            else if (r < 0.70) type = 'marauder';
+            else if (r < 0.7) type = 'marauder';
             else type = 'baneling';
         } else if (e >= 840000) {
             // Minute 14–15: Stalkers join the mix
             const r = Math.random();
-            if (r < 0.30) type = 'stalker';
+            if (r < 0.3) type = 'stalker';
             else if (r < 0.65) type = 'marauder';
             else type = 'baneling';
         } else if (e >= 780000) {
@@ -101,14 +113,18 @@ function spawnEnemy(now) {
             type = 'baneling';
         }
     } else {
-        if (e > 540000 && Math.random() < 0.08) type = 'spiky';         // 9 min
-        else if (e > 360000 && Math.random() < 0.12) type = 'dasher';    // 6 min
-        else if (e > 420000 && Math.random() < 0.12) type = 'shooter';   // 7 min
-        else if (e > 300000 && Math.random() < 0.10) type = 'meteor';    // 5 min
+        if (e > 540000 && Math.random() < 0.08)
+            type = 'spiky'; // 9 min
+        else if (e > 360000 && Math.random() < 0.12)
+            type = 'dasher'; // 6 min
+        else if (e > 420000 && Math.random() < 0.12)
+            type = 'shooter'; // 7 min
+        else if (e > 300000 && Math.random() < 0.1)
+            type = 'meteor'; // 5 min
         else if (e > 180000 && Math.random() < 0.05) type = 'brute_lord';
-        else if (e > 240000 && Math.random() < 0.20) type = 'speeder';
-        else if (e > 120000 && Math.random() < 0.10) type = 'mega_brute';
-        else if (e > 40000 && Math.random() < 0.30) type = 'brute';
+        else if (e > 240000 && Math.random() < 0.2) type = 'speeder';
+        else if (e > 120000 && Math.random() < 0.1) type = 'mega_brute';
+        else if (e > 40000 && Math.random() < 0.3) type = 'brute';
     }
 
     let x, y;
@@ -123,19 +139,19 @@ function spawnEnemy(now) {
         x = c.x + (W / 2 + 40) * Math.cos(theta);
         y = c.y + (H / 2 + 40) * Math.sin(theta);
     }
-    GAME_STATE.enemies.push(new Enemy(x, y, type, now));
+    GAME_STATE.enemies.push(Enemy.create(x, y, type, now));
 }
 
 // ---------------- Standardized Boss Waves ----------------
 
 function spawnOctopus(now) {
-    const boss = new Enemy(W / 2, H / 2, 'octopus', now);
+    const boss = Enemy.create(W / 2, H / 2, 'octopus', now);
     GAME_STATE.enemies.push(boss);
 }
 
 function spawnFelhound(now) {
     const c = aliveCentroid();
-    const fh = new Enemy(c.x, -40, 'felhound', now);
+    const fh = Enemy.create(c.x, -40, 'felhound', now);
     GAME_STATE.enemies.push(fh);
 }
 
@@ -143,7 +159,7 @@ function spawnBehemoth(now) {
     const c = aliveCentroid();
     const targetX = Math.max(100, Math.min(W - 100, c.x));
     const targetY = Math.max(100, Math.min(H - 100, c.y));
-    const b = new Enemy(targetX, targetY, 'behemoth', now);
+    const b = Enemy.create(targetX, targetY, 'behemoth', now);
     GAME_STATE.enemies.push(b);
 }
 
@@ -155,7 +171,7 @@ function spawnHordeRing(now) {
         const angle = (i / count) * Math.PI * 2;
         const x = c.x + Math.cos(angle) * radius;
         const y = c.y + Math.sin(angle) * radius;
-        const e = new Enemy(x, y, 'swarm', now);
+        const e = Enemy.create(x, y, 'swarm', now);
         e.eventEnemy = true;
         GAME_STATE.enemies.push(e);
     }
@@ -183,7 +199,16 @@ function spawnHordeWave(now, elapsedEvent) {
     } else if (waveIdx === 8) {
         waveTypes = Array(15).fill('spiky');
     } else {
-        const pool = ['brute', 'speeder', 'mega_brute', 'dasher', 'shooter', 'brute_lord', 'meteor', 'spiky'];
+        const pool = [
+            'brute',
+            'speeder',
+            'mega_brute',
+            'dasher',
+            'shooter',
+            'brute_lord',
+            'meteor',
+            'spiky',
+        ];
         const mixCount = 10 + Math.min(35, (waveIdx - 9) * 4);
         for (let i = 0; i < mixCount; i++) {
             waveTypes.push(pool[Math.floor(Math.random() * pool.length)]);
@@ -203,7 +228,7 @@ function spawnFromEdge(type, now) {
         x = Math.random() * W;
         y = Math.random() < 0.5 ? -30 : H + 30;
     }
-    const e = new Enemy(x, y, type, now);
+    const e = Enemy.create(x, y, type, now);
     e.eventEnemy = true;
     GAME_STATE.enemies.push(e);
 }
@@ -214,30 +239,39 @@ const BOSS_CONFIGS = {
     octopus: {
         id: 'octopus',
         name: 'The Octopus',
-        startMs: 480000,    // 8:00
+        startMs: 480000, // 8:00
         durationLimit: 120000, // 10:00 force-resume
         spawn(now) {
             spawnOctopus(now);
         },
         isCleared() {
-            return !GAME_STATE.enemies.some(e => e.type === 'octopus');
+            return !GAME_STATE.enemies.some((e) => e.type === 'octopus');
         },
         onDefeat(now, enemy) {
-            let dropX = W / 2, dropY = H / 2;
+            let dropX = W / 2,
+                dropY = H / 2;
             if (enemy) {
-                dropX = enemy.x; dropY = enemy.y;
+                dropX = enemy.x;
+                dropY = enemy.y;
             } else {
-                const bossUnit = GAME_STATE.enemies.find(e => e.type === 'octopus');
-                if (bossUnit) { dropX = bossUnit.x; dropY = bossUnit.y; }
-                else if (GAME_STATE.players[0]) { dropX = GAME_STATE.players[0].x; dropY = GAME_STATE.players[0].y; }
+                const bossUnit = GAME_STATE.enemies.find(
+                    (e) => e.type === 'octopus',
+                );
+                if (bossUnit) {
+                    dropX = bossUnit.x;
+                    dropY = bossUnit.y;
+                } else if (GAME_STATE.players[0]) {
+                    dropX = GAME_STATE.players[0].x;
+                    dropY = GAME_STATE.players[0].y;
+                }
             }
             dropBossHealthPacks(dropX, dropY);
-        }
+        },
     },
     horde: {
         id: 'horde',
         name: 'The Horde',
-        startMs: 660000,   // 11:00
+        startMs: 660000, // 11:00
         durationLimit: 57000, // 57 seconds duration limit
         spawn(now) {
             GAME_STATE.hordeStartTime = now;
@@ -253,7 +287,7 @@ const BOSS_CONFIGS = {
             }
         },
         isCleared(now) {
-            return (now - GAME_STATE.hordeStartTime) >= 57000;
+            return now - GAME_STATE.hordeStartTime >= 57000;
         },
         onDefeat(now) {
             // Full screen mine explosion animation + wipe board of all enemies at 57 seconds
@@ -264,50 +298,68 @@ const BOSS_CONFIGS = {
             GAME_STATE.activeSentries = [];
             GAME_STATE.shieldBearers = [];
             GAME_STATE.attractingVipers = [];
-        }
+        },
     },
     felhound: {
         id: 'felhound',
         name: 'The Felhound',
-        startMs: 960000,   // 16:00
+        startMs: 960000, // 16:00
         durationLimit: 120000, // 18:00 force-resume
         spawn(now) {
             spawnFelhound(now);
         },
         isCleared() {
-            return !GAME_STATE.enemies.some(e => e.type === 'felhound');
+            return !GAME_STATE.enemies.some((e) => e.type === 'felhound');
         },
         onDefeat(now, enemy) {
-            let dropX = W / 2, dropY = H / 2;
+            let dropX = W / 2,
+                dropY = H / 2;
             if (enemy) {
-                dropX = enemy.x; dropY = enemy.y;
+                dropX = enemy.x;
+                dropY = enemy.y;
             } else {
-                const bossUnit = GAME_STATE.enemies.find(e => e.type === 'felhound');
-                if (bossUnit) { dropX = bossUnit.x; dropY = bossUnit.y; }
-                else if (GAME_STATE.players[0]) { dropX = GAME_STATE.players[0].x; dropY = GAME_STATE.players[0].y; }
+                const bossUnit = GAME_STATE.enemies.find(
+                    (e) => e.type === 'felhound',
+                );
+                if (bossUnit) {
+                    dropX = bossUnit.x;
+                    dropY = bossUnit.y;
+                } else if (GAME_STATE.players[0]) {
+                    dropX = GAME_STATE.players[0].x;
+                    dropY = GAME_STATE.players[0].y;
+                }
             }
             dropBossHealthPacks(dropX, dropY);
-        }
+        },
     },
     behemoth: {
         id: 'behemoth',
         name: 'The Behemoth',
-        startMs: 1440000,  // 24:00
+        startMs: 1440000, // 24:00
         durationLimit: 180000, // 27:00 force-resume / final limit
         spawn(now) {
             spawnBehemoth(now);
         },
         isCleared() {
-            return !GAME_STATE.enemies.some(e => e.type === 'behemoth');
+            return !GAME_STATE.enemies.some((e) => e.type === 'behemoth');
         },
         onDefeat(now, enemy) {
-            let dropX = W / 2, dropY = H / 2;
+            let dropX = W / 2,
+                dropY = H / 2;
             if (enemy) {
-                dropX = enemy.x; dropY = enemy.y;
+                dropX = enemy.x;
+                dropY = enemy.y;
             } else {
-                const bossUnit = GAME_STATE.enemies.find(e => e.type === 'behemoth');
-                if (bossUnit) { dropX = bossUnit.x; dropY = bossUnit.y; }
-                else if (GAME_STATE.players[0]) { dropX = GAME_STATE.players[0].x; dropY = GAME_STATE.players[0].y; }
+                const bossUnit = GAME_STATE.enemies.find(
+                    (e) => e.type === 'behemoth',
+                );
+                if (bossUnit) {
+                    dropX = bossUnit.x;
+                    dropY = bossUnit.y;
+                } else if (GAME_STATE.players[0]) {
+                    dropX = GAME_STATE.players[0].x;
+                    dropY = GAME_STATE.players[0].y;
+                }
             }
             dropBossHealthPacks(dropX, dropY);
             if (typeof triggerFullBoardMineExplosion === 'function') {
@@ -320,8 +372,8 @@ const BOSS_CONFIGS = {
             setTimeout(() => {
                 if (typeof showVictory === 'function') showVictory();
             }, 1400);
-        }
-    }
+        },
+    },
 };
 
 function dropBossHealthPacks(x, y) {
@@ -331,7 +383,15 @@ function dropBossHealthPacks(x, y) {
         const dist = 15 + Math.random() * 25;
         const hx = Math.max(20, Math.min(W - 20, x + Math.cos(angle) * dist));
         const hy = Math.max(20, Math.min(H - 20, y + Math.sin(angle) * dist));
-        GAME_STATE.gems.push(new HealthPack(hx, hy, (typeof gameClock !== 'undefined' ? gameClock : performance.now())));
+        GAME_STATE.gems.push(
+            new HealthPack(
+                hx,
+                hy,
+                typeof gameClock !== 'undefined'
+                    ? gameClock
+                    : performance.now(),
+            ),
+        );
     }
 }
 
@@ -351,7 +411,11 @@ function endBossWave(bossId, now, isCleared, enemy = null) {
     GAME_STATE.completedBosses.add(bossId);
 
     // Play supply drop sound when a boss monster is killed and when the horde wave is survived
-    if (typeof SoundEngine !== 'undefined' && SoundEngine && SoundEngine.supplyDrop) {
+    if (
+        typeof SoundEngine !== 'undefined' &&
+        SoundEngine &&
+        SoundEngine.supplyDrop
+    ) {
         SoundEngine.supplyDrop();
     }
 
@@ -368,7 +432,11 @@ function endBossWave(bossId, now, isCleared, enemy = null) {
         for (const p of GAME_STATE.players) {
             p.maxHp += 300;
             p.hp = p.maxHp;
-            if (typeof SoundEngine !== 'undefined' && SoundEngine && SoundEngine.heal) {
+            if (
+                typeof SoundEngine !== 'undefined' &&
+                SoundEngine &&
+                SoundEngine.heal
+            ) {
                 SoundEngine.heal('medium');
             }
             // Golden pillar animation + HP pulse in HUD for each player
@@ -388,7 +456,8 @@ function endBossWave(bossId, now, isCleared, enemy = null) {
 function updateBossState(now) {
     // 1. Check if an upcoming boss should trigger 5s countdown warning pulses (4 times at 1.25s intervals)
     if (!GAME_STATE.activeBoss) {
-        if (!GAME_STATE.bossWarningsFired) GAME_STATE.bossWarningsFired = new Set();
+        if (!GAME_STATE.bossWarningsFired)
+            GAME_STATE.bossWarningsFired = new Set();
         for (const key of Object.keys(BOSS_CONFIGS)) {
             const cfg = BOSS_CONFIGS[key];
             if (!GAME_STATE.completedBosses.has(cfg.id)) {
@@ -396,9 +465,17 @@ function updateBossState(now) {
                 for (let i = 0; i < 4; i++) {
                     const triggerMs = cfg.startMs - (5000 - i * 1250);
                     const warnKey = cfg.id + '_warn_' + i;
-                    if (GAME_STATE.elapsed >= triggerMs && GAME_STATE.elapsed < cfg.startMs && !GAME_STATE.bossWarningsFired.has(warnKey)) {
+                    if (
+                        GAME_STATE.elapsed >= triggerMs &&
+                        GAME_STATE.elapsed < cfg.startMs &&
+                        !GAME_STATE.bossWarningsFired.has(warnKey)
+                    ) {
                         GAME_STATE.bossWarningsFired.add(warnKey);
-                        if (typeof SoundEngine !== 'undefined' && SoundEngine && SoundEngine.bossWarning) {
+                        if (
+                            typeof SoundEngine !== 'undefined' &&
+                            SoundEngine &&
+                            SoundEngine.bossWarning
+                        ) {
                             SoundEngine.bossWarning();
                         }
                     }
@@ -458,6 +535,6 @@ if (typeof module !== 'undefined' && module.exports) {
         dropBossHealthPacks,
         startBossWave,
         endBossWave,
-        updateBossState
+        updateBossState,
     };
 }

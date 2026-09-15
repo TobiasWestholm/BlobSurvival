@@ -17,7 +17,15 @@ class Particle {
      * @param {number} lifetime - Total lifetime in milliseconds
      * @param {number} r - Particle radius / bounding visual size
      */
-    constructor(x, y, vx = 0, vy = 0, color = '#ffffff', lifetime = 250, r = 1) {
+    constructor(
+        x,
+        y,
+        vx = 0,
+        vy = 0,
+        color = '#ffffff',
+        lifetime = 250,
+        r = 1,
+    ) {
         this.x = x;
         this.y = y;
         this.r = r;
@@ -84,13 +92,19 @@ class Particle {
      * @param {CanvasRenderingContext2D} [targetContext] - Target canvas context (defaults to global ctx)
      */
     draw(targetContext) {
-        const renderCtx = targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+        const renderCtx =
+            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
         if (!renderCtx) return;
 
         renderCtx.save();
         renderCtx.globalAlpha = this.getLifetimePercent();
         renderCtx.fillStyle = this.color;
-        renderCtx.fillRect(this.x - this.r, this.y - this.r, this.r * 2, this.r * 2);
+        renderCtx.fillRect(
+            this.x - this.r,
+            this.y - this.r,
+            this.r * 2,
+            this.r * 2,
+        );
         renderCtx.restore();
     }
 }
@@ -115,7 +129,7 @@ class LifestealWisp extends Particle {
             0,
             'rgba(224, 74, 152, 0.95)',
             lifetime,
-            1
+            1,
         );
         this.player = player;
         this.boost = boost;
@@ -132,7 +146,7 @@ class LifestealWisp extends Particle {
      */
     update(dt, dtFactor = 1.0) {
         const p = this.player;
-        if (!p || !p.alive) {
+        if (!p?.alive) {
             this.alive = false;
             return;
         }
@@ -155,7 +169,8 @@ class LifestealWisp extends Particle {
      * @param {CanvasRenderingContext2D} [targetContext]
      */
     draw(targetContext) {
-        const renderCtx = targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+        const renderCtx =
+            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
         if (!renderCtx) return;
 
         const t = this.getLifetimePercent();
@@ -189,7 +204,15 @@ class GoldenPillarParticle extends Particle {
      */
     constructor(x, y, delay = 0) {
         const lifetime = 900 + Math.random() * 300;
-        super(x, y, (Math.random() - 0.5) * 0.4, -(2.2 + Math.random() * 2.0), '#ffd700', lifetime, 2);
+        super(
+            x,
+            y,
+            (Math.random() - 0.5) * 0.4,
+            -(2.2 + Math.random() * 2.0),
+            '#ffd700',
+            lifetime,
+            2,
+        );
         this.delay = delay;
         this.startY = y;
         this.w = 3 + Math.random() * 4;
@@ -220,7 +243,8 @@ class GoldenPillarParticle extends Particle {
      */
     draw(targetContext) {
         if (this.elapsed < this.delay) return;
-        const renderCtx = targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+        const renderCtx =
+            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
         if (!renderCtx) return;
 
         const t = this.getLifetimePercent();
@@ -264,7 +288,9 @@ function spawnHitParticles(x, y, color, count = 2) {
     for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2;
         const s = 1 + Math.random() * 1.5;
-        GAME_STATE.particles.push(new Particle(x, y, Math.cos(a) * s, Math.sin(a) * s, color, 250));
+        GAME_STATE.particles.push(
+            new Particle(x, y, Math.cos(a) * s, Math.sin(a) * s, color, 250),
+        );
     }
 }
 
@@ -274,7 +300,8 @@ function spawnHitParticles(x, y, color, count = 2) {
  * @param {number} [now]
  */
 function triggerReviveAnimation(player, now) {
-    if (typeof GAME_STATE === 'undefined' || !GAME_STATE.particles || !player) return;
+    if (typeof GAME_STATE === 'undefined' || !GAME_STATE.particles || !player)
+        return;
     const cx = player.x;
     const cy = player.y;
     const pillars = 12;
@@ -293,7 +320,7 @@ function triggerReviveAnimation(player, now) {
     const innerPillars = 8;
     const innerRadius = player.r + 5;
     for (let i = 0; i < innerPillars; i++) {
-        const angle = (i / innerPillars) * Math.PI * 2 + (Math.PI / innerPillars);
+        const angle = (i / innerPillars) * Math.PI * 2 + Math.PI / innerPillars;
         const px = cx + Math.cos(angle) * innerRadius;
         const py = cy + Math.sin(angle) * innerRadius;
         const delay = i * 50 + 80;
@@ -319,6 +346,6 @@ if (typeof module !== 'undefined' && module.exports) {
         LifestealWisp,
         GoldenPillarParticle,
         spawnHitParticles,
-        triggerReviveAnimation
+        triggerReviveAnimation,
     };
 }

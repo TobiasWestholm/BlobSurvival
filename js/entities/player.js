@@ -4,9 +4,15 @@ class Player extends Unit {
         const startY = H / 2 + (index % 2 === 0 ? -40 : 40);
         super(startX, startY, 15, 100);
         this.index = index;
+        this.name = def?.name ? def.name : `Player ${index + 1}`;
         if (GAME_STATE.gameMode === 'online') {
             this.keysText = 'WASD';
-            this.keymap = { up: ['w', 'arrowup'], left: ['a', 'arrowleft'], down: ['s', 'arrowdown'], right: ['d', 'arrowright'] };
+            this.keymap = {
+                up: ['w', 'arrowup'],
+                left: ['a', 'arrowleft'],
+                down: ['s', 'arrowdown'],
+                right: ['d', 'arrowright'],
+            };
         } else {
             this.keysText = def.keysText;
             this.keymap = def.keys;
@@ -19,7 +25,7 @@ class Player extends Unit {
         this.cooldownModifier = 1.0;
         this.mineCooldownModifier = 1.0;
         this.accuracyModifier = 1.0; // multiplies projectile spread; lower = more accurate
-        this.multiShot = 0;          // extra Magic Missile targets (2nd closest, 3rd closest, ...)
+        this.multiShot = 0; // extra Magic Missile targets (2nd closest, 3rd closest, ...)
         this.weapons = [];
         this.facingAngle = 0;
         this.mineAoeModifier = 1.0;
@@ -48,8 +54,10 @@ class Player extends Unit {
         this.dashing = false;
         this.dashUntil = 0;
         this.dashCooldownUntil = 0;
-        this.dashVx = 0; this.dashVy = 0;
-        this.lastTapDir = null; this.lastTapTime = 0;
+        this.dashVx = 0;
+        this.dashVy = 0;
+        this.lastTapDir = null;
+        this.lastTapTime = 0;
         this.inputHistory = [];
         this.dashCooldown = PLAYER_DASH_COOLDOWN;
         this.dashLvl2 = false;
@@ -109,29 +117,61 @@ class Player extends Unit {
     }
 
     unlockWeapon(id) {
-        if (id === 'fire_ring' && !this.weapons.some(w => w.id === 'fire_ring')) {
+        if (
+            id === 'fire_ring' &&
+            !this.weapons.some((w) => w.id === 'fire_ring')
+        ) {
             this.weapons.push(new FireRing(this));
-        } else if (id === 'magic_missile' && !this.weapons.some(w => w.id === 'magic_missile')) {
+        } else if (
+            id === 'magic_missile' &&
+            !this.weapons.some((w) => w.id === 'magic_missile')
+        ) {
             this.weapons.push(new MagicMissile(this));
-        } else if (id === 'melee_sweep' && !this.weapons.some(w => w.id === 'melee_sweep')) {
+        } else if (
+            id === 'melee_sweep' &&
+            !this.weapons.some((w) => w.id === 'melee_sweep')
+        ) {
             this.weapons.push(new MeleeSweep(this));
-        } else if (id === 'proximity_mine' && !this.weapons.some(w => w.id === 'proximity_mine')) {
+        } else if (
+            id === 'proximity_mine' &&
+            !this.weapons.some((w) => w.id === 'proximity_mine')
+        ) {
             this.weapons.push(new ProximityMine(this));
-        } else if (id === 'projectile_shield' && !this.weapons.some(w => w.id === 'projectile_shield')) {
+        } else if (
+            id === 'projectile_shield' &&
+            !this.weapons.some((w) => w.id === 'projectile_shield')
+        ) {
             this.weapons.push(new DeflectorShields(this));
-        } else if (id === 'player_flail' && !this.weapons.some(w => w.id === 'player_flail')) {
+        } else if (
+            id === 'player_flail' &&
+            !this.weapons.some((w) => w.id === 'player_flail')
+        ) {
             this.weapons.push(new PlayerFlail(this));
-        } else if (id === 'turret' && !this.weapons.some(w => w.id === 'turret')) {
+        } else if (
+            id === 'turret' &&
+            !this.weapons.some((w) => w.id === 'turret')
+        ) {
             this.weapons.push(new TurretWeapon(this));
         }
     }
 
     isTargetable() {
-        return this.isAlive() && !this.disconnected && !this.kicked && this.spawnInvuln <= 0;
+        return (
+            this.isAlive() &&
+            !this.disconnected &&
+            !this.kicked &&
+            this.spawnInvuln <= 0
+        );
     }
 
     isDamageable() {
-        return this.isAlive() && !this.disconnected && !this.kicked && this.invuln <= 0 && this.spawnInvuln <= 0;
+        return (
+            this.isAlive() &&
+            !this.disconnected &&
+            !this.kicked &&
+            this.invuln <= 0 &&
+            this.spawnInvuln <= 0
+        );
     }
 
     triggerLifestealVisual(x, y) {
@@ -145,7 +185,7 @@ class Player extends Unit {
         if (!GAME_STATE.isOnline || GAME_STATE.isHost) {
             for (const w of this.weapons) w.update(now);
         } else {
-            const flail = this.weapons.find(w => w.id === 'player_flail');
+            const flail = this.weapons.find((w) => w.id === 'player_flail');
             if (flail) flail.update(dt, dtFactor, now);
         }
     }
@@ -157,16 +197,38 @@ class Player extends Unit {
         if (this.isKnockbackAirborne) {
             const elapsed = now - this.knockbackStart;
             const progress = Math.min(1, elapsed / this.knockbackDuration);
-            this.x = this.knockbackStartX + (this.knockbackTargetX - this.knockbackStartX) * progress;
-            this.y = this.knockbackStartY + (this.knockbackTargetY - this.knockbackStartY) * progress;
+            this.x =
+                this.knockbackStartX +
+                (this.knockbackTargetX - this.knockbackStartX) * progress;
+            this.y =
+                this.knockbackStartY +
+                (this.knockbackTargetY - this.knockbackStartY) * progress;
             this.clampToArena();
 
             // Handle laser and ice trails during airborne flight
             if (this.lastX !== this.x || this.lastY !== this.y) {
-                this.spawnLaserTrails(this.lastX, this.lastY, this.x, this.y, now);
+                this.spawnLaserTrails(
+                    this.lastX,
+                    this.lastY,
+                    this.x,
+                    this.y,
+                    now,
+                );
             }
-            if (this.iceTrailEnabled && (this.lastX !== this.x || this.lastY !== this.y)) {
-                GAME_STATE.hazards.push(new IceTrailSegment(this.lastX, this.lastY, this.x, this.y, now, this));
+            if (
+                this.iceTrailEnabled &&
+                (this.lastX !== this.x || this.lastY !== this.y)
+            ) {
+                GAME_STATE.hazards.push(
+                    new IceTrailSegment(
+                        this.lastX,
+                        this.lastY,
+                        this.x,
+                        this.y,
+                        now,
+                        this,
+                    ),
+                );
             }
             this.lastX = this.x;
             this.lastY = this.y;
@@ -200,13 +262,22 @@ class Player extends Unit {
                     e.hp = 0; // crushed!
                     spawnHitParticles(e.x, e.y, e.color);
                     for (let i = 0; i < 4; i++) {
-                        const a = Math.random() * Math.PI * 2, s = 1.0 + Math.random() * 2;
-                        GAME_STATE.particles.push(new Particle(e.x, e.y, Math.cos(a) * s, Math.sin(a) * s, '#ffaa00', 300));
+                        const a = Math.random() * Math.PI * 2,
+                            s = 1.0 + Math.random() * 2;
+                        GAME_STATE.particles.push(
+                            new Particle(
+                                e.x,
+                                e.y,
+                                Math.cos(a) * s,
+                                Math.sin(a) * s,
+                                '#ffaa00',
+                                300,
+                            ),
+                        );
                     }
                 }
             }
         }
-
 
         if (this.dashing) {
             this.isMoving = true;
@@ -215,8 +286,10 @@ class Player extends Unit {
             this.x += this.dashVx * dtFactor;
             this.y += this.dashVy * dtFactor;
             this.clampToArena();
-            GAME_STATE.particles.push(new Particle(this.x, this.y, 0, 0, this.color, 180)); // trail
-            
+            GAME_STATE.particles.push(
+                new Particle(this.x, this.y, 0, 0, this.color, 180),
+            ); // trail
+
             if (now >= this.dashUntil) {
                 if (!this.dashBurstFired) {
                     this.dashBurstFired = true;
@@ -226,72 +299,139 @@ class Player extends Unit {
                 this.dashCooldownUntil = now + this.dashCooldown;
             }
             this.updateWeapons(now, dt, dtFactor);
-            
+
             // Handle laser, fire, and ice trails at the end of dash frame
             if (this.lastX !== this.x || this.lastY !== this.y) {
-                this.spawnLaserTrails(this.lastX, this.lastY, this.x, this.y, now);
+                this.spawnLaserTrails(
+                    this.lastX,
+                    this.lastY,
+                    this.x,
+                    this.y,
+                    now,
+                );
                 if (this.dashLvl2) {
-                    GAME_STATE.hazards.push(new BurningTrailSegment(this.lastX, this.lastY, this.x, this.y, now, this));
+                    GAME_STATE.hazards.push(
+                        new BurningTrailSegment(
+                            this.lastX,
+                            this.lastY,
+                            this.x,
+                            this.y,
+                            now,
+                            this,
+                        ),
+                    );
                 }
                 if (this.iceTrailEnabled) {
-                    GAME_STATE.hazards.push(new IceTrailSegment(this.lastX, this.lastY, this.x, this.y, now, this));
+                    GAME_STATE.hazards.push(
+                        new IceTrailSegment(
+                            this.lastX,
+                            this.lastY,
+                            this.x,
+                            this.y,
+                            now,
+                            this,
+                        ),
+                    );
                 }
             }
-            this.agilityFade = Math.min(1.0, (this.agilityFade || 0) + (dt || 16.6) / 100);
+            this.agilityFade = Math.min(
+                1.0,
+                (this.agilityFade || 0) + (dt || 16.6) / 100,
+            );
             this.lastX = this.x;
             this.lastY = this.y;
             return;
         }
 
-        let moveX = 0, moveY = 0;
+        let moveX = 0,
+            moveY = 0;
         let hasJoystick = false;
 
         // In online mode: local player reads joystick/local keyboard, remote player reads network remoteInput only
-        const isOnline = (typeof netManager !== 'undefined' && netManager && (netManager.isOnline || (typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online')));
-        const localIndex = (typeof netManager !== 'undefined' && netManager && netManager.localPlayerIndex !== undefined) ? netManager.localPlayerIndex : 0;
-        const isLocalPlayer = isOnline ? (this.index === localIndex) : (this.index === 0);
+        const isOnline =
+            typeof netManager !== 'undefined' &&
+            netManager &&
+            (netManager.isOnline ||
+                (typeof GAME_STATE !== 'undefined' &&
+                    GAME_STATE.gameMode === 'online'));
+        const localIndex =
+            typeof netManager !== 'undefined' &&
+            netManager &&
+            netManager.localPlayerIndex !== undefined
+                ? netManager.localPlayerIndex
+                : 0;
+        const isLocalPlayer = isOnline
+            ? this.index === localIndex
+            : this.index === 0;
 
         if (isOnline) {
             if (isLocalPlayer) {
-                if (typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
+                if (
+                    typeof joystickInstance !== 'undefined' &&
+                    joystickInstance &&
+                    joystickInstance.vector &&
+                    joystickInstance.vector.active
+                ) {
                     moveX = joystickInstance.vector.x;
                     moveY = joystickInstance.vector.y;
                     this.facingAngle = joystickInstance.vector.angle;
                     hasJoystick = true;
                 } else {
-                    let dx = 0, dy = 0;
+                    let dx = 0,
+                        dy = 0;
                     if (anyKey(this.keymap.up) || anyKey(['arrowup'])) dy -= 1;
-                    if (anyKey(this.keymap.down) || anyKey(['arrowdown'])) dy += 1;
-                    if (anyKey(this.keymap.left) || anyKey(['arrowleft'])) dx -= 1;
-                    if (anyKey(this.keymap.right) || anyKey(['arrowright'])) dx += 1;
+                    if (anyKey(this.keymap.down) || anyKey(['arrowdown']))
+                        dy += 1;
+                    if (anyKey(this.keymap.left) || anyKey(['arrowleft']))
+                        dx -= 1;
+                    if (anyKey(this.keymap.right) || anyKey(['arrowright']))
+                        dx += 1;
 
                     this.inputHistory.push({ dx, dy, time: now });
-                    if (this.inputHistory.length > 10) this.inputHistory.shift();
+                    if (this.inputHistory.length > 10)
+                        this.inputHistory.shift();
 
                     if (dx !== 0 || dy !== 0) {
-                        let ndx = dx, ndy = dy;
-                        if (ndx !== 0 && ndy !== 0) { ndx *= 0.7071; ndy *= 0.7071; }
+                        let ndx = dx,
+                            ndy = dy;
+                        if (ndx !== 0 && ndy !== 0) {
+                            ndx *= Math.SQRT1_2;
+                            ndy *= Math.SQRT1_2;
+                        }
                         const targetAngle = Math.atan2(ndy, ndx);
 
                         let angleDiff = targetAngle - this.facingAngle;
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-                        const angularTurnRate = (Math.abs(angleDiff) > Math.PI * 0.6) ? 0.38 : 0.22;
-                        this.facingAngle += angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
+                        const angularTurnRate =
+                            Math.abs(angleDiff) > Math.PI * 0.6 ? 0.38 : 0.22;
+                        this.facingAngle +=
+                            angleDiff *
+                            Math.min(1.0, angularTurnRate * dtFactor);
 
                         moveX = ndx;
                         moveY = ndy;
                     } else {
-                        for (let i = this.inputHistory.length - 1; i >= 0; i--) {
+                        for (
+                            let i = this.inputHistory.length - 1;
+                            i >= 0;
+                            i--
+                        ) {
                             const hist = this.inputHistory[i];
                             if (now - hist.time > 150) break;
                             if (hist.dx !== 0 && hist.dy !== 0) {
-                                const targetAngle = Math.atan2(hist.dy, hist.dx);
+                                const targetAngle = Math.atan2(
+                                    hist.dy,
+                                    hist.dx,
+                                );
                                 let angleDiff = targetAngle - this.facingAngle;
-                                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                                this.facingAngle += angleDiff * Math.min(1.0, 0.22 * dtFactor);
+                                while (angleDiff > Math.PI)
+                                    angleDiff -= Math.PI * 2;
+                                while (angleDiff < -Math.PI)
+                                    angleDiff += Math.PI * 2;
+                                this.facingAngle +=
+                                    angleDiff * Math.min(1.0, 0.22 * dtFactor);
                                 break;
                             }
                         }
@@ -307,40 +447,73 @@ class Player extends Unit {
                         let angleDiff = targetAngle - this.facingAngle;
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                        const angularTurnRate = (Math.abs(angleDiff) > Math.PI * 0.6) ? 0.38 : 0.22;
-                        this.facingAngle += angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
+                        const angularTurnRate =
+                            Math.abs(angleDiff) > Math.PI * 0.6 ? 0.38 : 0.22;
+                        this.facingAngle +=
+                            angleDiff *
+                            Math.min(1.0, angularTurnRate * dtFactor);
                     }
                 }
             }
         } else {
             // Local singleplayer / local co-op
-            if (this.index === 0 && typeof joystickInstance !== 'undefined' && joystickInstance && joystickInstance.vector && joystickInstance.vector.active) {
+            if (
+                this.index === 0 &&
+                typeof joystickInstance !== 'undefined' &&
+                joystickInstance?.vector?.active
+            ) {
                 moveX = joystickInstance.vector.x;
                 moveY = joystickInstance.vector.y;
                 this.facingAngle = joystickInstance.vector.angle;
                 hasJoystick = true;
             } else {
-                let dx = 0, dy = 0;
-                const isSinglePlayer = (typeof GAME_STATE !== 'undefined' && GAME_STATE.players && GAME_STATE.players.length === 1);
-                if (anyKey(this.keymap.up) || (isSinglePlayer && anyKey(['arrowup']))) dy -= 1;
-                if (anyKey(this.keymap.down) || (isSinglePlayer && anyKey(['arrowdown']))) dy += 1;
-                if (anyKey(this.keymap.left) || (isSinglePlayer && anyKey(['arrowleft']))) dx -= 1;
-                if (anyKey(this.keymap.right) || (isSinglePlayer && anyKey(['arrowright']))) dx += 1;
+                let dx = 0,
+                    dy = 0;
+                const isSinglePlayer =
+                    typeof GAME_STATE !== 'undefined' &&
+                    GAME_STATE.players &&
+                    GAME_STATE.players.length === 1;
+                if (
+                    anyKey(this.keymap.up) ||
+                    (isSinglePlayer && anyKey(['arrowup']))
+                )
+                    dy -= 1;
+                if (
+                    anyKey(this.keymap.down) ||
+                    (isSinglePlayer && anyKey(['arrowdown']))
+                )
+                    dy += 1;
+                if (
+                    anyKey(this.keymap.left) ||
+                    (isSinglePlayer && anyKey(['arrowleft']))
+                )
+                    dx -= 1;
+                if (
+                    anyKey(this.keymap.right) ||
+                    (isSinglePlayer && anyKey(['arrowright']))
+                )
+                    dx += 1;
 
                 this.inputHistory.push({ dx, dy, time: now });
                 if (this.inputHistory.length > 10) this.inputHistory.shift();
 
                 if (dx !== 0 || dy !== 0) {
-                    let ndx = dx, ndy = dy;
-                    if (ndx !== 0 && ndy !== 0) { ndx *= 0.7071; ndy *= 0.7071; }
+                    let ndx = dx,
+                        ndy = dy;
+                    if (ndx !== 0 && ndy !== 0) {
+                        ndx *= Math.SQRT1_2;
+                        ndy *= Math.SQRT1_2;
+                    }
                     const targetAngle = Math.atan2(ndy, ndx);
 
                     let angleDiff = targetAngle - this.facingAngle;
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-                    const angularTurnRate = (Math.abs(angleDiff) > Math.PI * 0.6) ? 0.38 : 0.22;
-                    this.facingAngle += angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
+                    const angularTurnRate =
+                        Math.abs(angleDiff) > Math.PI * 0.6 ? 0.38 : 0.22;
+                    this.facingAngle +=
+                        angleDiff * Math.min(1.0, angularTurnRate * dtFactor);
 
                     moveX = ndx;
                     moveY = ndy;
@@ -351,30 +524,46 @@ class Player extends Unit {
                         if (hist.dx !== 0 && hist.dy !== 0) {
                             const targetAngle = Math.atan2(hist.dy, hist.dx);
                             let angleDiff = targetAngle - this.facingAngle;
-                            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                            this.facingAngle += angleDiff * Math.min(1.0, 0.22 * dtFactor);
+                            while (angleDiff > Math.PI)
+                                angleDiff -= Math.PI * 2;
+                            while (angleDiff < -Math.PI)
+                                angleDiff += Math.PI * 2;
+                            this.facingAngle +=
+                                angleDiff * Math.min(1.0, 0.22 * dtFactor);
                             break;
                         }
                     }
                 }
             }
         }
-        
-        const isMovingNow = (moveX !== 0 || moveY !== 0);
+
+        const isMovingNow = moveX !== 0 || moveY !== 0;
         this.isMoving = isMovingNow;
         this.moveSpeed = isMovingNow ? 1.0 : 0.0;
         if (isMovingNow) {
-            this.agilityFade = Math.min(1.0, (this.agilityFade || 0) + (dt || 16.6) / 100);
+            this.agilityFade = Math.min(
+                1.0,
+                (this.agilityFade || 0) + (dt || 16.6) / 100,
+            );
         } else {
-            this.agilityFade = Math.max(0.0, (this.agilityFade || 0) - (dt || 16.6) / 100);
+            this.agilityFade = Math.max(
+                0.0,
+                (this.agilityFade || 0) - (dt || 16.6) / 100,
+            );
         }
 
-        const hasMelee = this.weapons.some(w => w.id === 'melee_sweep');
-        const activeNitro = (this.nitroUntil && now < this.nitroUntil) ? 1.50 : 1.0;
-        const activeSlow = (this.slowUntil && now < this.slowUntil) ? 0.60 : 1.0;
-        const activeAcidSlow = (this.acidSlowUntil && now < this.acidSlowUntil) ? 0.75 : 1.0;
-        const activeSpeed = (this.spawnInvuln > 0 ? this.speed * 1.5 : this.speed) * activeNitro * activeSlow * activeAcidSlow * (hasMelee ? 1.08 : 1.0);
+        const hasMelee = this.weapons.some((w) => w.id === 'melee_sweep');
+        const activeNitro =
+            this.nitroUntil && now < this.nitroUntil ? 1.5 : 1.0;
+        const activeSlow = this.slowUntil && now < this.slowUntil ? 0.6 : 1.0;
+        const activeAcidSlow =
+            this.acidSlowUntil && now < this.acidSlowUntil ? 0.75 : 1.0;
+        const activeSpeed =
+            (this.spawnInvuln > 0 ? this.speed * 1.5 : this.speed) *
+            activeNitro *
+            activeSlow *
+            activeAcidSlow *
+            (hasMelee ? 1.08 : 1.0);
 
         this.vx = Number.isFinite(this.vx) ? this.vx : 0;
         this.vy = Number.isFinite(this.vy) ? this.vy : 0;
@@ -389,16 +578,21 @@ class Player extends Unit {
             if (isMovingNow) {
                 const curSpd = Math.hypot(this.vx, this.vy);
                 // Dot product to detect sharp turnarounds vs gentle curves
-                const dot = curSpd > 0.1 ? (this.vx * moveX + this.vy * moveY) / curSpd : 1.0;
+                const dot =
+                    curSpd > 0.1
+                        ? (this.vx * moveX + this.vy * moveY) / curSpd
+                        : 1.0;
 
                 // High traction on sharp reversals (dot < 0.2), smooth continuous curve on steering
                 const steerRate = dot < 0.2 ? 0.45 : 0.24;
-                this.vx += (targetVx - this.vx) * Math.min(1.0, steerRate * dtFactor);
-                this.vy += (targetVy - this.vy) * Math.min(1.0, steerRate * dtFactor);
+                this.vx +=
+                    (targetVx - this.vx) * Math.min(1.0, steerRate * dtFactor);
+                this.vy +=
+                    (targetVy - this.vy) * Math.min(1.0, steerRate * dtFactor);
             } else {
                 // Quick deceleration to stop
-                this.vx *= Math.pow(0.70, dtFactor);
-                this.vy *= Math.pow(0.70, dtFactor);
+                this.vx *= Math.pow(0.7, dtFactor);
+                this.vy *= Math.pow(0.7, dtFactor);
                 if (this.vx * this.vx + this.vy * this.vy < 0.0025) {
                     this.vx = 0;
                     this.vy = 0;
@@ -425,44 +619,69 @@ class Player extends Unit {
             // Continuously track target during aim animation until firing
             if (!this.sniperCharge.fired) {
                 let target = this.sniperCharge.target;
-                if (!target || !target.isTargetable()) {
+                if (!target?.isTargetable()) {
                     target = Unit.findStrongestClosest(this.x, this.y);
                     this.sniperCharge.target = target;
                 }
                 if (target) {
-                    this.sniperCharge.angle = Math.atan2(target.y - this.y, target.x - this.x);
+                    this.sniperCharge.angle = Math.atan2(
+                        target.y - this.y,
+                        target.x - this.x,
+                    );
                 }
             }
 
-            if (!this.sniperCharge.fired && elapsed >= this.sniperCharge.preFireDuration) {
+            if (
+                !this.sniperCharge.fired &&
+                elapsed >= this.sniperCharge.preFireDuration
+            ) {
                 this.sniperCharge.fired = true;
 
                 // Final precision lock right at the moment of firing
                 let target = this.sniperCharge.target;
-                if (!target || !target.isTargetable()) {
+                if (!target?.isTargetable()) {
                     target = Unit.findStrongestClosest(this.x, this.y);
                 }
                 if (target) {
-                    this.sniperCharge.angle = Math.atan2(target.y - this.y, target.x - this.x);
+                    this.sniperCharge.angle = Math.atan2(
+                        target.y - this.y,
+                        target.x - this.x,
+                    );
                 }
 
                 SoundEngine.laserSniper();
                 const tipDist = this.r * 3.8;
-                const tipX = this.x + Math.cos(this.sniperCharge.angle) * tipDist;
-                const tipY = this.y + Math.sin(this.sniperCharge.angle) * tipDist;
-                GAME_STATE.projectiles.push(new SniperProjectile(tipX, tipY, this.sniperCharge.angle, this.sniperCharge.damage, this, now, this.sniperCharge.unitType));
+                const tipX =
+                    this.x + Math.cos(this.sniperCharge.angle) * tipDist;
+                const tipY =
+                    this.y + Math.sin(this.sniperCharge.angle) * tipDist;
+                GAME_STATE.projectiles.push(
+                    new SniperProjectile(
+                        tipX,
+                        tipY,
+                        this.sniperCharge.angle,
+                        this.sniperCharge.damage,
+                        this,
+                        now,
+                        this.sniperCharge.unitType,
+                    ),
+                );
 
                 // Violent muzzle blast particles & shockwave
                 for (let i = 0; i < 14; i++) {
                     const spread = (Math.random() - 0.5) * 0.6;
                     const spd = 3.5 + Math.random() * 5.5;
-                    const col = (i % 2 === 0) ? '#ffffff' : this.color;
-                    GAME_STATE.particles.push(new Particle(
-                        tipX, tipY,
-                        Math.cos(this.sniperCharge.angle + spread) * spd,
-                        Math.sin(this.sniperCharge.angle + spread) * spd,
-                        col, 260
-                    ));
+                    const col = i % 2 === 0 ? '#ffffff' : this.color;
+                    GAME_STATE.particles.push(
+                        new Particle(
+                            tipX,
+                            tipY,
+                            Math.cos(this.sniperCharge.angle + spread) * spd,
+                            Math.sin(this.sniperCharge.angle + spread) * spd,
+                            col,
+                            260,
+                        ),
+                    );
                 }
             }
             if (elapsed >= this.sniperCharge.totalDuration) {
@@ -474,15 +693,33 @@ class Player extends Unit {
         if (this.lastX !== this.x || this.lastY !== this.y) {
             this.spawnLaserTrails(this.lastX, this.lastY, this.x, this.y, now);
         }
-        if (this.iceTrailEnabled && (this.lastX !== this.x || this.lastY !== this.y)) {
-            GAME_STATE.hazards.push(new IceTrailSegment(this.lastX, this.lastY, this.x, this.y, now, this));
+        if (
+            this.iceTrailEnabled &&
+            (this.lastX !== this.x || this.lastY !== this.y)
+        ) {
+            GAME_STATE.hazards.push(
+                new IceTrailSegment(
+                    this.lastX,
+                    this.lastY,
+                    this.x,
+                    this.y,
+                    now,
+                    this,
+                ),
+            );
         }
         this.lastX = this.x;
         this.lastY = this.y;
     }
     clampToArena() {
-        const boundW = (GAME_STATE.gameMode === 'online' && GAME_STATE.hostW) ? GAME_STATE.hostW : W;
-        const boundH = (GAME_STATE.gameMode === 'online' && GAME_STATE.hostH) ? GAME_STATE.hostH : H;
+        const boundW =
+            GAME_STATE.gameMode === 'online' && GAME_STATE.hostW
+                ? GAME_STATE.hostW
+                : W;
+        const boundH =
+            GAME_STATE.gameMode === 'online' && GAME_STATE.hostH
+                ? GAME_STATE.hostH
+                : H;
         if (this.x < this.r) this.x = this.r;
         if (this.y < this.r) this.y = this.r;
         if (this.x > boundW - this.r) this.x = boundW - this.r;
@@ -491,32 +728,46 @@ class Player extends Unit {
     updateNetworkExpansion(now) {
         if (!this.turretNetworkEnabled) return;
         if (!this.lastNetworkExpansion) this.lastNetworkExpansion = now;
-        const interval = (GAME_CONFIG.TURRET.NETWORK_INTERVAL_SEC * 1000) * (this.buildingCooldownModifier || 1.0);
+        const interval =
+            GAME_CONFIG.TURRET.NETWORK_INTERVAL_SEC *
+            1000 *
+            (this.buildingCooldownModifier || 1.0);
         const nextExpansionTime = this.lastNetworkExpansion + interval;
         const preExpansionDuration = 3000; // 3 seconds preparation phase
 
         // 1. Stage pending expansions 3 seconds before the actual expansion triggers
         if (now >= nextExpansionTime - preExpansionDuration) {
-            const eligibleTurrets = GAME_STATE.turrets.filter(tur =>
-                tur.alive &&
-                tur.player === this &&
-                (now - tur.spawnTime) > 50
+            const eligibleTurrets = GAME_STATE.turrets.filter(
+                (tur) =>
+                    tur.alive &&
+                    tur.player === this &&
+                    now - tur.spawnTime > 50,
             );
 
             for (const orig of eligibleTurrets) {
                 // If turret already reached 2 connections, cancel pending expansion and retract all roots!
                 if (orig.connections && orig.connections.length >= 2) {
                     if (orig.pendingExpansion) {
-                        if (orig.pendingExpansion.roots && orig.pendingExpansion.roots.length > 0) {
+                        if (
+                            orig.pendingExpansion.roots &&
+                            orig.pendingExpansion.roots.length > 0
+                        ) {
                             const pe = orig.pendingExpansion;
-                            const growT = Math.min(1, Math.max(0, (now - pe.startTime) / (pe.expandTime - pe.startTime)) / 0.70);
+                            const growT = Math.min(
+                                1,
+                                Math.max(
+                                    0,
+                                    (now - pe.startTime) /
+                                        (pe.expandTime - pe.startTime),
+                                ) / 0.7,
+                            );
                             for (const r of pe.roots) {
                                 r.maxReachedDist = r.dist * growT;
                             }
                             orig.retractingRoots = {
                                 roots: pe.roots,
                                 startTime: now,
-                                duration: 600
+                                duration: 600,
                             };
                         }
                         orig.pendingExpansion = null;
@@ -524,14 +775,21 @@ class Player extends Unit {
                     continue;
                 }
 
-                if (!orig.pendingExpansion && orig.connections && orig.connections.length < 2) {
+                if (
+                    !orig.pendingExpansion &&
+                    orig.connections &&
+                    orig.connections.length < 2
+                ) {
                     const dist = 50 + Math.random() * 250; // 50 to 300px
                     let angle = 0;
                     if (orig.connections.length === 0) {
                         angle = Math.random() * Math.PI * 2;
                     } else {
                         const exist = orig.connections[0];
-                        const existAngle = Math.atan2(exist.y - orig.y, exist.x - orig.x);
+                        const existAngle = Math.atan2(
+                            exist.y - orig.y,
+                            exist.x - orig.x,
+                        );
                         const awayAngle = existAngle + Math.PI;
                         angle = awayAngle + (Math.random() - 0.5) * Math.PI;
                     }
@@ -553,15 +811,21 @@ class Player extends Unit {
                         angle: Math.atan2(ny - orig.y, nx - orig.x),
                         isWinner: true,
                         wiggleFreq: 0.12 + Math.random() * 0.05,
-                        wiggleSeed: Math.random() * 50
+                        wiggleSeed: Math.random() * 50,
                     });
 
                     // 2. Exploratory roots fanning out in other directions that will pull back in
                     for (let r = 1; r < totalRoots; r++) {
-                        const fanSign = (r % 2 === 1) ? 1 : -1;
+                        const fanSign = r % 2 === 1 ? 1 : -1;
                         const fanIndex = Math.ceil(r / 2);
-                        const probeAngle = angle + fanSign * (0.35 + fanIndex * 0.30) + (Math.random() - 0.5) * 0.20;
-                        const probeDist = Math.max(45, Math.min(220, dist * (0.55 + Math.random() * 0.45)));
+                        const probeAngle =
+                            angle +
+                            fanSign * (0.35 + fanIndex * 0.3) +
+                            (Math.random() - 0.5) * 0.2;
+                        const probeDist = Math.max(
+                            45,
+                            Math.min(220, dist * (0.55 + Math.random() * 0.45)),
+                        );
                         let px = orig.x + Math.cos(probeAngle) * probeDist;
                         let py = orig.y + Math.sin(probeAngle) * probeDist;
                         px = Math.max(15, Math.min(W - 15, px));
@@ -574,7 +838,7 @@ class Player extends Unit {
                             angle: Math.atan2(py - orig.y, px - orig.x),
                             isWinner: false,
                             wiggleFreq: 0.12 + Math.random() * 0.05,
-                            wiggleSeed: Math.random() * 50
+                            wiggleSeed: Math.random() * 50,
                         });
                     }
 
@@ -582,8 +846,11 @@ class Player extends Unit {
                         targetX: nx,
                         targetY: ny,
                         roots: roots,
-                        startTime: Math.max(now, nextExpansionTime - preExpansionDuration),
-                        expandTime: nextExpansionTime
+                        startTime: Math.max(
+                            now,
+                            nextExpansionTime - preExpansionDuration,
+                        ),
+                        expandTime: nextExpansionTime,
                     };
                 }
             }
@@ -593,23 +860,28 @@ class Player extends Unit {
         if (now >= nextExpansionTime) {
             this.lastNetworkExpansion = now;
 
-            const expandingTurrets = GAME_STATE.turrets.filter(tur =>
-                tur.alive &&
-                tur.player === this &&
-                tur.pendingExpansion
+            const expandingTurrets = GAME_STATE.turrets.filter(
+                (tur) =>
+                    tur.alive && tur.player === this && tur.pendingExpansion,
             );
 
             for (const orig of expandingTurrets) {
                 // If turret cannot spawn (dead or >= 2 connections), retract ALL roots smoothly!
-                if (!orig.alive || (orig.connections && orig.connections.length >= 2)) {
-                    if (orig.pendingExpansion && orig.pendingExpansion.roots && orig.pendingExpansion.roots.length > 0) {
+                if (
+                    !orig.alive ||
+                    (orig.connections && orig.connections.length >= 2)
+                ) {
+                    if (
+                        orig.pendingExpansion?.roots &&
+                        orig.pendingExpansion.roots.length > 0
+                    ) {
                         for (const r of orig.pendingExpansion.roots) {
                             r.maxReachedDist = r.dist;
                         }
                         orig.retractingRoots = {
                             roots: orig.pendingExpansion.roots,
                             startTime: now,
-                            duration: 600
+                            duration: 600,
                         };
                     }
                     orig.pendingExpansion = null;
@@ -617,8 +889,10 @@ class Player extends Unit {
                 }
 
                 // If turret successfully spawns, retract only the fake/exploratory roots!
-                if (orig.pendingExpansion && orig.pendingExpansion.roots) {
-                    const fakeRoots = orig.pendingExpansion.roots.filter(r => !r.isWinner);
+                if (orig.pendingExpansion?.roots) {
+                    const fakeRoots = orig.pendingExpansion.roots.filter(
+                        (r) => !r.isWinner,
+                    );
                     if (fakeRoots.length > 0) {
                         for (const r of fakeRoots) {
                             r.maxReachedDist = r.dist;
@@ -626,7 +900,7 @@ class Player extends Unit {
                         orig.retractingRoots = {
                             roots: fakeRoots,
                             startTime: now,
-                            duration: 600
+                            duration: 600,
                         };
                     }
                 }
@@ -636,8 +910,10 @@ class Player extends Unit {
                 orig.pendingExpansion = null;
 
                 const childTurret = new TurretEntity(nx, ny, this, now);
-                if (!orig.connections.includes(childTurret)) orig.connections.push(childTurret);
-                if (!childTurret.connections.includes(orig)) childTurret.connections.push(orig);
+                if (!orig.connections.includes(childTurret))
+                    orig.connections.push(childTurret);
+                if (!childTurret.connections.includes(orig))
+                    childTurret.connections.push(orig);
 
                 GAME_STATE.turrets.push(childTurret);
                 SoundEngine.autonomousNetwork();
@@ -645,12 +921,19 @@ class Player extends Unit {
         }
     }
     isOnIce() {
-        if (!GAME_STATE.iceTrails || GAME_STATE.iceTrails.length === 0) return false;
+        if (!GAME_STATE.iceTrails || GAME_STATE.iceTrails.length === 0)
+            return false;
         const numTrails = GAME_STATE.iceTrails.length;
         for (let i = 0; i < numTrails; i++) {
             const hz = GAME_STATE.iceTrails[i];
             if (!hz.alive) continue;
-            if (this.x < hz.minX - this.r || this.x > hz.maxX + this.r || this.y < hz.minY - this.r || this.y > hz.maxY + this.r) continue;
+            if (
+                this.x < hz.minX - this.r ||
+                this.x > hz.maxX + this.r ||
+                this.y < hz.minY - this.r ||
+                this.y > hz.maxY + this.r
+            )
+                continue;
             const dx = hz.x2 - hz.x1;
             const dy = hz.y2 - hz.y1;
             const len2 = dx * dx + dy * dy;
@@ -670,78 +953,170 @@ class Player extends Unit {
         return false;
     }
     fireDashBurst(now = gameClock) {
-        const mm = this.weapons.find(w => w.id === 'magic_missile');
-        const rangeMultiplier = this.dashLvl2 ? (1 + GAME_CONFIG.DASH.LVL2_RANGE_BOOST_PCT / 100) : 1.0;
-        const speed = (mm ? mm.speed : 7.3) * rangeMultiplier * (this.accuracyModifier === 0 ? 1.5 : 1.0);
+        const mm = this.weapons.find((w) => w.id === 'magic_missile');
+        const rangeMultiplier = this.dashLvl2
+            ? 1 + GAME_CONFIG.DASH.LVL2_RANGE_BOOST_PCT / 100
+            : 1.0;
+        const speed =
+            (mm ? mm.speed : 7.3) *
+            rangeMultiplier *
+            (this.accuracyModifier === 0 ? 1.5 : 1.0);
         const burstCount = Math.round(PLAYER_DASH_BURST * rangeMultiplier);
-        const kind = (this.accuracyModifier === 0) ? 'laser' : 'missile';
+        const kind = this.accuracyModifier === 0 ? 'laser' : 'missile';
 
         if (this.phaseDetonationEnabled) {
-            const pm = this.weapons.find(w => w.id === 'proximity_mine');
+            const pm = this.weapons.find((w) => w.id === 'proximity_mine');
             const baseMineDmg = pm ? pm.damage : 18;
-            const mineDmg = baseMineDmg * this.mineDamageModifier * GAME_STATE.dmgFactor;
-            const mineRadius = 50 * this.mineAoeModifier * rangeMultiplier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
+            const mineDmg =
+                baseMineDmg * this.mineDamageModifier * GAME_STATE.dmgFactor;
+            const mineRadius =
+                50 *
+                this.mineAoeModifier *
+                rangeMultiplier *
+                ((GAME_STATE.difficulty
+                    ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
+                    : 1.0) /
+                    2 +
+                    0.5);
 
             // Trigger landing mine explosion
-            GAME_STATE.hazards.push(new MineExplosion(this.x, this.y, mineRadius, now, this));
+            GAME_STATE.hazards.push(
+                new MineExplosion(this.x, this.y, mineRadius, now, this),
+            );
             let totalDashExpDmg = 0;
             const dashHitEnemies = [];
             for (const e of GAME_STATE.enemies) {
                 if (!isDamageable(e)) continue;
                 const dx = e.x - this.x;
                 const dy = e.y - this.y;
-                if (dx * dx + dy * dy <= (mineRadius + e.r) * (mineRadius + e.r)) {
+                if (
+                    dx * dx + dy * dy <=
+                    (mineRadius + e.r) * (mineRadius + e.r)
+                ) {
                     e.hp -= mineDmg;
                     totalDashExpDmg += mineDmg;
                     dashHitEnemies.push(e);
                     if (this.freezeEnabled && !e.isBoss()) {
-                        const dur = (e.type === 'meteor') ? (GAME_CONFIG.UPGRADES.FREEZE_PROJECTILE_DURATION_SEC * 500) : (GAME_CONFIG.UPGRADES.FREEZE_PROJECTILE_DURATION_SEC * 1000);
+                        const dur =
+                            e.type === 'meteor'
+                                ? GAME_CONFIG.UPGRADES
+                                      .FREEZE_PROJECTILE_DURATION_SEC * 500
+                                : GAME_CONFIG.UPGRADES
+                                      .FREEZE_PROJECTILE_DURATION_SEC * 1000;
                         e.freeze(dur, now);
                     }
                     spawnHitParticles(e.x, e.y, '#ffaa00');
                 }
             }
-            applyExplosionHealing(this.x, this.y, mineRadius, totalDashExpDmg, this, dashHitEnemies);
+            applyExplosionHealing(
+                this.x,
+                this.y,
+                mineRadius,
+                totalDashExpDmg,
+                this,
+                dashHitEnemies,
+            );
 
             // Burst explosive missiles (1/2 mine damage, 1/3 AoE)
-            const burstDmg = baseMineDmg * 0.5 * this.mineDamageModifier * GAME_STATE.dmgFactor;
-            const burstAoe = (50 / 3) * this.mineAoeModifier * rangeMultiplier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
+            const burstDmg =
+                baseMineDmg *
+                0.5 *
+                this.mineDamageModifier *
+                GAME_STATE.dmgFactor;
+            const burstAoe =
+                (50 / 3) *
+                this.mineAoeModifier *
+                rangeMultiplier *
+                ((GAME_STATE.difficulty
+                    ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
+                    : 1.0) /
+                    2 +
+                    0.5);
             for (let i = 0; i < burstCount; i++) {
                 const a = (i / burstCount) * Math.PI * 2;
                 const proj = new MagicMissileProjectile(
-                    this.x, this.y, Math.cos(a) * speed, Math.sin(a) * speed, burstDmg, kind, this, null, this.unitType, now);
+                    this.x,
+                    this.y,
+                    Math.cos(a) * speed,
+                    Math.sin(a) * speed,
+                    burstDmg,
+                    kind,
+                    this,
+                    null,
+                    this.unitType,
+                    now,
+                );
                 proj.isExplosive = true;
                 proj.aoeRadius = burstAoe;
                 GAME_STATE.projectiles.push(proj);
             }
         } else {
-            const dmg = (mm ? mm.damage : 8) * this.damageModifier * GAME_STATE.dmgFactor;
+            const dmg =
+                (mm ? mm.damage : 8) *
+                this.damageModifier *
+                GAME_STATE.dmgFactor;
             for (let i = 0; i < burstCount; i++) {
                 const a = (i / burstCount) * Math.PI * 2;
-                GAME_STATE.projectiles.push(new MagicMissileProjectile(
-                    this.x, this.y, Math.cos(a) * speed, Math.sin(a) * speed, dmg, kind, this, null, this.unitType, now));
+                GAME_STATE.projectiles.push(
+                    new MagicMissileProjectile(
+                        this.x,
+                        this.y,
+                        Math.cos(a) * speed,
+                        Math.sin(a) * speed,
+                        dmg,
+                        kind,
+                        this,
+                        null,
+                        this.unitType,
+                        now,
+                    ),
+                );
             }
         }
         spawnHitParticles(this.x, this.y, this.color);
     }
-    takeDamage(amount, now, source, isMeleeContact = false, isRedirected = false) {
-        if (!this.isAlive() || this.invuln > 0 || this.dashing || this.campervanUntil > now || (this.aegisUntil && now < this.aegisUntil)) return false;
+    takeDamage(
+        amount,
+        now,
+        source,
+        isMeleeContact = false,
+        isRedirected = false,
+    ) {
+        if (
+            !this.isAlive() ||
+            this.invuln > 0 ||
+            this.dashing ||
+            this.campervanUntil > now ||
+            (this.aegisUntil && now < this.aegisUntil)
+        )
+            return false;
         if (this.isKnockbackAirborne && isMeleeContact) return false; // In the air, avoids melee ground contact
         // Level 2 Dash invulnerability check
-        if (this.dashLvl2 && (this.dashCooldownUntil - now) > this.dashCooldown / 2) return false;
+        if (
+            this.dashLvl2 &&
+            this.dashCooldownUntil - now > this.dashCooldown / 2
+        )
+            return false;
 
         if (isMeleeContact && source instanceof Enemy) {
             const lastHit = this.lastMeleeHitTime.get(source) || 0;
-            const hitInterval = 500 * (source.isPassingThroughLaserFence() ? 2.5 : 1.0);
+            const hitInterval =
+                500 * (source.isPassingThroughLaserFence() ? 2.5 : 1.0);
             if (now - lastHit < hitInterval) return false;
             this.lastMeleeHitTime.set(source, now);
 
             // Non-boss monsters stand still for 0.3 seconds after hitting a player with a normal proximity attack
             if (!source.isBoss()) {
                 if (source.lunging) {
-                    source.attackPauseUntil = Math.max(source.attackPauseUntil || 0, (source.lungeUntil || now) + 300);
+                    source.attackPauseUntil = Math.max(
+                        source.attackPauseUntil || 0,
+                        (source.lungeUntil || now) + 300,
+                    );
                 } else {
-                    source.attackPauseUntil = Math.max(source.attackPauseUntil || 0, now + 300);
+                    source.attackPauseUntil = Math.max(
+                        source.attackPauseUntil || 0,
+                        now + 300,
+                    );
                     source.vx = 0;
                     source.vy = 0;
                 }
@@ -750,7 +1125,8 @@ class Player extends Unit {
 
         let effectiveDmg = amount;
         if (!isRedirected) {
-            effectiveDmg *= GAME_STATE.difficulty.takenMult * this.damageReduction;
+            effectiveDmg *=
+                GAME_STATE.difficulty.takenMult * this.damageReduction;
 
             // Check for nearby living allies with Sacrificial Aegis protecting this player
             const protectors = [];
@@ -758,20 +1134,36 @@ class Player extends Unit {
                 if (op !== this && op.alive && op.sacrificialAegisEnabled) {
                     const dx = op.x - this.x;
                     const dy = op.y - this.y;
-                    const radius = 50 * op.mineAoeModifier * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
+                    const radius =
+                        50 *
+                        op.mineAoeModifier *
+                        ((GAME_STATE.difficulty
+                            ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
+                            : 1.0) /
+                            2 +
+                            0.5);
                     if (dx * dx + dy * dy <= radius * radius) {
                         protectors.push(op);
                     }
                 }
             }
             if (protectors.length > 0) {
-                const blockedDmg = effectiveDmg * (GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT / 100);
+                const blockedDmg =
+                    effectiveDmg *
+                    (GAME_CONFIG.UPGRADES.SACRIFICIAL_AEGIS_ALLY_REDUCTION_PCT /
+                        100);
                 effectiveDmg -= blockedDmg;
                 const dmgPerProtector = blockedDmg / protectors.length;
                 for (const protector of protectors) {
                     protector.lastSacrificeTime = now;
                     protector.lastSacrificedAlly = this;
-                    protector.takeDamage(dmgPerProtector, now, source, false, true);
+                    protector.takeDamage(
+                        dmgPerProtector,
+                        now,
+                        source,
+                        false,
+                        true,
+                    );
                 }
             }
         }
@@ -787,7 +1179,11 @@ class Player extends Unit {
             this.hp = 0;
             this.despawn(now, source);
         } else {
-            const isFromTitan = source && (source.type === 'behemoth' || (source.sourceEnemy && source.sourceEnemy.type === 'behemoth'));
+            const isFromTitan =
+                source &&
+                (source.type === 'behemoth' ||
+                    (source.sourceEnemy &&
+                        source.sourceEnemy.type === 'behemoth'));
             if (isFromTitan && !isRedirected) {
                 if (!source.lastCleaveTime || source.lastCleaveTime !== now) {
                     SoundEngine.meleeSweep(true);
@@ -803,7 +1199,9 @@ class Player extends Unit {
         this.hitFlashUntil = now + 150;
         this.lastDamagedTime = now;
         if (this.carapaceHealerEnabled) {
-            const healAmt = this.maxHp * (GAME_CONFIG.UPGRADES.CARAPACE_HEALER_TEAM_HEAL_PCT / 100);
+            const healAmt =
+                this.maxHp *
+                (GAME_CONFIG.UPGRADES.CARAPACE_HEALER_TEAM_HEAL_PCT / 100);
             for (const p of GAME_STATE.players) {
                 if (p.alive) p.heal(healAmt);
             }
@@ -814,8 +1212,15 @@ class Player extends Unit {
         } else if (source && source.sourceEnemy instanceof Enemy) {
             reflectTarget = source.sourceEnemy;
         }
-        if (this.reflectDamageEnabled && reflectTarget && typeof reflectTarget.hp === 'number' && reflectTarget.hp > 0) {
-            const reflectDmg = this.maxHp * (GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT / 100);
+        if (
+            this.reflectDamageEnabled &&
+            reflectTarget &&
+            typeof reflectTarget.hp === 'number' &&
+            reflectTarget.hp > 0
+        ) {
+            const reflectDmg =
+                this.maxHp *
+                (GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT / 100);
             reflectTarget.hp -= reflectDmg;
             spawnHitParticles(reflectTarget.x, reflectTarget.y, '#ff3333');
         }
@@ -832,11 +1237,16 @@ class Player extends Unit {
             }
             this.viperGrabber = null;
         }
-        if (this.finalBlastEnabled || this.martyrdomAuraEnabled || this.martyrsPresenceEnabled || this.sacrificialAegisEnabled) {
+        if (
+            this.finalBlastEnabled ||
+            this.martyrdomAuraEnabled ||
+            this.martyrsPresenceEnabled ||
+            this.sacrificialAegisEnabled
+        ) {
             this.triggerFinalBlast(now);
         }
         // Instant game over only if everyone is simultaneously down.
-        if (!GAME_STATE.players.some(p => p.alive)) gameOver();
+        if (!GAME_STATE.players.some((p) => p.alive)) gameOver();
     }
     spawnLaserTrails(x1, y1, x2, y2, now) {
         if (!this.speedLvl2) return;
@@ -849,28 +1259,44 @@ class Player extends Unit {
             // Perpendicular unit vector
             const nx = -dy / len;
             const ny = dx / len;
-            
+
             // Left border (22px offset)
             const lx1 = x1 - 22 * nx;
             const ly1 = y1 - 22 * ny;
             const lx2 = x2 - 22 * nx;
             const ly2 = y2 - 22 * ny;
-            GAME_STATE.hazards.push(new LaserTrailSegment(lx1, ly1, lx2, ly2, now, this));
+            GAME_STATE.hazards.push(
+                new LaserTrailSegment(lx1, ly1, lx2, ly2, now, this),
+            );
 
             // Right border (22px offset)
             const rx1 = x1 + 22 * nx;
             const ry1 = y1 + 22 * ny;
             const rx2 = x2 + 22 * nx;
             const ry2 = y2 + 22 * ny;
-            GAME_STATE.hazards.push(new LaserTrailSegment(rx1, ry1, rx2, ry2, now, this));
+            GAME_STATE.hazards.push(
+                new LaserTrailSegment(rx1, ry1, rx2, ry2, now, this),
+            );
         } else {
-            GAME_STATE.hazards.push(new LaserTrailSegment(x1, y1, x2, y2, now, this));
+            GAME_STATE.hazards.push(
+                new LaserTrailSegment(x1, y1, x2, y2, now, this),
+            );
         }
     }
     triggerFinalBlast(now) {
         const dmg = this.maxHp * this.damageModifier * GAME_STATE.dmgFactor;
-        let radius = 230 * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
-        if (this.mineAoeCount > 0) radius *= Math.pow(1 + GAME_CONFIG.UPGRADES.MARTYRDOM_AOE_BOOST_PCT / 100, this.mineAoeCount);
+        let radius =
+            230 *
+            ((GAME_STATE.difficulty
+                ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
+                : 1.0) /
+                2 +
+                0.5);
+        if (this.mineAoeCount > 0)
+            radius *= Math.pow(
+                1 + GAME_CONFIG.UPGRADES.MARTYRDOM_AOE_BOOST_PCT / 100,
+                this.mineAoeCount,
+            );
         for (const e of GAME_STATE.enemies) {
             if (!isDamageable(e)) continue;
             const dx = e.x - this.x;
@@ -880,30 +1306,57 @@ class Player extends Unit {
                 spawnHitParticles(e.x, e.y, '#ff3300');
                 if (e.hp > 0 && this.martyrsPresenceEnabled && !e.burrowed) {
                     const dist = Math.sqrt(dx * dx + dy * dy);
-                    const nx = dist > 0.001 ? dx / dist : (Math.random() < 0.5 ? -1 : 1);
+                    const nx =
+                        dist > 0.001 ? dx / dist : Math.random() < 0.5 ? -1 : 1;
                     const ny = dist > 0.001 ? dy / dist : 0;
-                    const knockbackDist = Math.max(110, radius - dist + 60)*((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
+                    const knockbackDist =
+                        Math.max(110, radius - dist + 60) *
+                        ((GAME_STATE.difficulty
+                            ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
+                            : 1.0) /
+                            2 +
+                            0.5);
                     e.airborne = true;
                     e.isKnockbackAirborne = true;
                     e.knockbackStartX = e.x;
                     e.knockbackStartY = e.y;
-                    e.knockbackTargetX = Math.max(10, Math.min(W - 10, e.x + nx * knockbackDist));
-                    e.knockbackTargetY = Math.max(10, Math.min(H - 10, e.y + ny * knockbackDist));
+                    e.knockbackTargetX = Math.max(
+                        10,
+                        Math.min(W - 10, e.x + nx * knockbackDist),
+                    );
+                    e.knockbackTargetY = Math.max(
+                        10,
+                        Math.min(H - 10, e.y + ny * knockbackDist),
+                    );
                     e.knockbackStart = now;
                     e.knockbackDuration = 600;
                 }
             }
         }
         GAME_STATE.hazards.push(new NukeExplosion(this.x, this.y, radius, now));
-        
+
         // Spawn massive fire debris particles (white, orange, yellow)
         for (let i = 0; i < 100; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = 3.0 + Math.random() * 8.0;
             const vx = Math.cos(angle) * speed;
             const vy = Math.sin(angle) * speed;
-            const color = (Math.random() < 0.3) ? '#ffffff' : (Math.random() < 0.6 ? '#ffcc00' : '#ff3300');
-            GAME_STATE.particles.push(new Particle(this.x, this.y, vx, vy, color, 500 + Math.random() * 500));
+            const color =
+                Math.random() < 0.3
+                    ? '#ffffff'
+                    : Math.random() < 0.6
+                      ? '#ffcc00'
+                      : '#ff3300';
+            GAME_STATE.particles.push(
+                new Particle(
+                    this.x,
+                    this.y,
+                    vx,
+                    vy,
+                    color,
+                    500 + Math.random() * 500,
+                ),
+            );
         }
         // Spawn grey smoke mushroom cloud particles
         for (let i = 0; i < 35; i++) {
@@ -911,7 +1364,16 @@ class Player extends Unit {
             const speed = 0.6 + Math.random() * 2.5;
             const vx = Math.cos(angle) * speed;
             const vy = Math.sin(angle) * speed;
-            GAME_STATE.particles.push(new Particle(this.x, this.y, vx, vy, '#555555', 800 + Math.random() * 400));
+            GAME_STATE.particles.push(
+                new Particle(
+                    this.x,
+                    this.y,
+                    vx,
+                    vy,
+                    '#555555',
+                    800 + Math.random() * 400,
+                ),
+            );
         }
     }
     revive() {
@@ -921,97 +1383,109 @@ class Player extends Unit {
         this.spawnInvuln = REVIVE_INVULN;
         SoundEngine.playerRevived();
         // Golden pillar animation on revive
-        if (typeof triggerReviveAnimation === 'function') triggerReviveAnimation(this, gameClock);
+        if (typeof triggerReviveAnimation === 'function')
+            triggerReviveAnimation(this, gameClock);
         // reappears exactly where it fell
     }
     draw(now) {
         if (this.alive) {
-            const flail = this.weapons.find(w => w.id === 'player_flail');
+            const flail = this.weapons.find((w) => w.id === 'player_flail');
             if (flail) flail.draw(now);
 
             if (this.campervanUntil > now) {
                 ctx.save();
                 ctx.translate(this.x, this.y);
                 ctx.rotate(this.facingAngle);
-                
+
                 const w = 48; // length
                 const h = 26; // width
-                
+
                 // Fast translucent glow pass for campervan invulnerability
                 ctx.strokeStyle = '#33ccff';
                 ctx.lineWidth = 5;
                 ctx.globalAlpha = 0.35;
-                ctx.strokeRect(-w/2 - 1, -h/2 - 1, w + 2, h + 2);
+                ctx.strokeRect(-w / 2 - 1, -h / 2 - 1, w + 2, h + 2);
                 ctx.globalAlpha = 1.0;
-                
+
                 // Wheels
                 ctx.fillStyle = '#111111';
-                ctx.fillRect(-w/2 + 6, -h/2 - 2, 8, 4);
-                ctx.fillRect(w/2 - 14, -h/2 - 2, 8, 4);
-                ctx.fillRect(-w/2 + 6, h/2 - 2, 8, 4);
-                ctx.fillRect(w/2 - 14, h/2 - 2, 8, 4);
-                
+                ctx.fillRect(-w / 2 + 6, -h / 2 - 2, 8, 4);
+                ctx.fillRect(w / 2 - 14, -h / 2 - 2, 8, 4);
+                ctx.fillRect(-w / 2 + 6, h / 2 - 2, 8, 4);
+                ctx.fillRect(w / 2 - 14, h / 2 - 2, 8, 4);
+
                 // Main Campervan Body
                 ctx.fillStyle = '#f5f5f5'; // cream-white
-                ctx.fillRect(-w/2, -h/2, w, h);
-                
+                ctx.fillRect(-w / 2, -h / 2, w, h);
+
                 // Stripe (Player color)
                 ctx.fillStyle = this.color;
-                ctx.fillRect(-w/2, -3, w, 6);
-                
+                ctx.fillRect(-w / 2, -3, w, 6);
+
                 // Front windshield (facing right)
                 ctx.fillStyle = '#33ccff';
-                ctx.fillRect(w/2 - 8, -h/2 + 2, 6, h - 4);
-                
+                ctx.fillRect(w / 2 - 8, -h / 2 + 2, 6, h - 4);
+
                 // Side windows
                 ctx.fillStyle = '#333333';
-                ctx.fillRect(-w/2 + 6, -h/2 + 3, 8, 5);
-                ctx.fillRect(-w/2 + 18, -h/2 + 3, 8, 5);
-                ctx.fillRect(-w/2 + 6, h/2 - 8, 8, 5);
-                ctx.fillRect(-w/2 + 18, h/2 - 8, 8, 5);
-                
+                ctx.fillRect(-w / 2 + 6, -h / 2 + 3, 8, 5);
+                ctx.fillRect(-w / 2 + 18, -h / 2 + 3, 8, 5);
+                ctx.fillRect(-w / 2 + 6, h / 2 - 8, 8, 5);
+                ctx.fillRect(-w / 2 + 18, h / 2 - 8, 8, 5);
+
                 // Headlights
                 ctx.fillStyle = '#ffff33';
                 ctx.beginPath();
-                ctx.arc(w/2, -h/2 + 4, 2, 0, Math.PI * 2);
-                ctx.arc(w/2, h/2 - 4, 2, 0, Math.PI * 2);
+                ctx.arc(w / 2, -h / 2 + 4, 2, 0, Math.PI * 2);
+                ctx.arc(w / 2, h / 2 - 4, 2, 0, Math.PI * 2);
                 ctx.fill();
-                
+
                 // Headlight beams
                 ctx.fillStyle = 'rgba(255, 255, 100, 0.15)';
                 ctx.beginPath();
-                ctx.moveTo(w/2, -h/2 + 4);
-                ctx.lineTo(w/2 + 40, -h/2 - 10);
-                ctx.lineTo(w/2 + 40, -h/2 + 15);
+                ctx.moveTo(w / 2, -h / 2 + 4);
+                ctx.lineTo(w / 2 + 40, -h / 2 - 10);
+                ctx.lineTo(w / 2 + 40, -h / 2 + 15);
                 ctx.closePath();
                 ctx.fill();
-                
+
                 ctx.beginPath();
-                ctx.moveTo(w/2, h/2 - 4);
-                ctx.lineTo(w/2 + 40, h/2 - 15);
-                ctx.lineTo(w/2 + 40, h/2 + 10);
+                ctx.moveTo(w / 2, h / 2 - 4);
+                ctx.lineTo(w / 2 + 40, h / 2 - 15);
+                ctx.lineTo(w / 2 + 40, h / 2 + 10);
                 ctx.closePath();
                 ctx.fill();
-                
+
                 ctx.restore();
                 this.drawHpBar(now);
                 return;
             }
 
             // Calculate parabolic altitude arc and ground shadow for airborne player
-            let drawX = this.x;
+            const drawX = this.x;
             let drawY = this.y;
             let drawR = this.r;
             if (this.isKnockbackAirborne) {
                 const elapsed = now - this.knockbackStart;
-                const progress = Math.max(0, Math.min(1, elapsed / this.knockbackDuration));
+                const progress = Math.max(
+                    0,
+                    Math.min(1, elapsed / this.knockbackDuration),
+                );
                 const altitude = Math.sin(progress * Math.PI) * 45; // 45px apex height in the air
 
                 // Draw ground shadow beneath airborne player
                 ctx.save();
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
                 ctx.beginPath();
-                ctx.ellipse(this.x, this.y + 4, Math.max(2, this.r * (1 - altitude / 120)), Math.max(1, this.r * 0.5 * (1 - altitude / 120)), 0, 0, Math.PI * 2);
+                ctx.ellipse(
+                    this.x,
+                    this.y + 4,
+                    Math.max(2, this.r * (1 - altitude / 120)),
+                    Math.max(1, this.r * 0.5 * (1 - altitude / 120)),
+                    0,
+                    0,
+                    Math.PI * 2,
+                );
                 ctx.fill();
                 ctx.restore();
 
@@ -1020,13 +1494,15 @@ class Player extends Unit {
             }
 
             ctx.save();
-            const isFlashed = (this.invuln > 0 && Math.floor(this.invuln / 60) % 2 === 0) || 
-                              (this.hitFlashUntil > now && Math.floor((this.hitFlashUntil - now) / 30) % 2 === 0);
+            const isFlashed =
+                (this.invuln > 0 && Math.floor(this.invuln / 60) % 2 === 0) ||
+                (this.hitFlashUntil > now &&
+                    Math.floor((this.hitFlashUntil - now) / 30) % 2 === 0);
             if (isFlashed) ctx.globalAlpha = 0.5;
             // Hero Ground Beacon & Rotating Halo
             ctx.save();
             const beaconR = drawR + 6;
-            
+
             // 1. Soft ground disc under player
             ctx.fillStyle = this.color + '22';
             ctx.beginPath();
@@ -1057,10 +1533,11 @@ class Player extends Unit {
             if (cardiacCycle < 0.12) {
                 cardiacPulse = Math.sin((cardiacCycle / 0.12) * Math.PI); // Lub
             } else if (cardiacCycle >= 0.16 && cardiacCycle < 0.28) {
-                cardiacPulse = Math.sin(((cardiacCycle - 0.16) / 0.12) * Math.PI) * 0.75; // Dub
+                cardiacPulse =
+                    Math.sin(((cardiacCycle - 0.16) / 0.12) * Math.PI) * 0.75; // Dub
             }
             const isFlash = this.hitFlashUntil > now;
-            const pulseScale = isFlash ? 1.4 : (1.0 + cardiacPulse * 0.25);
+            const pulseScale = isFlash ? 1.4 : 1.0 + cardiacPulse * 0.25;
 
             // Determine which gap slots contain emerald gems (evenly distributed around the ring)
             const filledGaps = new Set();
@@ -1090,7 +1567,9 @@ class Player extends Unit {
                 // 3b. Second Wind: Sharp emerald diamond crystal inlaid in the space between the dashes
                 if (filledGaps.has(s)) {
                     // Traveling vitality wave across the ring
-                    const wavePhase = (now * 0.003 - (s / slotCount) * Math.PI * 2) % (Math.PI * 2);
+                    const wavePhase =
+                        (now * 0.003 - (s / slotCount) * Math.PI * 2) %
+                        (Math.PI * 2);
                     const waveGlow = Math.max(0, Math.sin(wavePhase));
                     const pipGlow = Math.max(cardiacPulse, waveGlow * 0.7);
 
@@ -1111,8 +1590,20 @@ class Player extends Unit {
                     // 1. Soft atmospheric emerald glow halo behind the gem
                     ctx.save();
                     const glowRadius = radialH * 2.6;
-                    const glowGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
-                    glowGrad.addColorStop(0, isFlash ? 'rgba(167, 255, 235, 0.85)' : 'rgba(0, 255, 136, 0.60)');
+                    const glowGrad = ctx.createRadialGradient(
+                        cx,
+                        cy,
+                        0,
+                        cx,
+                        cy,
+                        glowRadius,
+                    );
+                    glowGrad.addColorStop(
+                        0,
+                        isFlash
+                            ? 'rgba(167, 255, 235, 0.85)'
+                            : 'rgba(0, 255, 136, 0.60)',
+                    );
                     glowGrad.addColorStop(0.5, 'rgba(0, 230, 118, 0.22)');
                     glowGrad.addColorStop(1, 'rgba(0, 200, 83, 0)');
                     ctx.beginPath();
@@ -1125,7 +1616,11 @@ class Player extends Unit {
                     // 2. Inlaid emerald channel line along the gap
                     ctx.beginPath();
                     ctx.arc(drawX, drawY, haloR, gapStartA, gapEndA);
-                    ctx.strokeStyle = isFlash ? '#ffffff' : (pipGlow > 0.4 ? '#69f0ae' : '#00e676');
+                    ctx.strokeStyle = isFlash
+                        ? '#ffffff'
+                        : pipGlow > 0.4
+                          ? '#69f0ae'
+                          : '#00e676';
                     ctx.lineWidth = Math.max(1.8, 2.2 * pulseScale);
                     ctx.globalAlpha = 0.95;
                     ctx.stroke();
@@ -1188,7 +1683,13 @@ class Player extends Unit {
 
                     // Center white highlight gleam
                     ctx.beginPath();
-                    ctx.arc(cx, cy, Math.max(0.9, 1.4 * (drawR / 20)), 0, Math.PI * 2);
+                    ctx.arc(
+                        cx,
+                        cy,
+                        Math.max(0.9, 1.4 * (drawR / 20)),
+                        0,
+                        Math.PI * 2,
+                    );
                     ctx.fillStyle = '#ffffff';
                     ctx.globalAlpha = 1.0;
                     ctx.fill();
@@ -1223,11 +1724,26 @@ class Player extends Unit {
             // Start at bottom-left corner with rounded transition
             ctx.moveTo(baseDist, -baseHalfW);
             // Smooth curved flank to rounded apex
-            ctx.quadraticCurveTo(baseDist + pointerHeight * 0.45, -baseHalfW * 0.45, baseDist + pointerHeight - 0.7, -0.9);
+            ctx.quadraticCurveTo(
+                baseDist + pointerHeight * 0.45,
+                -baseHalfW * 0.45,
+                baseDist + pointerHeight - 0.7,
+                -0.9,
+            );
             // Rounded tip apex
-            ctx.quadraticCurveTo(baseDist + pointerHeight, 0, baseDist + pointerHeight - 0.7, 0.9);
+            ctx.quadraticCurveTo(
+                baseDist + pointerHeight,
+                0,
+                baseDist + pointerHeight - 0.7,
+                0.9,
+            );
             // Smooth curved flank back to bottom-right corner
-            ctx.quadraticCurveTo(baseDist + pointerHeight * 0.45, baseHalfW * 0.45, baseDist, baseHalfW);
+            ctx.quadraticCurveTo(
+                baseDist + pointerHeight * 0.45,
+                baseHalfW * 0.45,
+                baseDist,
+                baseHalfW,
+            );
             // Soft rounded inner base matching beacon curve
             ctx.quadraticCurveTo(baseDist + 0.5, 0, baseDist, -baseHalfW);
             ctx.closePath();
@@ -1237,18 +1753,26 @@ class Player extends Unit {
             ctx.restore();
 
             // 4b. Rapid Deployment: brood-pouch charge ring refilling toward the next turret deploy
-            const turretWeapon = this.weapons ? this.weapons.find(w => w.id === 'turret') : null;
+            const turretWeapon = this.weapons
+                ? this.weapons.find((w) => w.id === 'turret')
+                : null;
             const rcCount = this.turretCooldownCount || 0;
             if (turretWeapon && rcCount > 0) {
-                const cd = turretWeapon.basePlacementCooldown * (this.buildingCooldownModifier || 1.0);
-                const prog = Math.min(1, Math.max(0, (now - turretWeapon.lastPlacement) / cd));
+                const cd =
+                    turretWeapon.basePlacementCooldown *
+                    (this.buildingCooldownModifier || 1.0);
+                const prog = Math.min(
+                    1,
+                    Math.max(0, (now - turretWeapon.lastPlacement) / cd),
+                );
                 const rR = beaconR + 2.5;
                 const span = Math.PI * 2;
                 const startA = (this.facingAngle || 0) - Math.PI;
                 const endA = startA + span * prog;
                 const halfSpan = span / 2;
                 ctx.lineCap = 'round';
-                ctx.strokeStyle = rcCount >= 4 ? shadeHex(this.color, 1.5) : this.color;
+                ctx.strokeStyle =
+                    rcCount >= 4 ? shadeHex(this.color, 1.5) : this.color;
                 ctx.globalAlpha = 0.8;
                 if (rcCount >= 3) {
                     // Split into two fill segments forming one full ring as the charge completes
@@ -1257,7 +1781,13 @@ class Player extends Unit {
                     ctx.arc(drawX, drawY, rR, startA, startA + halfSpan * prog);
                     ctx.stroke();
                     ctx.beginPath();
-                    ctx.arc(drawX, drawY, rR, startA + halfSpan, startA + halfSpan + halfSpan * prog);
+                    ctx.arc(
+                        drawX,
+                        drawY,
+                        rR,
+                        startA + halfSpan,
+                        startA + halfSpan + halfSpan * prog,
+                    );
                     ctx.stroke();
                 } else {
                     ctx.lineWidth = 1.4;
@@ -1271,7 +1801,13 @@ class Player extends Unit {
                     ctx.fillStyle = '#ffffff';
                     ctx.globalAlpha = 0.9;
                     ctx.beginPath();
-                    ctx.arc(drawX + Math.cos(tipA) * rR, drawY + Math.sin(tipA) * rR, 1.5, 0, Math.PI * 2);
+                    ctx.arc(
+                        drawX + Math.cos(tipA) * rR,
+                        drawY + Math.sin(tipA) * rR,
+                        1.5,
+                        0,
+                        Math.PI * 2,
+                    );
                     ctx.fill();
                 }
                 ctx.lineCap = 'butt';
@@ -1279,15 +1815,19 @@ class Player extends Unit {
 
             // 1. Calculate Melee Sweep Pseudopod Extension (if active)
             let pseudopod = null;
-            const melee = this.weapons.find(w => w.id === 'melee_sweep');
-            if (melee && melee.lastFire > 0 && now - melee.lastFire < melee.sweepDuration) {
+            const melee = this.weapons.find((w) => w.id === 'melee_sweep');
+            if (
+                melee &&
+                melee.lastFire > 0 &&
+                now - melee.lastFire < melee.sweepDuration
+            ) {
                 const elapsed = now - melee.lastFire;
                 const t = elapsed / melee.sweepDuration; // 0 to 1
-                
+
                 // Spin full 360 degrees around the player
                 const startAng = (this.facingAngle || 0) - Math.PI;
                 const sweepAngle = startAng + t * (Math.PI * 2);
-                
+
                 // Reach curve: shoots out, sweeps full 360 circle, retracts
                 const reachProgress = Math.sin(t * Math.PI);
                 const maxRange = melee.range * this.meleeRangeModifier;
@@ -1296,10 +1836,10 @@ class Player extends Unit {
                 pseudopod = {
                     angle: sweepAngle,
                     reach: extensionReach,
-                    halfWidth: 0.40,
+                    halfWidth: 0.4,
                     t: t,
                     startAng: startAng,
-                    currentReach: drawR + extensionReach
+                    currentReach: drawR + extensionReach,
                 };
 
                 // Draw full hit circle & sweeping energy wave
@@ -1319,8 +1859,14 @@ class Player extends Unit {
                 ctx.beginPath();
                 ctx.strokeStyle = this.color;
                 ctx.lineWidth = 4.5 * (1 - t * 0.6);
-                ctx.globalAlpha = 0.70 * (1 - t * 0.4);
-                ctx.arc(drawX, drawY, hitRadius, sweepAngle - arcLength, sweepAngle);
+                ctx.globalAlpha = 0.7 * (1 - t * 0.4);
+                ctx.arc(
+                    drawX,
+                    drawY,
+                    hitRadius,
+                    sweepAngle - arcLength,
+                    sweepAngle,
+                );
                 ctx.stroke();
 
                 // Crisp inner white blade line
@@ -1328,7 +1874,13 @@ class Player extends Unit {
                 ctx.strokeStyle = '#ffffff';
                 ctx.lineWidth = 1.8 * (1 - t * 0.6);
                 ctx.globalAlpha = 0.85 * (1 - t * 0.3);
-                ctx.arc(drawX, drawY, hitRadius, sweepAngle - arcLength * 0.35, sweepAngle);
+                ctx.arc(
+                    drawX,
+                    drawY,
+                    hitRadius,
+                    sweepAngle - arcLength * 0.35,
+                    sweepAngle,
+                );
                 ctx.stroke();
 
                 ctx.restore();
@@ -1342,24 +1894,26 @@ class Player extends Unit {
                 const fdist = Math.hypot(fdx, fdy);
                 const fAngle = Math.atan2(fdy, fdx);
                 const speed = Math.hypot(flail.vx, flail.vy);
-                const tension = Math.min(1.0, 0.35 + speed * 0.10);
+                const tension = Math.min(1.0, 0.35 + speed * 0.1);
                 flagellum = {
                     active: true,
                     angle: fAngle,
                     tension: tension,
-                    dist: fdist
+                    dist: fdist,
                 };
             }
 
             // 3. Collect active Deflector Shield roots for membrane deformation
-            const deflectorWeapon = this.weapons.find(w => w.id === 'projectile_shield');
+            const deflectorWeapon = this.weapons.find(
+                (w) => w.id === 'projectile_shield',
+            );
             const deflectorRoots = [];
-            if (deflectorWeapon && deflectorWeapon.orbiters) {
+            if (deflectorWeapon?.orbiters) {
                 for (const orb of deflectorWeapon.orbiters) {
                     if (orb.growth && orb.growth > 0.01) {
                         deflectorRoots.push({
                             angle: orb.angle,
-                            growth: orb.growth
+                            growth: orb.growth,
                         });
                     }
                 }
@@ -1374,13 +1928,16 @@ class Player extends Unit {
                     const t = elapsed / this.sniperCharge.preFireDuration;
                     intensity = Math.pow(t, 1.5); // Rapid exponential surge
                 } else {
-                    const t = (elapsed - this.sniperCharge.preFireDuration) / (this.sniperCharge.totalDuration - this.sniperCharge.preFireDuration);
+                    const t =
+                        (elapsed - this.sniperCharge.preFireDuration) /
+                        (this.sniperCharge.totalDuration -
+                            this.sniperCharge.preFireDuration);
                     intensity = (1 - t) * Math.cos(t * Math.PI * 3.0);
                 }
                 if (Math.abs(intensity) > 0.001) {
                     sniperDeform = {
                         angle: this.sniperCharge.angle,
-                        intensity: intensity
+                        intensity: intensity,
                     };
                 }
             }
@@ -1392,16 +1949,16 @@ class Player extends Unit {
                 if (elapsed < this.hatchAnimation.duration) {
                     const t = elapsed / this.hatchAnimation.duration;
                     let intensity = 0;
-                    if (t < 0.40) {
-                        intensity = Math.sin((t / 0.40) * (Math.PI * 0.5));
+                    if (t < 0.4) {
+                        intensity = Math.sin((t / 0.4) * (Math.PI * 0.5));
                     } else {
-                        const post = (t - 0.40) / 0.60;
+                        const post = (t - 0.4) / 0.6;
                         intensity = (1 - post) * Math.cos(post * Math.PI * 2.0);
                     }
                     if (Math.abs(intensity) > 0.001) {
                         hatchDeform = {
                             angle: this.hatchAnimation.angle,
-                            intensity: Math.max(-0.25, intensity)
+                            intensity: Math.max(-0.25, intensity),
                         };
                     }
                 } else {
@@ -1425,7 +1982,7 @@ class Player extends Unit {
                     if (Math.abs(intensity) > 0.001) {
                         sledgeDeform = {
                             angle: this.sledgeHammerAnimation.angle,
-                            intensity: intensity
+                            intensity: intensity,
                         };
                     }
                 } else {
@@ -1447,16 +2004,20 @@ class Player extends Unit {
                         intensity = (1 - post) * Math.cos(post * Math.PI * 2.0);
                     }
                     if (Math.abs(intensity) > 0.001) {
-                        const oStackFactor = 1 + (this.mineLaunchAnimation.stacks || 0) * 0.3;
+                        const oStackFactor =
+                            1 + (this.mineLaunchAnimation.stacks || 0) * 0.3;
                         let oLaunchAngle = this.mineLaunchAnimation.angle;
                         const trackMine = this.mineLaunchAnimation.mine;
-                        if (trackMine && trackMine.alive) {
-                            oLaunchAngle = Math.atan2(trackMine.y - drawY, trackMine.x - drawX);
+                        if (trackMine?.alive) {
+                            oLaunchAngle = Math.atan2(
+                                trackMine.y - drawY,
+                                trackMine.x - drawX,
+                            );
                         }
                         mineLaunchDeform = {
                             angle: oLaunchAngle,
                             intensity: intensity * oStackFactor,
-                            warty: !!this.scatterMinesEnabled
+                            warty: !!this.scatterMinesEnabled,
                         };
                     }
                 } else {
@@ -1480,7 +2041,7 @@ class Player extends Unit {
                     if (Math.abs(intensity) > 0.001) {
                         rocketDeform = {
                             angle: this.rocketAnimation.angle,
-                            intensity: intensity
+                            intensity: intensity,
                         };
                     }
                 } else {
@@ -1493,18 +2054,24 @@ class Player extends Unit {
             if (this.dashLaunchEffect) {
                 const elapsed = now - this.dashLaunchEffect.startTime;
                 if (elapsed < this.dashLaunchEffect.duration) {
-                    const dashProg = Math.min(1.0, elapsed / this.dashLaunchEffect.dashDuration);
+                    const dashProg = Math.min(
+                        1.0,
+                        elapsed / this.dashLaunchEffect.dashDuration,
+                    );
                     let intensity = 0;
                     if (dashProg < 1.0) {
                         intensity = 1.0 - dashProg * 0.4;
                     } else {
-                        const retractT = (elapsed - this.dashLaunchEffect.dashDuration) / (this.dashLaunchEffect.duration - this.dashLaunchEffect.dashDuration);
+                        const retractT =
+                            (elapsed - this.dashLaunchEffect.dashDuration) /
+                            (this.dashLaunchEffect.duration -
+                                this.dashLaunchEffect.dashDuration);
                         intensity = (1.0 - retractT) * 0.6;
                     }
                     if (intensity > 0.01) {
                         dashLaunchDeform = {
                             angle: this.dashLaunchEffect.angle,
-                            intensity: intensity
+                            intensity: intensity,
                         };
                     }
                 }
@@ -1521,7 +2088,14 @@ class Player extends Unit {
                     const normX = -Math.sin(sAngle);
                     const normY = Math.cos(sAngle);
 
-                    let rootX, rootY, tipX, tipY, rootWidth, tipWidth, footRadius, stalkAlpha;
+                    let rootX,
+                        rootY,
+                        tipX,
+                        tipY,
+                        rootWidth,
+                        tipWidth,
+                        footRadius,
+                        stalkAlpha;
 
                     // Tip is anchored into the rear of the player blob
                     tipX = this.x - Math.cos(sAngle) * (this.r * 0.4);
@@ -1531,18 +2105,20 @@ class Player extends Unit {
                         // Launch phase: root stays firmly anchored at start coordinates
                         rootX = sx;
                         rootY = sy;
-                        footRadius = this.r * 0.90;
+                        footRadius = this.r * 0.9;
                         rootWidth = footRadius * 0.88;
                         tipWidth = Math.max(3, this.r * 0.55);
                         stalkAlpha = 1.0;
                     } else {
                         // Retraction phase: root lifts and zips forward into the player blob
-                        const pullT = (elapsed - effect.dashDuration) / (effect.duration - effect.dashDuration);
+                        const pullT =
+                            (elapsed - effect.dashDuration) /
+                            (effect.duration - effect.dashDuration);
                         const easePull = Math.sin(pullT * Math.PI * 0.5);
                         rootX = sx + (tipX - sx) * easePull;
                         rootY = sy + (tipY - sy) * easePull;
-                        const remaining = (1.0 - pullT);
-                        footRadius = this.r * 0.90 * remaining;
+                        const remaining = 1.0 - pullT;
+                        footRadius = this.r * 0.9 * remaining;
                         rootWidth = footRadius * 0.88;
                         tipWidth = Math.max(2, this.r * 0.55 * remaining);
                         stalkAlpha = Math.max(0, 1.0 - pullT * 0.35);
@@ -1550,7 +2126,11 @@ class Player extends Unit {
 
                     const distToTip = Math.hypot(tipX - rootX, tipY - rootY);
 
-                    if (distToTip > 2 && stalkAlpha > 0.01 && footRadius > 0.5) {
+                    if (
+                        distToTip > 2 &&
+                        stalkAlpha > 0.01 &&
+                        footRadius > 0.5
+                    ) {
                         ctx.save();
                         ctx.globalAlpha = 0.92 * stalkAlpha;
 
@@ -1559,7 +2139,15 @@ class Player extends Unit {
                         ctx.strokeStyle = this.ring || '#000000';
                         ctx.lineWidth = 2.0;
                         ctx.beginPath();
-                        ctx.ellipse(rootX, rootY, footRadius * 1.15, footRadius * 0.85, sAngle, 0, Math.PI * 2);
+                        ctx.ellipse(
+                            rootX,
+                            rootY,
+                            footRadius * 1.15,
+                            footRadius * 0.85,
+                            sAngle,
+                            0,
+                            Math.PI * 2,
+                        );
                         ctx.fill();
                         ctx.stroke();
 
@@ -1577,13 +2165,26 @@ class Player extends Unit {
                         const midDist = distToTip * 0.5;
                         const midX = rootX + Math.cos(sAngle) * midDist;
                         const midY = rootY + Math.sin(sAngle) * midDist;
-                        const waist = Math.max(2, (rootWidth + tipWidth) * 0.42);
+                        const waist = Math.max(
+                            2,
+                            (rootWidth + tipWidth) * 0.42,
+                        );
 
                         ctx.beginPath();
                         ctx.moveTo(rLx, rLy);
-                        ctx.quadraticCurveTo(midX + normX * waist, midY + normY * waist, tLx, tLy);
+                        ctx.quadraticCurveTo(
+                            midX + normX * waist,
+                            midY + normY * waist,
+                            tLx,
+                            tLy,
+                        );
                         ctx.lineTo(tRx, tRy);
-                        ctx.quadraticCurveTo(midX - normX * waist, midY - normY * waist, rRx, rRy);
+                        ctx.quadraticCurveTo(
+                            midX - normX * waist,
+                            midY - normY * waist,
+                            rRx,
+                            rRy,
+                        );
                         ctx.closePath();
 
                         ctx.fillStyle = this.color;
@@ -1617,17 +2218,38 @@ class Player extends Unit {
                 laserSnailDeform = {
                     facingAngle: facing,
                     intensity: this.dashing ? 1.4 : 1.0,
-                    dualTails: !!this.iceTrailEnabled
+                    dualTails: !!this.iceTrailEnabled,
                 };
             }
 
             // Filter out expired budding ripples
             if (this.mitosisBuds && this.mitosisBuds.length > 0) {
-                this.mitosisBuds = this.mitosisBuds.filter(b => now - b.time < b.duration);
+                this.mitosisBuds = this.mitosisBuds.filter(
+                    (b) => now - b.time < b.duration,
+                );
             }
 
             // Draw reshapable organic fluid blob — unified contour extending roots, limbs, hammer, hatching pouch, mine nozzle, exocytic crater, dash thrust socket & teardrop laser tail!
-            drawOrganicBlobPath(ctx, drawX, drawY, drawR, now, facing, moveSpd, this.mitosisBuds, pseudopod, flagellum, deflectorRoots, sniperDeform, hatchDeform, sledgeDeform, mineLaunchDeform, rocketDeform, dashLaunchDeform, laserSnailDeform);
+            drawOrganicBlobPath(
+                ctx,
+                drawX,
+                drawY,
+                drawR,
+                now,
+                facing,
+                moveSpd,
+                this.mitosisBuds,
+                pseudopod,
+                flagellum,
+                deflectorRoots,
+                sniperDeform,
+                hatchDeform,
+                sledgeDeform,
+                mineLaunchDeform,
+                rocketDeform,
+                dashLaunchDeform,
+                laserSnailDeform,
+            );
             ctx.fillStyle = this.color;
             ctx.fill();
             ctx.strokeStyle = this.ring;
@@ -1639,16 +2261,43 @@ class Player extends Unit {
             if (damageStacks > 0) {
                 ctx.save();
                 ctx.beginPath();
-                drawOrganicBlobPath(ctx, drawX, drawY, drawR, now, facing, moveSpd, this.mitosisBuds, pseudopod, flagellum, deflectorRoots, sniperDeform, hatchDeform, sledgeDeform, mineLaunchDeform, rocketDeform, dashLaunchDeform, laserSnailDeform);
+                drawOrganicBlobPath(
+                    ctx,
+                    drawX,
+                    drawY,
+                    drawR,
+                    now,
+                    facing,
+                    moveSpd,
+                    this.mitosisBuds,
+                    pseudopod,
+                    flagellum,
+                    deflectorRoots,
+                    sniperDeform,
+                    hatchDeform,
+                    sledgeDeform,
+                    mineLaunchDeform,
+                    rocketDeform,
+                    dashLaunchDeform,
+                    laserSnailDeform,
+                );
                 ctx.clip();
 
-                const recentAttack = this.weapons.some(w => (now - (w.lastFire || 0)) < 160);
-                const attackFlare = recentAttack ? 1.40 : 1.0;
+                const recentAttack = this.weapons.some(
+                    (w) => now - (w.lastFire || 0) < 160,
+                );
+                const attackFlare = recentAttack ? 1.4 : 1.0;
                 const breath = 1.0 + 0.05 * Math.sin(now * 0.0035);
 
                 // 1. Fluid inertia & buoyant slosh lag (depth parallax: floats inside cytoplasm)
-                const fluidLagX = Math.max(-drawR * 0.28, Math.min(drawR * 0.28, (this.vx || 0) * 0.40));
-                const fluidLagY = Math.max(-drawR * 0.28, Math.min(drawR * 0.28, (this.vy || 0) * 0.40));
+                const fluidLagX = Math.max(
+                    -drawR * 0.28,
+                    Math.min(drawR * 0.28, (this.vx || 0) * 0.4),
+                );
+                const fluidLagY = Math.max(
+                    -drawR * 0.28,
+                    Math.min(drawR * 0.28, (this.vy || 0) * 0.4),
+                );
                 const bobX = Math.sin(now * 0.0028 + 1.1) * (drawR * 0.035);
                 const bobY = Math.cos(now * 0.0023) * (drawR * 0.035);
                 const nX = drawX - fluidLagX + bobX;
@@ -1679,10 +2328,24 @@ class Player extends Unit {
                 }
 
                 // 2. Deep Subsurface Bioluminescence (Internal fluid illumination)
-                const auraRadius = drawR * (0.32 + Math.min(0.26, damageStacks * 0.035)) * breath * attackFlare;
-                const auraGrad = ctx.createRadialGradient(nX, nY, 0, nX, nY, auraRadius);
+                const auraRadius =
+                    drawR *
+                    (0.32 + Math.min(0.26, damageStacks * 0.035)) *
+                    breath *
+                    attackFlare;
+                const auraGrad = ctx.createRadialGradient(
+                    nX,
+                    nY,
+                    0,
+                    nX,
+                    nY,
+                    auraRadius,
+                );
                 auraGrad.addColorStop(0, glowColor);
-                auraGrad.addColorStop(0.50, glowColor.replace(/[\d\.]+\)$/, '0.22)'));
+                auraGrad.addColorStop(
+                    0.5,
+                    glowColor.replace(/[\d\.]+\)$/, '0.22)'),
+                );
                 auraGrad.addColorStop(1, 'rgba(255, 120, 0, 0)');
                 ctx.beginPath();
                 ctx.arc(nX, nY, auraRadius, 0, Math.PI * 2);
@@ -1696,21 +2359,32 @@ class Player extends Unit {
                 ctx.lineWidth = Math.max(1, 1.4 * (drawR / 20));
                 ctx.strokeStyle = rimColor;
                 for (let f = 0; f < filamentCount; f++) {
-                    const fAngle = rotBase + (f / filamentCount) * (Math.PI * 2);
-                    const fReach = drawR * (0.45 + 0.03 * Math.min(10, damageStacks)) * (0.94 + 0.08 * Math.sin(now * 0.005 + f * 2.1));
+                    const fAngle =
+                        rotBase + (f / filamentCount) * (Math.PI * 2);
+                    const fReach =
+                        drawR *
+                        (0.45 + 0.03 * Math.min(10, damageStacks)) *
+                        (0.94 + 0.08 * Math.sin(now * 0.005 + f * 2.1));
                     const fx = nX + Math.cos(fAngle) * fReach;
                     const fy = nY + Math.sin(fAngle) * fReach;
 
                     const midDist = fReach * 0.52;
                     const perpAngle = fAngle + Math.PI / 2;
-                    const waveMag = drawR * 0.07 * Math.sin(now * 0.007 + f * 3.3);
-                    const cx = nX + Math.cos(fAngle) * midDist + Math.cos(perpAngle) * waveMag;
-                    const cy = nY + Math.sin(fAngle) * midDist + Math.sin(perpAngle) * waveMag;
+                    const waveMag =
+                        drawR * 0.07 * Math.sin(now * 0.007 + f * 3.3);
+                    const cx =
+                        nX +
+                        Math.cos(fAngle) * midDist +
+                        Math.cos(perpAngle) * waveMag;
+                    const cy =
+                        nY +
+                        Math.sin(fAngle) * midDist +
+                        Math.sin(perpAngle) * waveMag;
 
                     ctx.beginPath();
                     ctx.moveTo(nX, nY);
                     ctx.quadraticCurveTo(cx, cy, fx, fy);
-                    ctx.globalAlpha = 0.60 * attackFlare;
+                    ctx.globalAlpha = 0.6 * attackFlare;
                     ctx.stroke();
 
                     // Soft diffuse filament tip spark
@@ -1721,8 +2395,16 @@ class Player extends Unit {
                 }
 
                 // 4. Discrete Node Cluster Geometry per Level
-                const nodeOrbitRadius = drawR * (0.15 + Math.min(0.12, damageStacks * 0.015)) * breath;
-                const nodeOrbRadius = drawR * (damageStacks === 1 ? 0.20 : Math.max(0.085, 0.16 - damageStacks * 0.008)) * attackFlare;
+                const nodeOrbitRadius =
+                    drawR *
+                    (0.15 + Math.min(0.12, damageStacks * 0.015)) *
+                    breath;
+                const nodeOrbRadius =
+                    drawR *
+                    (damageStacks === 1
+                        ? 0.2
+                        : Math.max(0.085, 0.16 - damageStacks * 0.008)) *
+                    attackFlare;
                 const nodePositions = [];
 
                 if (damageStacks === 1) {
@@ -1734,7 +2416,7 @@ class Player extends Unit {
                         nodePositions.push({
                             x: nX + Math.cos(a) * nodeOrbitRadius,
                             y: nY + Math.sin(a) * nodeOrbitRadius,
-                            r: nodeOrbRadius
+                            r: nodeOrbRadius,
                         });
                     }
                 } else if (damageStacks === 3) {
@@ -1744,21 +2426,25 @@ class Player extends Unit {
                         nodePositions.push({
                             x: nX + Math.cos(a) * nodeOrbitRadius,
                             y: nY + Math.sin(a) * nodeOrbitRadius,
-                            r: nodeOrbRadius
+                            r: nodeOrbRadius,
                         });
                     }
                 } else if (damageStacks === 4) {
-                    const spin = now * 0.0020;
+                    const spin = now * 0.002;
                     for (let i = 0; i < 4; i++) {
                         const a = spin + (i / 4) * Math.PI * 2;
                         nodePositions.push({
                             x: nX + Math.cos(a) * nodeOrbitRadius,
                             y: nY + Math.sin(a) * nodeOrbitRadius,
-                            r: nodeOrbRadius
+                            r: nodeOrbRadius,
                         });
                     }
                 } else {
-                    nodePositions.push({ x: nX, y: nY, r: drawR * 0.16 * attackFlare });
+                    nodePositions.push({
+                        x: nX,
+                        y: nY,
+                        r: drawR * 0.16 * attackFlare,
+                    });
                     const satellites = Math.min(9, damageStacks - 1);
                     const spin = now * 0.0018;
                     for (let i = 0; i < satellites; i++) {
@@ -1766,7 +2452,7 @@ class Player extends Unit {
                         nodePositions.push({
                             x: nX + Math.cos(a) * nodeOrbitRadius * 1.3,
                             y: nY + Math.sin(a) * nodeOrbitRadius * 1.3,
-                            r: nodeOrbRadius * 0.85
+                            r: nodeOrbRadius * 0.85,
                         });
                     }
                 }
@@ -1784,16 +2470,23 @@ class Player extends Unit {
                         for (let i = 0; i < nodePositions.length; i++) {
                             const next = (i + 1) % nodePositions.length;
                             ctx.moveTo(nodePositions[i].x, nodePositions[i].y);
-                            ctx.lineTo(nodePositions[next].x, nodePositions[next].y);
+                            ctx.lineTo(
+                                nodePositions[next].x,
+                                nodePositions[next].y,
+                            );
                         }
                     } else {
                         const center = nodePositions[0];
                         for (let i = 1; i < nodePositions.length; i++) {
                             ctx.moveTo(center.x, center.y);
                             ctx.lineTo(nodePositions[i].x, nodePositions[i].y);
-                            const next = i === nodePositions.length - 1 ? 1 : i + 1;
+                            const next =
+                                i === nodePositions.length - 1 ? 1 : i + 1;
                             ctx.moveTo(nodePositions[i].x, nodePositions[i].y);
-                            ctx.lineTo(nodePositions[next].x, nodePositions[next].y);
+                            ctx.lineTo(
+                                nodePositions[next].x,
+                                nodePositions[next].y,
+                            );
                         }
                     }
                     ctx.stroke();
@@ -1802,10 +2495,17 @@ class Player extends Unit {
                 // 6. Draw Subsurface Plasma Node Orbs with Soft Volumetric Depth
                 for (let i = 0; i < nodePositions.length; i++) {
                     const node = nodePositions[i];
-                    const nodeGrad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, node.r);
+                    const nodeGrad = ctx.createRadialGradient(
+                        node.x,
+                        node.y,
+                        0,
+                        node.x,
+                        node.y,
+                        node.r,
+                    );
                     nodeGrad.addColorStop(0, coreColor);
-                    nodeGrad.addColorStop(0.40, glowColor);
-                    nodeGrad.addColorStop(0.80, rimColor);
+                    nodeGrad.addColorStop(0.4, glowColor);
+                    nodeGrad.addColorStop(0.8, rimColor);
                     nodeGrad.addColorStop(1, 'rgba(160, 0, 0, 0)');
 
                     ctx.beginPath();
@@ -1816,7 +2516,13 @@ class Player extends Unit {
 
                     // Hot white-gold internal nucleus core pip
                     ctx.beginPath();
-                    ctx.arc(node.x, node.y, Math.max(1, node.r * 0.32), 0, Math.PI * 2);
+                    ctx.arc(
+                        node.x,
+                        node.y,
+                        Math.max(1, node.r * 0.32),
+                        0,
+                        Math.PI * 2,
+                    );
                     ctx.fillStyle = '#ffffff';
                     ctx.globalAlpha = 0.88 * attackFlare;
                     ctx.fill();
@@ -1830,7 +2536,14 @@ class Player extends Unit {
                 ctx.fill();
 
                 // 8. 3D Spherical Vignette & Inner Membrane Rim Shadow (Creates deep spherical chamber)
-                const depthGrad = ctx.createRadialGradient(drawX, drawY, drawR * 0.20, drawX, drawY, drawR);
+                const depthGrad = ctx.createRadialGradient(
+                    drawX,
+                    drawY,
+                    drawR * 0.2,
+                    drawX,
+                    drawY,
+                    drawR,
+                );
                 depthGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
                 depthGrad.addColorStop(0.65, 'rgba(0, 0, 0, 0.08)');
                 depthGrad.addColorStop(0.92, 'rgba(0, 0, 0, 0.40)');
@@ -1847,18 +2560,37 @@ class Player extends Unit {
             // Iron Carapace: riveted iron scales plated over the body, tinted from the player color
             // so the organic tone shows through between plates (translucent shell, not opaque gray)
             if (this.damageReduction && this.damageReduction < 1) {
-                const plateFill = shadeHex(this.color, 0.70);
-                const plateSeam = shadeHex(this.color, 0.40);
+                const plateFill = shadeHex(this.color, 0.7);
+                const plateSeam = shadeHex(this.color, 0.4);
                 const plateRim = shadeHex(this.color, 1.38);
                 ctx.save();
                 ctx.beginPath();
-                drawOrganicBlobPath(ctx, drawX, drawY, drawR, now, facing, moveSpd, this.mitosisBuds, pseudopod, flagellum, deflectorRoots, sniperDeform, hatchDeform, sledgeDeform, mineLaunchDeform, rocketDeform, dashLaunchDeform, laserSnailDeform);
+                drawOrganicBlobPath(
+                    ctx,
+                    drawX,
+                    drawY,
+                    drawR,
+                    now,
+                    facing,
+                    moveSpd,
+                    this.mitosisBuds,
+                    pseudopod,
+                    flagellum,
+                    deflectorRoots,
+                    sniperDeform,
+                    hatchDeform,
+                    sledgeDeform,
+                    mineLaunchDeform,
+                    rocketDeform,
+                    dashLaunchDeform,
+                    laserSnailDeform,
+                );
                 ctx.clip();
 
                 const rings = 4;
                 for (let k = 0; k < rings; k++) {
                     const f0 = 0.18 + k * 0.22;
-                    const f1 = f0 + 0.30;
+                    const f1 = f0 + 0.3;
                     const counts = Math.round(4 + (k + 1) * 1.0);
                     const step = (Math.PI * 2) / counts;
                     const off = (k % 2) * 0.5 * step;
@@ -1871,7 +2603,7 @@ class Player extends Unit {
                         ctx.arc(drawX, drawY, r1, a - aw, a + aw);
                         ctx.arc(drawX, drawY, r0, a + aw, a - aw, true);
                         ctx.closePath();
-                        ctx.globalAlpha = 0.80;
+                        ctx.globalAlpha = 0.8;
                         ctx.fillStyle = plateFill;
                         ctx.fill();
                         ctx.globalAlpha = 1;
@@ -1882,24 +2614,33 @@ class Player extends Unit {
                         ctx.globalAlpha = 0.6;
                         ctx.lineWidth = 0.8;
                         ctx.beginPath();
-                        ctx.arc(drawX, drawY, r1 * 0.97, a - aw * 0.7, a + aw * 0.7);
+                        ctx.arc(
+                            drawX,
+                            drawY,
+                            r1 * 0.97,
+                            a - aw * 0.7,
+                            a + aw * 0.7,
+                        );
                         ctx.stroke();
                     }
                 }
 
                 // Barbed Carapace: thorns scattered across the plates, warping with the shell
                 if (this.reflectDamageEnabled) {
-                    const barbFill = shadeHex(this.color, 0.60);
+                    const barbFill = shadeHex(this.color, 0.6);
                     const barbSeam = shadeHex(this.color, 0.32);
                     const barbGlint = shadeHex(this.color, 1.32);
-                    const barbRings = [0.36, 0.58, 0.80];
+                    const barbRings = [0.36, 0.58, 0.8];
                     const ringCounts = [6, 9, 12];
                     for (let k = 0; k < barbRings.length; k++) {
                         const f = barbRings[k];
                         const r0 = drawR * f;
                         const cnt = ringCounts[k];
                         for (let c = 0; c < cnt; c++) {
-                            const a = (c / cnt) * Math.PI * 2 + (k % 2) * (Math.PI / cnt) + Math.sin(now * 0.0005 + k * 2.7 + c) * 0.045;
+                            const a =
+                                (c / cnt) * Math.PI * 2 +
+                                (k % 2) * (Math.PI / cnt) +
+                                Math.sin(now * 0.0005 + k * 2.7 + c) * 0.045;
                             const bl = drawR * (0.16 + 0.06 * ((c + k) % 2));
                             const tipR = r0 + bl;
                             const bw = drawR * 0.085;
@@ -1924,7 +2665,13 @@ class Player extends Unit {
                             ctx.fillStyle = barbGlint;
                             ctx.globalAlpha = 0.6;
                             ctx.beginPath();
-                            ctx.arc(tx2, ty2, Math.max(1, drawR * 0.035), 0, Math.PI * 2);
+                            ctx.arc(
+                                tx2,
+                                ty2,
+                                Math.max(1, drawR * 0.035),
+                                0,
+                                Math.PI * 2,
+                            );
                             ctx.fill();
                         }
                     }
@@ -1938,11 +2685,13 @@ class Player extends Unit {
                 ctx.lineJoin = 'round';
                 const outerCount = 10;
                 const outerFill = shadeHex(this.color, 0.58);
-                const outerSeam = shadeHex(this.color, 0.30);
+                const outerSeam = shadeHex(this.color, 0.3);
                 const outerGlint = shadeHex(this.color, 1.34);
                 for (let s = 0; s < outerCount; s++) {
-                    const a = (s / outerCount) * Math.PI * 2 + Math.sin(now * 0.0005 + s * 1.9) * 0.05;
-                    const len = (s % 2 === 0) ? drawR * 0.24 : drawR * 0.16;
+                    const a =
+                        (s / outerCount) * Math.PI * 2 +
+                        Math.sin(now * 0.0005 + s * 1.9) * 0.05;
+                    const len = s % 2 === 0 ? drawR * 0.24 : drawR * 0.16;
                     const baseR = beaconR + 1;
                     const tipR = baseR + len;
                     const bw = drawR * 0.075;
@@ -1954,8 +2703,18 @@ class Player extends Unit {
                     const tyy = Math.cos(a) * bw;
                     ctx.beginPath();
                     ctx.moveTo(bx2 - txx, by2 - tyy);
-                    ctx.quadraticCurveTo(ax2 - txx * 0.45, ay2 - tyy * 0.45, ax2, ay2);
-                    ctx.quadraticCurveTo(ax2 + txx * 0.45, ay2 + tyy * 0.45, bx2 + txx, by2 + tyy);
+                    ctx.quadraticCurveTo(
+                        ax2 - txx * 0.45,
+                        ay2 - tyy * 0.45,
+                        ax2,
+                        ay2,
+                    );
+                    ctx.quadraticCurveTo(
+                        ax2 + txx * 0.45,
+                        ay2 + tyy * 0.45,
+                        bx2 + txx,
+                        by2 + tyy,
+                    );
                     ctx.closePath();
                     ctx.fillStyle = outerFill;
                     ctx.globalAlpha = 0.9;
@@ -1967,7 +2726,13 @@ class Player extends Unit {
                     ctx.fillStyle = outerGlint;
                     ctx.globalAlpha = 0.6;
                     ctx.beginPath();
-                    ctx.arc(ax2, ay2, Math.max(1, drawR * 0.03), 0, Math.PI * 2);
+                    ctx.arc(
+                        ax2,
+                        ay2,
+                        Math.max(1, drawR * 0.03),
+                        0,
+                        Math.PI * 2,
+                    );
                     ctx.fill();
                 }
                 ctx.restore();
@@ -1983,7 +2748,9 @@ class Player extends Unit {
                 ctx.beginPath();
                 for (let i = 0; i <= segs; i++) {
                     const a = (i / segs) * Math.PI * 2;
-                    nnz = drawR * 0.05 * Math.sin(a * 4 + now * 0.004) + drawR * 0.04 * Math.sin(a * 9 + now * 0.006 + 1.7);
+                    nnz =
+                        drawR * 0.05 * Math.sin(a * 4 + now * 0.004) +
+                        drawR * 0.04 * Math.sin(a * 9 + now * 0.006 + 1.7);
                     cfoo = drawR + 3 + nnz;
                     cfx = drawX + Math.cos(a) * cfoo;
                     cfy = drawY + Math.sin(a) * cfoo;
@@ -2000,7 +2767,9 @@ class Player extends Unit {
                 ctx.beginPath();
                 for (let i = 0; i <= segs; i++) {
                     const a = (i / segs) * Math.PI * 2;
-                    nnz = drawR * 0.09 * Math.sin(a * 3 + now * 0.0035 + 2.1) + drawR * 0.07 * Math.sin(a * 8 + now * 0.005 + 0.4);
+                    nnz =
+                        drawR * 0.09 * Math.sin(a * 3 + now * 0.0035 + 2.1) +
+                        drawR * 0.07 * Math.sin(a * 8 + now * 0.005 + 0.4);
                     cfoo = beaconR - 1.5 + nnz;
                     cfx = drawX + Math.cos(a) * cfoo;
                     cfy = drawY + Math.sin(a) * cfoo;
@@ -2010,7 +2779,7 @@ class Player extends Unit {
                 ctx.closePath();
                 ctx.strokeStyle = 'rgb(120, 190, 255)';
                 ctx.lineWidth = 6;
-                ctx.globalAlpha = 0.10;
+                ctx.globalAlpha = 0.1;
                 ctx.stroke();
 
                 // Frost smoke columns rising from between the body and the ring
@@ -2018,7 +2787,11 @@ class Player extends Unit {
                 const riseH = drawR * 0.4;
                 ctx.fillStyle = 'rgb(150, 220, 255)';
                 for (let i = 0; i < plumeCount; i++) {
-                    const baseAng = -Math.PI / 2 + (i / plumeCount) * 2.6 - 1.3 + Math.sin(now * 0.0007 + i * 2.3) * 0.35;
+                    const baseAng =
+                        -Math.PI / 2 +
+                        (i / plumeCount) * 2.6 -
+                        1.3 +
+                        Math.sin(now * 0.0007 + i * 2.3) * 0.35;
                     const ox = drawX + Math.cos(baseAng) * (beaconR - 1);
                     const oy = drawY + Math.sin(baseAng) * (beaconR - 1);
                     const front = (now * 0.00035 + i * 0.27) % 1;
@@ -2026,11 +2799,13 @@ class Player extends Unit {
                     for (let k = 0; k < steps; k++) {
                         const hf = front - k / steps;
                         if (hf < 0) continue;
-                        const sway = Math.sin(hf * 3.0 + now * 0.005 + i * 2.4) * (drawR * 0.45 * hf);
+                        const sway =
+                            Math.sin(hf * 3.0 + now * 0.005 + i * 2.4) *
+                            (drawR * 0.45 * hf);
                         cfx = ox + sway;
                         cfy = oy - hf * riseH;
                         cfoo = drawR * (0.05 + 0.11 * hf);
-                        ctx.globalAlpha = Math.max(0, (1 - hf)) * 0.20;
+                        ctx.globalAlpha = Math.max(0, 1 - hf) * 0.2;
                         ctx.beginPath();
                         ctx.arc(cfx, cfy, cfoo, 0, Math.PI * 2);
                         ctx.fill();
@@ -2049,7 +2824,9 @@ class Player extends Unit {
                 ctx.beginPath();
                 for (let i = 0; i <= segs; i++) {
                     a = (i / segs) * Math.PI * 2;
-                    nz = drawR * 0.05 * Math.sin(a * 4 + now * 0.004) + drawR * 0.04 * Math.sin(a * 9 + now * 0.006 + 1.7);
+                    nz =
+                        drawR * 0.05 * Math.sin(a * 4 + now * 0.004) +
+                        drawR * 0.04 * Math.sin(a * 9 + now * 0.006 + 1.7);
                     rr = beaconR + 1.5 + nz;
                     px = drawX + Math.cos(a) * rr;
                     py = drawY + Math.sin(a) * rr;
@@ -2065,7 +2842,9 @@ class Player extends Unit {
                 ctx.beginPath();
                 for (let i = 0; i <= segs; i++) {
                     a = (i / segs) * Math.PI * 2;
-                    nz = drawR * 0.09 * Math.sin(a * 3 + now * 0.0035 + 2.1) + drawR * 0.07 * Math.sin(a * 8 + now * 0.005 + 0.4);
+                    nz =
+                        drawR * 0.09 * Math.sin(a * 3 + now * 0.0035 + 2.1) +
+                        drawR * 0.07 * Math.sin(a * 8 + now * 0.005 + 0.4);
                     rr = beaconR + 5 + nz;
                     px = drawX + Math.cos(a) * rr;
                     py = drawY + Math.sin(a) * rr;
@@ -2075,7 +2854,7 @@ class Player extends Unit {
                 ctx.closePath();
                 ctx.strokeStyle = 'rgb(180, 58, 130)';
                 ctx.lineWidth = 6;
-                ctx.globalAlpha = 0.10;
+                ctx.globalAlpha = 0.1;
                 ctx.stroke();
 
                 // Rising smoke columns from the top of the ring, curling and fading like fire smoke
@@ -2083,7 +2862,11 @@ class Player extends Unit {
                 const riseH = drawR * 1.0;
                 ctx.fillStyle = 'rgb(224, 74, 152)';
                 for (let i = 0; i < plumeCount; i++) {
-                    const baseAng = -Math.PI / 2 + (i / plumeCount) * 2.6 - 1.3 + Math.sin(now * 0.0007 + i * 2.3) * 0.35;
+                    const baseAng =
+                        -Math.PI / 2 +
+                        (i / plumeCount) * 2.6 -
+                        1.3 +
+                        Math.sin(now * 0.0007 + i * 2.3) * 0.35;
                     const ox = drawX + Math.cos(baseAng) * (beaconR + 2);
                     const oy = drawY + Math.sin(baseAng) * (beaconR + 2);
                     const front = (now * 0.00035 + i * 0.27) % 1;
@@ -2091,11 +2874,13 @@ class Player extends Unit {
                     for (let k = 0; k < steps; k++) {
                         const hf = front - k / steps;
                         if (hf < 0) continue;
-                        const sway = Math.sin(hf * 3.0 + now * 0.005 + i * 2.4) * (drawR * 0.45 * hf);
+                        const sway =
+                            Math.sin(hf * 3.0 + now * 0.005 + i * 2.4) *
+                            (drawR * 0.45 * hf);
                         px = ox + sway;
                         py = oy - hf * riseH;
                         rr = drawR * (0.08 + 0.13 * hf);
-                        ctx.globalAlpha = Math.max(0, (1 - hf)) * 0.20;
+                        ctx.globalAlpha = Math.max(0, 1 - hf) * 0.2;
                         ctx.beginPath();
                         ctx.arc(px, py, rr, 0, Math.PI * 2);
                         ctx.fill();
@@ -2113,8 +2898,9 @@ class Player extends Unit {
                 const fieldCount = 7;
                 for (let i = 0; i < fieldCount; i++) {
                     const phi = -1.2 + (i / (fieldCount - 1)) * 2.4;
-                    const u = 0.35 + (i / (fieldCount - 1)) * 0.60;
-                    const shimmer = 0.5 + 0.5 * Math.sin(now * 0.0025 + i * 1.7);
+                    const u = 0.35 + (i / (fieldCount - 1)) * 0.6;
+                    const shimmer =
+                        0.5 + 0.5 * Math.sin(now * 0.0025 + i * 1.7);
                     const depth = 0.5 + 0.5 * Math.cos(phi);
                     ctx.strokeStyle = `rgba(122, 199, 255, ${(0.34 + 0.16 * shimmer) * depth})`;
                     ctx.lineWidth = 1.3;
@@ -2122,8 +2908,15 @@ class Player extends Unit {
                     const steps = 48;
                     for (let s = 0; s <= steps; s++) {
                         const tA = (s / steps) * Math.PI * 2;
-                        const rr = drawR * (1 + Math.pow(Math.abs(Math.sin(tA)), 1.4) * u) + 2;
-                        const horiz = Math.sin(tA) * rr * (Math.cos(phi) * 0.92 + Math.sin(phi) * 0.38);
+                        const rr =
+                            drawR *
+                                (1 +
+                                    Math.pow(Math.abs(Math.sin(tA)), 1.4) * u) +
+                            2;
+                        const horiz =
+                            Math.sin(tA) *
+                            rr *
+                            (Math.cos(phi) * 0.92 + Math.sin(phi) * 0.38);
                         const vert = -Math.cos(tA) * rr * 0.9;
                         const fx = drawX + horiz;
                         const fy = drawY + vert;
@@ -2139,26 +2932,53 @@ class Player extends Unit {
                 const arrowsPerLoop = 3;
                 for (let i = 0; i < fieldCount; i++) {
                     const phi = -1.2 + (i / (fieldCount - 1)) * 2.4;
-                    const u = 0.35 + (i / (fieldCount - 1)) * 0.60;
-                    const dirs = Math.abs(phi) < 0.0005 ? [-1, 1] : [-Math.sign(phi)];
+                    const u = 0.35 + (i / (fieldCount - 1)) * 0.6;
+                    const dirs =
+                        Math.abs(phi) < 0.0005 ? [-1, 1] : [-Math.sign(phi)];
                     for (let d = 0; d < dirs.length; d++) {
                         const dir = dirs[d];
                         for (let q = 0; q < arrowsPerLoop; q++) {
-                            const tw = ((q / arrowsPerLoop) * Math.PI * 2 + dir * now * 0.0016) % (Math.PI * 2);
-                            const rr = drawR * (1 + Math.pow(Math.abs(Math.sin(tw)), 1.4) * u) + 2;
-                            const px = drawX + Math.sin(tw) * rr * (Math.cos(phi) * 0.92 + Math.sin(phi) * 0.38);
+                            const tw =
+                                ((q / arrowsPerLoop) * Math.PI * 2 +
+                                    dir * now * 0.0016) %
+                                (Math.PI * 2);
+                            const rr =
+                                drawR *
+                                    (1 +
+                                        Math.pow(Math.abs(Math.sin(tw)), 1.4) *
+                                            u) +
+                                2;
+                            const px =
+                                drawX +
+                                Math.sin(tw) *
+                                    rr *
+                                    (Math.cos(phi) * 0.92 +
+                                        Math.sin(phi) * 0.38);
                             const py = drawY - Math.cos(tw) * rr * 0.9;
                             const dt = 0.03;
                             const tf = tw + dir * dt;
-                            const rrF = drawR * (1 + Math.pow(Math.abs(Math.sin(tf)), 1.4) * u) + 2;
-                            const px2 = drawX + Math.sin(tf) * rrF * (Math.cos(phi) * 0.92 + Math.sin(phi) * 0.38);
+                            const rrF =
+                                drawR *
+                                    (1 +
+                                        Math.pow(Math.abs(Math.sin(tf)), 1.4) *
+                                            u) +
+                                2;
+                            const px2 =
+                                drawX +
+                                Math.sin(tf) *
+                                    rrF *
+                                    (Math.cos(phi) * 0.92 +
+                                        Math.sin(phi) * 0.38);
                             const py2 = drawY - Math.cos(tf) * rrF * 0.9;
                             const ang = Math.atan2(py2 - py, px2 - px);
                             const al = drawR * 0.14;
                             const aw2 = drawR * 0.075;
-                            const nearSide = Math.abs(phi) < 0.0005
-                                ? (dir === -1 ? Math.sin(tw) < 0 : Math.sin(tw) >= 0)
-                                : (Math.sin(tw) * Math.sin(phi) <= 0);
+                            const nearSide =
+                                Math.abs(phi) < 0.0005
+                                    ? dir === -1
+                                        ? Math.sin(tw) < 0
+                                        : Math.sin(tw) >= 0
+                                    : Math.sin(tw) * Math.sin(phi) <= 0;
                             if (!nearSide) continue;
                             ctx.fillStyle = 'rgba(200, 232, 255, 0.92)';
                             ctx.save();
@@ -2185,7 +3005,26 @@ class Player extends Unit {
                 const dropSize = drawR * 0.34;
 
                 // Sample the deformed skin around the drop's spot so the drop rides the wiggling body
-                const blobPts = drawOrganicBlobPath(ctx, drawX, drawY, drawR, now, facing, moveSpd, this.mitosisBuds, pseudopod, flagellum, deflectorRoots, sniperDeform, hatchDeform, sledgeDeform, mineLaunchDeform, rocketDeform, dashLaunchDeform, laserSnailDeform);
+                const blobPts = drawOrganicBlobPath(
+                    ctx,
+                    drawX,
+                    drawY,
+                    drawR,
+                    now,
+                    facing,
+                    moveSpd,
+                    this.mitosisBuds,
+                    pseudopod,
+                    flagellum,
+                    deflectorRoots,
+                    sniperDeform,
+                    hatchDeform,
+                    sledgeDeform,
+                    mineLaunchDeform,
+                    rocketDeform,
+                    dashLaunchDeform,
+                    laserSnailDeform,
+                );
                 const surfaceRadiusAt = (ang) => {
                     let a = ang % (Math.PI * 2);
                     if (a < 0) a += Math.PI * 2;
@@ -2193,8 +3032,14 @@ class Player extends Unit {
                     const i = Math.floor((a / (Math.PI * 2)) * n) % n;
                     const j = (i + 1) % n;
                     const frac = (a / (Math.PI * 2)) * n - i;
-                    const r1 = Math.hypot(blobPts[i].x - drawX, blobPts[i].y - drawY);
-                    const r2 = Math.hypot(blobPts[j].x - drawX, blobPts[j].y - drawY);
+                    const r1 = Math.hypot(
+                        blobPts[i].x - drawX,
+                        blobPts[i].y - drawY,
+                    );
+                    const r2 = Math.hypot(
+                        blobPts[j].x - drawX,
+                        blobPts[j].y - drawY,
+                    );
                     return r1 + (r2 - r1) * frac;
                 };
                 const spread = 0.24;
@@ -2229,10 +3074,20 @@ class Player extends Unit {
                 // Sacrificial Aegis: red smoke clouds centered around the blood drop pointing at each respective ally,
                 // streaming inward toward the blood drop whenever an ally takes damage
                 if (this.sacrificialAegisEnabled) {
-                    const livingAllies = GAME_STATE.players.filter(p => p !== this && p.alive);
-                    const targets = livingAllies.length > 0
-                        ? livingAllies
-                        : [{ x: ddX + Math.cos(facing) * 100, y: ddY + Math.sin(facing) * 100, lastDamagedTime: 0, hitFlashUntil: 0 }];
+                    const livingAllies = GAME_STATE.players.filter(
+                        (p) => p !== this && p.alive,
+                    );
+                    const targets =
+                        livingAllies.length > 0
+                            ? livingAllies
+                            : [
+                                  {
+                                      x: ddX + Math.cos(facing) * 100,
+                                      y: ddY + Math.sin(facing) * 100,
+                                      lastDamagedTime: 0,
+                                      hitFlashUntil: 0,
+                                  },
+                              ];
 
                     for (const ally of targets) {
                         const dx = ally.x - ddX;
@@ -2244,12 +3099,22 @@ class Player extends Unit {
                         const px = -uy;
                         const py = ux;
 
-                        const isAllyDamaged = (ally.lastDamagedTime && (now - ally.lastDamagedTime < 700)) || (ally.hitFlashUntil && ally.hitFlashUntil > now);
-                        const isSelfDamaged = (this.lastSacrificeTime && (now - this.lastSacrificeTime < 700) && this.lastSacrificedAlly === ally) || (this.hitFlashUntil && this.hitFlashUntil > now);
+                        const isAllyDamaged =
+                            (ally.lastDamagedTime &&
+                                now - ally.lastDamagedTime < 700) ||
+                            (ally.hitFlashUntil && ally.hitFlashUntil > now);
+                        const isSelfDamaged =
+                            (this.lastSacrificeTime &&
+                                now - this.lastSacrificeTime < 700 &&
+                                this.lastSacrificedAlly === ally) ||
+                            (this.hitFlashUntil && this.hitFlashUntil > now);
                         const isDamaged = isAllyDamaged || isSelfDamaged;
 
                         // Cloud plume reach toward the ally
-                        const maxReach = Math.min(drawR * 4.8, Math.max(drawR * 2.2, dist * 0.45));
+                        const maxReach = Math.min(
+                            drawR * 4.8,
+                            Math.max(drawR * 2.2, dist * 0.45),
+                        );
 
                         // 1. Soft atmospheric base ambient cloud glow along the ally direction vector
                         const cloudBlobs = 4;
@@ -2259,9 +3124,26 @@ class Player extends Unit {
                             const bRadius = drawR * (0.24 + 0.32 * bProg);
                             const bx = ddX + ux * bDist;
                             const by = ddY + uy * bDist;
-                            const bgGrad = ctx.createRadialGradient(bx, by, 0, bx, by, bRadius);
-                            bgGrad.addColorStop(0, isDamaged ? 'rgba(235, 45, 65, 0.20)' : 'rgba(180, 25, 40, 0.12)');
-                            bgGrad.addColorStop(0.7, isDamaged ? 'rgba(200, 30, 50, 0.08)' : 'rgba(150, 20, 35, 0.04)');
+                            const bgGrad = ctx.createRadialGradient(
+                                bx,
+                                by,
+                                0,
+                                bx,
+                                by,
+                                bRadius,
+                            );
+                            bgGrad.addColorStop(
+                                0,
+                                isDamaged
+                                    ? 'rgba(235, 45, 65, 0.20)'
+                                    : 'rgba(180, 25, 40, 0.12)',
+                            );
+                            bgGrad.addColorStop(
+                                0.7,
+                                isDamaged
+                                    ? 'rgba(200, 30, 50, 0.08)'
+                                    : 'rgba(150, 20, 35, 0.04)',
+                            );
                             bgGrad.addColorStop(1, 'rgba(140, 15, 25, 0)');
                             ctx.beginPath();
                             ctx.arc(bx, by, bRadius, 0, Math.PI * 2);
@@ -2279,16 +3161,33 @@ class Player extends Unit {
                                 let prog;
                                 if (isDamaged) {
                                     // Streaming rapidly inward toward the blood drop
-                                    prog = 1 - ((now * 0.0016 + sOffset + p / puffCount) % 1);
+                                    prog =
+                                        1 -
+                                        ((now * 0.0016 +
+                                            sOffset +
+                                            p / puffCount) %
+                                            1);
                                 } else {
                                     // Gently wafting and billowing outward toward this specific ally
-                                    prog = (now * 0.00055 + sOffset + p / puffCount) % 1;
+                                    prog =
+                                        (now * 0.00055 +
+                                            sOffset +
+                                            p / puffCount) %
+                                        1;
                                 }
 
                                 const curDist = prog * maxReach;
                                 const swayFreq = isDamaged ? 7.0 : 3.2;
-                                const swayAmp = drawR * (isDamaged ? 0.22 : 0.18) * Math.sin(prog * Math.PI);
-                                const sway = Math.sin(prog * swayFreq + now * (isDamaged ? 0.009 : 0.0028) + s * 1.7) * swayAmp;
+                                const swayAmp =
+                                    drawR *
+                                    (isDamaged ? 0.22 : 0.18) *
+                                    Math.sin(prog * Math.PI);
+                                const sway =
+                                    Math.sin(
+                                        prog * swayFreq +
+                                            now * (isDamaged ? 0.009 : 0.0028) +
+                                            s * 1.7,
+                                    ) * swayAmp;
 
                                 const sx = ddX + ux * curDist + px * sway;
                                 const sy = ddY + uy * curDist + py * sway;
@@ -2299,15 +3198,27 @@ class Player extends Unit {
 
                                 let alpha;
                                 if (isDamaged) {
-                                    alpha = (0.28 + 0.65 * (1 - prog * 0.4)) * 0.55;
+                                    alpha =
+                                        (0.28 + 0.65 * (1 - prog * 0.4)) * 0.55;
                                 } else {
-                                    alpha = Math.sin(prog * Math.PI) * 0.30;
+                                    alpha = Math.sin(prog * Math.PI) * 0.3;
                                 }
 
                                 ctx.beginPath();
-                                ctx.arc(sx, sy, Math.max(1, puffR), 0, Math.PI * 2);
-                                ctx.fillStyle = isDamaged ? 'rgb(245, 45, 68)' : 'rgb(205, 30, 48)';
-                                ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
+                                ctx.arc(
+                                    sx,
+                                    sy,
+                                    Math.max(1, puffR),
+                                    0,
+                                    Math.PI * 2,
+                                );
+                                ctx.fillStyle = isDamaged
+                                    ? 'rgb(245, 45, 68)'
+                                    : 'rgb(205, 30, 48)';
+                                ctx.globalAlpha = Math.min(
+                                    1,
+                                    Math.max(0, alpha),
+                                );
                                 ctx.fill();
                             }
                         }
@@ -2316,28 +3227,64 @@ class Player extends Unit {
                         if (isDamaged) {
                             const filamentCount = 6;
                             for (let k = 0; k < filamentCount; k++) {
-                                const fp = (now * 0.003 + k / filamentCount) % 1;
+                                const fp =
+                                    (now * 0.003 + k / filamentCount) % 1;
                                 const fDist = (1 - fp) * maxReach * 1.15;
-                                const fSway = Math.sin(fp * 9.0 + now * 0.012 + k * 1.8) * (drawR * 0.14 * (1 - fp));
+                                const fSway =
+                                    Math.sin(fp * 9.0 + now * 0.012 + k * 1.8) *
+                                    (drawR * 0.14 * (1 - fp));
                                 const fx = ddX + ux * fDist + px * fSway;
                                 const fy = ddY + uy * fDist + py * fSway;
 
                                 ctx.beginPath();
-                                ctx.arc(fx, fy, Math.max(1, drawR * (0.05 + 0.035 * (1 - fp))), 0, Math.PI * 2);
+                                ctx.arc(
+                                    fx,
+                                    fy,
+                                    Math.max(
+                                        1,
+                                        drawR * (0.05 + 0.035 * (1 - fp)),
+                                    ),
+                                    0,
+                                    Math.PI * 2,
+                                );
                                 ctx.fillStyle = 'rgb(255, 125, 140)';
-                                ctx.globalAlpha = (1 - fp) * 0.80;
+                                ctx.globalAlpha = (1 - fp) * 0.8;
                                 ctx.fill();
                             }
                         }
                     }
 
                     // 4. Central Blood Drop core absorption glow
-                    const anyAllyDamaged = livingAllies.some(a => (a.lastDamagedTime && (now - a.lastDamagedTime < 700)) || (a.hitFlashUntil && a.hitFlashUntil > now));
-                    const isAnyDamaged = anyAllyDamaged || (this.hitFlashUntil && this.hitFlashUntil > now);
-                    const coreR = drawR * (isAnyDamaged ? 0.48 : 0.30);
-                    const coreGrad = ctx.createRadialGradient(ddX, ddY, 0, ddX, ddY, coreR);
-                    coreGrad.addColorStop(0, isAnyDamaged ? 'rgba(255, 55, 75, 0.55)' : 'rgba(200, 30, 45, 0.22)');
-                    coreGrad.addColorStop(0.6, isAnyDamaged ? 'rgba(220, 35, 50, 0.25)' : 'rgba(170, 20, 35, 0.08)');
+                    const anyAllyDamaged = livingAllies.some(
+                        (a) =>
+                            (a.lastDamagedTime &&
+                                now - a.lastDamagedTime < 700) ||
+                            (a.hitFlashUntil && a.hitFlashUntil > now),
+                    );
+                    const isAnyDamaged =
+                        anyAllyDamaged ||
+                        (this.hitFlashUntil && this.hitFlashUntil > now);
+                    const coreR = drawR * (isAnyDamaged ? 0.48 : 0.3);
+                    const coreGrad = ctx.createRadialGradient(
+                        ddX,
+                        ddY,
+                        0,
+                        ddX,
+                        ddY,
+                        coreR,
+                    );
+                    coreGrad.addColorStop(
+                        0,
+                        isAnyDamaged
+                            ? 'rgba(255, 55, 75, 0.55)'
+                            : 'rgba(200, 30, 45, 0.22)',
+                    );
+                    coreGrad.addColorStop(
+                        0.6,
+                        isAnyDamaged
+                            ? 'rgba(220, 35, 50, 0.25)'
+                            : 'rgba(170, 20, 35, 0.08)',
+                    );
                     coreGrad.addColorStop(1, 'rgba(150, 15, 25, 0)');
                     ctx.beginPath();
                     ctx.arc(ddX, ddY, coreR, 0, Math.PI * 2);
@@ -2367,20 +3314,53 @@ class Player extends Unit {
                 // The blood drop: clipped to the deforming body so it embeds at the skin, then scaled
                 // and leaned by the local surface deformation so it stretches with the wiggles
                 ctx.beginPath();
-                drawOrganicBlobPath(ctx, drawX, drawY, drawR, now, facing, moveSpd, this.mitosisBuds, pseudopod, flagellum, deflectorRoots, sniperDeform, hatchDeform, sledgeDeform, mineLaunchDeform, rocketDeform, dashLaunchDeform, laserSnailDeform);
+                drawOrganicBlobPath(
+                    ctx,
+                    drawX,
+                    drawY,
+                    drawR,
+                    now,
+                    facing,
+                    moveSpd,
+                    this.mitosisBuds,
+                    pseudopod,
+                    flagellum,
+                    deflectorRoots,
+                    sniperDeform,
+                    hatchDeform,
+                    sledgeDeform,
+                    mineLaunchDeform,
+                    rocketDeform,
+                    dashLaunchDeform,
+                    laserSnailDeform,
+                );
                 ctx.clip();
 
                 ctx.translate(ddX, ddY);
                 ctx.rotate(dropAngle + tilt);
                 ctx.scale(radialScale, latScale);
-                
+
                 // Fast soft edge under drop
                 ctx.strokeStyle = 'rgba(150, 10, 20, 0.45)';
                 ctx.lineWidth = 3.0;
                 ctx.beginPath();
                 ctx.moveTo(dropSize, 0);
-                ctx.bezierCurveTo(dropSize * 0.35, dropSize * 0.42, -dropSize * 0.55, dropSize * 0.5, -dropSize * 0.75, 0);
-                ctx.bezierCurveTo(-dropSize * 0.55, -dropSize * 0.5, dropSize * 0.35, -dropSize * 0.42, dropSize, 0);
+                ctx.bezierCurveTo(
+                    dropSize * 0.35,
+                    dropSize * 0.42,
+                    -dropSize * 0.55,
+                    dropSize * 0.5,
+                    -dropSize * 0.75,
+                    0,
+                );
+                ctx.bezierCurveTo(
+                    -dropSize * 0.55,
+                    -dropSize * 0.5,
+                    dropSize * 0.35,
+                    -dropSize * 0.42,
+                    dropSize,
+                    0,
+                );
                 ctx.closePath();
                 ctx.stroke();
                 ctx.fillStyle = '#6d0a10';
@@ -2388,25 +3368,42 @@ class Player extends Unit {
 
                 ctx.beginPath();
                 ctx.moveTo(dropSize * 0.7, 0);
-                ctx.bezierCurveTo(dropSize * 0.28, dropSize * 0.3, -dropSize * 0.32, dropSize * 0.33, -dropSize * 0.52, 0);
-                ctx.bezierCurveTo(-dropSize * 0.32, -dropSize * 0.33, dropSize * 0.28, -dropSize * 0.3, dropSize * 0.7, 0);
+                ctx.bezierCurveTo(
+                    dropSize * 0.28,
+                    dropSize * 0.3,
+                    -dropSize * 0.32,
+                    dropSize * 0.33,
+                    -dropSize * 0.52,
+                    0,
+                );
+                ctx.bezierCurveTo(
+                    -dropSize * 0.32,
+                    -dropSize * 0.33,
+                    dropSize * 0.28,
+                    -dropSize * 0.3,
+                    dropSize * 0.7,
+                    0,
+                );
                 ctx.closePath();
                 ctx.fillStyle = '#a31a22';
                 ctx.fill();
                 ctx.fillStyle = 'rgba(255, 200, 205, 0.85)';
                 ctx.beginPath();
-                ctx.arc(dropSize * 0.05, -dropSize * 0.18, dropSize * 0.10, 0, Math.PI * 2);
+                ctx.arc(
+                    dropSize * 0.05,
+                    -dropSize * 0.18,
+                    dropSize * 0.1,
+                    0,
+                    Math.PI * 2,
+                );
                 ctx.fill();
                 ctx.restore();
             }
 
-// 12. Laser Teardrop Trail Apex Secretion & Viscoelastic Laser Threads (Only when moving)
+            // 12. Laser Teardrop Trail Apex Secretion & Viscoelastic Laser Threads (Only when moving)
             if (this.speedLvl2 && isMoving) {
                 ctx.save();
                 const rearAngle = facing + Math.PI;
-                const normAngle = facing + Math.PI / 2;
-                const normX = Math.cos(normAngle);
-                const normY = Math.sin(normAngle);
 
                 if (this.iceTrailEnabled) {
                     // Twin laser secretion apexes reaching precisely to the ±22px laser spawning points
@@ -2418,8 +3415,10 @@ class Player extends Unit {
                         const tailAngle = rearAngle + side * trailAngleOffset;
                         const apexX = drawX + Math.cos(tailAngle) * apexDist;
                         const apexY = drawY + Math.sin(tailAngle) * apexDist;
-                        const trailEmergenceX = apexX + Math.cos(rearAngle) * (drawR * 0.35);
-                        const trailEmergenceY = apexY + Math.sin(rearAngle) * (drawR * 0.35);
+                        const trailEmergenceX =
+                            apexX + Math.cos(rearAngle) * (drawR * 0.35);
+                        const trailEmergenceY =
+                            apexY + Math.sin(rearAngle) * (drawR * 0.35);
 
                         // Viscoelastic laser thread extending from droplet apex to ground trail
                         ctx.strokeStyle = '#33ccff';
@@ -2450,11 +3449,14 @@ class Player extends Unit {
                     }
                 } else {
                     // Central teardrop apex laser filament shedding into trail
-                    const tipApexDist = drawR * (1.45 + 0.03 * Math.sin(now * 0.015));
+                    const tipApexDist =
+                        drawR * (1.45 + 0.03 * Math.sin(now * 0.015));
                     const apexX = drawX + Math.cos(rearAngle) * tipApexDist;
                     const apexY = drawY + Math.sin(rearAngle) * tipApexDist;
-                    const trailEmergenceX = apexX + Math.cos(rearAngle) * (drawR * 0.35);
-                    const trailEmergenceY = apexY + Math.sin(rearAngle) * (drawR * 0.35);
+                    const trailEmergenceX =
+                        apexX + Math.cos(rearAngle) * (drawR * 0.35);
+                    const trailEmergenceY =
+                        apexY + Math.sin(rearAngle) * (drawR * 0.35);
 
                     // Viscoelastic laser filament connecting teardrop tip to ground trail
                     ctx.strokeStyle = this.color || '#33ccff';
@@ -2490,29 +3492,48 @@ class Player extends Unit {
             if (this.agilityBoostEnabled && this.agilityFade > 0.001) {
                 ctx.save();
                 const fade = this.agilityFade;
-                const speedScale = this.dashing ? 1.6 : (this.moveSpeed || 1.0);
+                const speedScale = this.dashing ? 1.6 : this.moveSpeed || 1.0;
 
                 // Draw symmetrical aerodynamic slipstream ribbons on left & right shoulders
                 for (const side of [-1, 1]) {
                     const shoulderRibbons = 3;
                     for (let r = 0; r < shoulderRibbons; r++) {
                         const ribOffset = (r / shoulderRibbons) * 0.35;
-                        const startAngle = facing + side * (0.40 + ribOffset);
+                        const startAngle = facing + side * (0.4 + ribOffset);
                         const ribbonRadius = drawR * (1.08 + r * 0.12);
-                        
-                        const flowPhase = (now * 0.007 * speedScale + r * 0.33) % 1;
+
+                        const flowPhase =
+                            (now * 0.007 * speedScale + r * 0.33) % 1;
                         const arcSpan = Math.PI * 0.36;
                         const arcStart = startAngle + side * (flowPhase * 0.22);
                         const arcEnd = arcStart + side * arcSpan;
 
                         ctx.beginPath();
                         ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
-                        ctx.lineWidth = Math.max(1, (1.8 - r * 0.4) * (drawR / 20));
-                        ctx.globalAlpha = (0.45 - r * 0.12) * Math.sin(flowPhase * Math.PI) * fade;
+                        ctx.lineWidth = Math.max(
+                            1,
+                            (1.8 - r * 0.4) * (drawR / 20),
+                        );
+                        ctx.globalAlpha =
+                            (0.45 - r * 0.12) *
+                            Math.sin(flowPhase * Math.PI) *
+                            fade;
                         if (side === 1) {
-                            ctx.arc(drawX, drawY, ribbonRadius, arcStart, arcEnd);
+                            ctx.arc(
+                                drawX,
+                                drawY,
+                                ribbonRadius,
+                                arcStart,
+                                arcEnd,
+                            );
                         } else {
-                            ctx.arc(drawX, drawY, ribbonRadius, arcEnd, arcStart);
+                            ctx.arc(
+                                drawX,
+                                drawY,
+                                ribbonRadius,
+                                arcEnd,
+                                arcStart,
+                            );
                         }
                         ctx.stroke();
                     }
@@ -2520,13 +3541,21 @@ class Player extends Unit {
                     // High-velocity wind shearing streaks rushing backward off the shoulders
                     const streakCount = 3;
                     for (let k = 0; k < streakCount; k++) {
-                        const streakProg = (now * 0.012 * speedScale + k / streakCount + (side === 1 ? 0 : 0.5)) % 1;
-                        const sAngle = facing + side * (0.45 + streakProg * 0.80);
-                        const sRad = drawR * (1.10 + 0.16 * streakProg);
+                        const streakProg =
+                            (now * 0.012 * speedScale +
+                                k / streakCount +
+                                (side === 1 ? 0 : 0.5)) %
+                            1;
+                        const sAngle =
+                            facing + side * (0.45 + streakProg * 0.8);
+                        const sRad = drawR * (1.1 + 0.16 * streakProg);
                         const sx = drawX + Math.cos(sAngle) * sRad;
                         const sy = drawY + Math.sin(sAngle) * sRad;
 
-                        const streakLen = drawR * (0.28 + 0.18 * speedScale) * (1 - streakProg * 0.5);
+                        const streakLen =
+                            drawR *
+                            (0.28 + 0.18 * speedScale) *
+                            (1 - streakProg * 0.5);
                         const shearAngle = sAngle + side * (Math.PI * 0.55);
                         const ex = sx + Math.cos(shearAngle) * streakLen;
                         const ey = sy + Math.sin(shearAngle) * streakLen;
@@ -2535,21 +3564,31 @@ class Player extends Unit {
                         ctx.moveTo(sx, sy);
                         ctx.lineTo(ex, ey);
                         ctx.strokeStyle = 'rgba(200, 245, 255, 0.9)';
-                        ctx.lineWidth = Math.max(1, 1.4 * (1 - streakProg * 0.6));
-                        ctx.globalAlpha = Math.sin(streakProg * Math.PI) * 0.75 * fade;
+                        ctx.lineWidth = Math.max(
+                            1,
+                            1.4 * (1 - streakProg * 0.6),
+                        );
+                        ctx.globalAlpha =
+                            Math.sin(streakProg * Math.PI) * 0.75 * fade;
                         ctx.stroke();
 
                         ctx.fillStyle = '#ffffff';
                         ctx.globalAlpha = fade;
                         ctx.beginPath();
-                        ctx.arc(sx, sy, Math.max(0.8, 1.2 * (1 - streakProg)), 0, Math.PI * 2);
+                        ctx.arc(
+                            sx,
+                            sy,
+                            Math.max(0.8, 1.2 * (1 - streakProg)),
+                            0,
+                            Math.PI * 2,
+                        );
                         ctx.fill();
                     }
                 }
 
                 // Forward bow-shock compression sheen on the front leading curve
                 ctx.beginPath();
-                ctx.arc(drawX, drawY, drawR * 1.18, facing - 0.50, facing + 0.50);
+                ctx.arc(drawX, drawY, drawR * 1.18, facing - 0.5, facing + 0.5);
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.40)';
                 ctx.lineWidth = 1.6;
                 ctx.globalAlpha = (0.5 + 0.2 * Math.sin(now * 0.01)) * fade;
@@ -2561,25 +3600,34 @@ class Player extends Unit {
             // 6. Leading edge energy crest on the tip of the extended pseudopod
             if (pseudopod && pseudopod.reach > 2) {
                 ctx.save();
-                const tipX = drawX + Math.cos(pseudopod.angle) * pseudopod.currentReach;
-                const tipY = drawY + Math.sin(pseudopod.angle) * pseudopod.currentReach;
+                const tipX =
+                    drawX + Math.cos(pseudopod.angle) * pseudopod.currentReach;
+                const tipY =
+                    drawY + Math.sin(pseudopod.angle) * pseudopod.currentReach;
                 ctx.strokeStyle = '#ffffff';
                 ctx.lineWidth = 2.0;
                 ctx.globalAlpha = 0.9 * (1 - pseudopod.t * 0.5);
                 ctx.beginPath();
-                ctx.arc(tipX, tipY, 4.5, pseudopod.angle - Math.PI / 3, pseudopod.angle + Math.PI / 3);
+                ctx.arc(
+                    tipX,
+                    tipY,
+                    4.5,
+                    pseudopod.angle - Math.PI / 3,
+                    pseudopod.angle + Math.PI / 3,
+                );
                 ctx.stroke();
                 ctx.restore();
             }
 
             // 7. Luminous bio-focus gleam on the elongated tip of the sniper needle
-            if (sniperDeform && sniperDeform.intensity > 0.20) {
+            if (sniperDeform && sniperDeform.intensity > 0.2) {
                 ctx.save();
-                const tipDist = drawR * (1 + 3.0 * Math.max(0, sniperDeform.intensity));
+                const tipDist =
+                    drawR * (1 + 3.0 * Math.max(0, sniperDeform.intensity));
                 const tipX = drawX + Math.cos(sniperDeform.angle) * tipDist;
                 const tipY = drawY + Math.sin(sniperDeform.angle) * tipDist;
                 const sInt = Math.max(0, sniperDeform.intensity);
-                
+
                 // Fast dual-arc glow pass
                 ctx.fillStyle = this.color || '#00ffff';
                 ctx.globalAlpha = 0.35 * sInt;
@@ -2601,7 +3649,15 @@ class Player extends Unit {
             const glossY = drawY - drawR * 0.32 + Math.cos(now * 0.004) * 0.8;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
             ctx.beginPath();
-            ctx.ellipse(glossX, glossY, drawR * 0.28, drawR * 0.20, -Math.PI / 4, 0, Math.PI * 2);
+            ctx.ellipse(
+                glossX,
+                glossY,
+                drawR * 0.28,
+                drawR * 0.2,
+                -Math.PI / 4,
+                0,
+                Math.PI * 2,
+            );
             ctx.fill();
             ctx.restore();
 
@@ -2611,7 +3667,9 @@ class Player extends Unit {
                 const beadCount = 3;
                 const orbitR = drawR + 5.5;
                 const pulsing = now < this.lifestealPulseUntil;
-                const pulseT = pulsing ? Math.max(0, 1 - (this.lifestealPulseUntil - now) / 220) : 0;
+                const pulseT = pulsing
+                    ? Math.max(0, 1 - (this.lifestealPulseUntil - now) / 220)
+                    : 0;
                 for (let i = 0; i < beadCount; i++) {
                     const a = now * 0.0022 + (i / beadCount) * Math.PI * 2;
                     const bob = Math.sin(now * 0.003 + i * 1.9);
@@ -2620,7 +3678,9 @@ class Player extends Unit {
                     const br = 2.3 + (pulsing ? pulseT * 1.1 : 0);
 
                     // Fast translucent halo pass
-                    ctx.fillStyle = pulsing ? 'rgba(255, 150, 205, 0.45)' : 'rgba(194, 37, 92, 0.35)';
+                    ctx.fillStyle = pulsing
+                        ? 'rgba(255, 150, 205, 0.45)'
+                        : 'rgba(194, 37, 92, 0.35)';
                     ctx.beginPath();
                     ctx.arc(bx, by, br + (pulsing ? 3.2 : 2.0), 0, Math.PI * 2);
                     ctx.fill();
@@ -2639,19 +3699,28 @@ class Player extends Unit {
                     ctx.lineWidth = 0.9;
                     ctx.beginPath();
                     ctx.moveTo(bx, by);
-                    ctx.lineTo(drawX + Math.cos(a) * drawR * 0.88, drawY + Math.sin(a) * drawR * 0.88);
+                    ctx.lineTo(
+                        drawX + Math.cos(a) * drawR * 0.88,
+                        drawY + Math.sin(a) * drawR * 0.88,
+                    );
                     ctx.stroke();
 
                     // Smokey wisp halo hugging the bead, like the Blast Mending ring fringe
                     ctx.strokeStyle = 'rgb(224, 74, 152)';
                     ctx.lineWidth = 1.0;
-                    ctx.globalAlpha = 0.30;
+                    ctx.globalAlpha = 0.3;
                     ctx.beginPath();
                     const haloPts = 7;
                     for (let j = 0; j <= haloPts; j++) {
                         const ha = (j / haloPts) * Math.PI * 2;
-                        const hnz = br * 0.6 * Math.sin(ha * 3 + now * 0.008 + i * 2.4) + br * 0.5 * Math.sin(ha * 5 + now * 0.006 + i * 1.3);
-                        const hr = br * (1.7 + 0.8 * Math.sin(now * 0.007 + i * 2.1)) + hnz;
+                        const hnz =
+                            br *
+                                0.6 *
+                                Math.sin(ha * 3 + now * 0.008 + i * 2.4) +
+                            br * 0.5 * Math.sin(ha * 5 + now * 0.006 + i * 1.3);
+                        const hr =
+                            br * (1.7 + 0.8 * Math.sin(now * 0.007 + i * 2.1)) +
+                            hnz;
                         const hx = bx + Math.cos(ha) * hr;
                         const hy = by + Math.sin(ha) * hr;
                         if (j === 0) ctx.moveTo(hx, hy);
@@ -2664,7 +3733,13 @@ class Player extends Unit {
                     ctx.fillStyle = 'rgb(224, 74, 152)';
                     ctx.globalAlpha = 0.16;
                     ctx.beginPath();
-                    ctx.arc(bx + Math.sin(a) * br * 2.8, by - Math.cos(a) * br * 2.8, br * 0.9, 0, Math.PI * 2);
+                    ctx.arc(
+                        bx + Math.sin(a) * br * 2.8,
+                        by - Math.cos(a) * br * 2.8,
+                        br * 0.9,
+                        0,
+                        Math.PI * 2,
+                    );
                     ctx.fill();
                     ctx.globalAlpha = 1;
                 }
@@ -2673,7 +3748,13 @@ class Player extends Unit {
                     ctx.strokeStyle = '#c2255c';
                     ctx.lineWidth = 1.3;
                     ctx.beginPath();
-                    ctx.arc(drawX, drawY, drawR + 11 - pulseT * 7, 0, Math.PI * 2);
+                    ctx.arc(
+                        drawX,
+                        drawY,
+                        drawR + 11 - pulseT * 7,
+                        0,
+                        Math.PI * 2,
+                    );
                     ctx.stroke();
                 }
                 ctx.restore();
@@ -2682,7 +3763,10 @@ class Player extends Unit {
             // Phase Dash rear charge fin
             if (this.dashEnabled) {
                 const cooldownRemaining = this.dashCooldownUntil - now;
-                const pct = Math.max(0, Math.min(1, cooldownRemaining / this.dashCooldown));
+                const pct = Math.max(
+                    0,
+                    Math.min(1, cooldownRemaining / this.dashCooldown),
+                );
                 const rear = facing + Math.PI;
                 const ready = pct <= 0;
                 const pulse = 0.5 + 0.5 * Math.sin(now * 0.012);
@@ -2690,9 +3774,21 @@ class Player extends Unit {
                 const firePulse = 0.5 + 0.5 * Math.sin(now * 0.036 + 1.3);
                 const deto = this.phaseDetonationEnabled;
 
-                let alpha = ready ? (this.dashLvl2 ? (deto ? 0.4 + pulse2 * 0.62 : 0.5 + pulse2 * 0.46) : (0.5 + pulse * 0.4)) : (0.35 + (1 - pct) * 0.3);
+                let alpha = ready
+                    ? this.dashLvl2
+                        ? deto
+                            ? 0.4 + pulse2 * 0.62
+                            : 0.5 + pulse2 * 0.46
+                        : 0.5 + pulse * 0.4
+                    : 0.35 + (1 - pct) * 0.3;
                 let retract = pct * 0.3;
-                let tipMult = 1 + (ready ? (this.dashLvl2 ? pulse2 * (deto ? 0.44 : 0.26) : pulse * 0.18) : 0);
+                let tipMult =
+                    1 +
+                    (ready
+                        ? this.dashLvl2
+                            ? pulse2 * (deto ? 0.44 : 0.26)
+                            : pulse * 0.18
+                        : 0);
                 if (this.dashing) {
                     alpha = 0.9;
                     retract = 0;
@@ -2702,16 +3798,22 @@ class Player extends Unit {
                 const tipDist = drawR * 0.55 * tipMult * (1 - retract);
                 const hipX = drawX + Math.cos(rear) * drawR * 0.55;
                 const hipY = drawY + Math.sin(rear) * drawR * 0.55;
-                const ux = Math.cos(axis), uy = Math.sin(axis);
-                const nx = -Math.sin(axis), ny = Math.cos(axis);
+                const ux = Math.cos(axis),
+                    uy = Math.sin(axis);
+                const nx = -Math.sin(axis),
+                    ny = Math.cos(axis);
                 const tipX = hipX + ux * tipDist;
                 const tipY = hipY + uy * tipDist;
                 const wBase = Math.max(2, drawR * 0.17);
-                const c0x = hipX + nx * wBase, c0y = hipY + ny * wBase;
-                const c1x = hipX - nx * wBase, c1y = hipY - ny * wBase;
-                const qx = tipX + nx * (wBase * 0.5), qy = tipY + ny * (wBase * 0.5);
-                const qx2 = tipX - nx * (wBase * 0.5), qy2 = tipY - ny * (wBase * 0.5);
-                const finDark = shadeHex(this.color, 0.40);
+                const c0x = hipX + nx * wBase,
+                    c0y = hipY + ny * wBase;
+                const c1x = hipX - nx * wBase,
+                    c1y = hipY - ny * wBase;
+                const qx = tipX + nx * (wBase * 0.5),
+                    qy = tipY + ny * (wBase * 0.5);
+                const qx2 = tipX - nx * (wBase * 0.5),
+                    qy2 = tipY - ny * (wBase * 0.5);
+                const finDark = shadeHex(this.color, 0.4);
                 const finMid = shadeHex(this.color, 0.62);
                 const finLight = shadeHex(this.color, 1.35);
                 const finGlow = shadeHex(this.color, 0.55);
@@ -2761,11 +3863,23 @@ class Player extends Unit {
                 ctx.stroke();
 
                 if (this.dashLvl2) {
-                    const ext = ready ? (deto ? 1.3 : 0.95) : (deto ? 0.85 : 0.55);
+                    const ext = ready
+                        ? deto
+                            ? 1.3
+                            : 0.95
+                        : deto
+                          ? 0.85
+                          : 0.55;
                     const flk = firePulse;
                     const swy = Math.sin(now * 0.019);
-                    const fLen = drawR * (deto ? (0.7 + flk * 0.45) : (0.42 + flk * 0.35)) * ext;
-                    const fw = Math.max(1.5, wBase * (0.55 + flk * 0.4) * (deto ? 1.35 : 1));
+                    const fLen =
+                        drawR *
+                        (deto ? 0.7 + flk * 0.45 : 0.42 + flk * 0.35) *
+                        ext;
+                    const fw = Math.max(
+                        1.5,
+                        wBase * (0.55 + flk * 0.4) * (deto ? 1.35 : 1),
+                    );
                     const fTipX = tipX + ux * fLen;
                     const fTipY = tipY + uy * fLen;
                     const midX = tipX + ux * fLen * 0.4;
@@ -2779,16 +3893,36 @@ class Player extends Unit {
                         ctx.globalAlpha = 0.35 * flk;
                         ctx.beginPath();
                         ctx.moveTo(tipX, tipY);
-                        ctx.quadraticCurveTo(midX + nx * (fw + swy * 1.5), midY + ny * (fw + swy * 1.5), fTipX + nx * swy * 2, fTipY + ny * swy * 2);
-                        ctx.quadraticCurveTo(midX - nx * (fw - swy * 1.5), midY - ny * (fw - swy * 1.5), tipX, tipY);
+                        ctx.quadraticCurveTo(
+                            midX + nx * (fw + swy * 1.5),
+                            midY + ny * (fw + swy * 1.5),
+                            fTipX + nx * swy * 2,
+                            fTipY + ny * swy * 2,
+                        );
+                        ctx.quadraticCurveTo(
+                            midX - nx * (fw - swy * 1.5),
+                            midY - ny * (fw - swy * 1.5),
+                            tipX,
+                            tipY,
+                        );
                         ctx.stroke();
                     }
                     ctx.globalAlpha = 0.85;
                     ctx.fillStyle = '#ff5722';
                     ctx.beginPath();
                     ctx.moveTo(tipX, tipY);
-                    ctx.quadraticCurveTo(midX + nx * (fw + swy * 1.5), midY + ny * (fw + swy * 1.5), fTipX + nx * swy * 2, fTipY + ny * swy * 2);
-                    ctx.quadraticCurveTo(midX - nx * (fw - swy * 1.5), midY - ny * (fw - swy * 1.5), tipX, tipY);
+                    ctx.quadraticCurveTo(
+                        midX + nx * (fw + swy * 1.5),
+                        midY + ny * (fw + swy * 1.5),
+                        fTipX + nx * swy * 2,
+                        fTipY + ny * swy * 2,
+                    );
+                    ctx.quadraticCurveTo(
+                        midX - nx * (fw - swy * 1.5),
+                        midY - ny * (fw - swy * 1.5),
+                        tipX,
+                        tipY,
+                    );
                     ctx.closePath();
                     ctx.fill();
 
@@ -2799,26 +3933,50 @@ class Player extends Unit {
                     ctx.fillStyle = '#ffaa33';
                     ctx.beginPath();
                     ctx.moveTo(tipX, tipY);
-                    ctx.quadraticCurveTo(midX + nx * fw * 0.5, midY + ny * fw * 0.5, iTipX + nx * swy, iTipY + ny * swy);
-                    ctx.quadraticCurveTo(midX - nx * fw * 0.5, midY - ny * fw * 0.5, tipX, tipY);
+                    ctx.quadraticCurveTo(
+                        midX + nx * fw * 0.5,
+                        midY + ny * fw * 0.5,
+                        iTipX + nx * swy,
+                        iTipY + ny * swy,
+                    );
+                    ctx.quadraticCurveTo(
+                        midX - nx * fw * 0.5,
+                        midY - ny * fw * 0.5,
+                        tipX,
+                        tipY,
+                    );
                     ctx.closePath();
                     ctx.fill();
 
                     ctx.globalAlpha = 0.7;
                     ctx.fillStyle = '#ffe0a0';
                     ctx.beginPath();
-                    ctx.arc(tipX + ux * iLen * 0.5 + nx * swy * 0.6, tipY + uy * iLen * 0.5 + ny * swy * 0.6, Math.max(1, fw * 0.4), 0, Math.PI * 2);
+                    ctx.arc(
+                        tipX + ux * iLen * 0.5 + nx * swy * 0.6,
+                        tipY + uy * iLen * 0.5 + ny * swy * 0.6,
+                        Math.max(1, fw * 0.4),
+                        0,
+                        Math.PI * 2,
+                    );
                     ctx.fill();
 
                     if (deto) {
                         for (let si = 0; si < 3; si++) {
                             const sPh = 2.1 + si * 2.2;
-                            const sLife = (now * 0.0009 + si / 3 + flk * 0.3) % 1;
+                            const sLife =
+                                (now * 0.0009 + si / 3 + flk * 0.3) % 1;
                             const sDist = fLen * (0.9 + sLife * 1.25);
-                            const sDrift = Math.sin(now * 0.006 + sPh) * drawR * 0.14 * sLife;
+                            const sDrift =
+                                Math.sin(now * 0.006 + sPh) *
+                                drawR *
+                                0.14 *
+                                sLife;
                             const sX = tipX + ux * sDist + nx * sDrift;
                             const sY = tipY + uy * sDist + ny * sDrift;
-                            const sR = Math.max(1, drawR * 0.13 * (0.4 + sLife * 0.9));
+                            const sR = Math.max(
+                                1,
+                                drawR * 0.13 * (0.4 + sLife * 0.9),
+                            );
                             const sA = 0.15 * (1 - sLife);
                             if (sA > 0.015) {
                                 ctx.globalAlpha = sA;
@@ -2834,7 +3992,8 @@ class Player extends Unit {
 
                 if (ready) {
                     const orbP = this.dashLvl2 ? pulse2 : pulse;
-                    const orbR = 1.8 + orbP * (this.dashLvl2 ? (deto ? 2.6 : 1.7) : 1.2);
+                    const orbR =
+                        1.8 + orbP * (this.dashLvl2 ? (deto ? 2.6 : 1.7) : 1.2);
                     // Fast halo glow
                     ctx.fillStyle = finGlow;
                     ctx.globalAlpha = 0.38;
@@ -2857,12 +4016,16 @@ class Player extends Unit {
 
             // Seeking Rocket pad: mini rocket resting on the fin flank, gripped by two phagocytosis flagellum
             if (this.rocketEnabled) {
-                const pSide = (this.index % 2 === 0) ? -1 : 1;
+                const pSide = this.index % 2 === 0 ? -1 : 1;
                 const pRear = facing + Math.PI;
-                const pux = Math.cos(pRear), puy = Math.sin(pRear);
-                const pnx = -Math.sin(pRear), pny = Math.cos(pRear);
-                const fwdX = Math.cos(facing), fwdY = Math.sin(facing);
-                const upX = -Math.sin(facing), upY = Math.cos(facing);
+                const pux = Math.cos(pRear),
+                    puy = Math.sin(pRear);
+                const pnx = -Math.sin(pRear),
+                    pny = Math.cos(pRear);
+                const fwdX = Math.cos(facing),
+                    fwdY = Math.sin(facing);
+                const upX = -Math.sin(facing),
+                    upY = Math.cos(facing);
                 const wBase = Math.max(2, drawR * 0.17);
                 const rl = drawR * 0.52;
                 const rw = drawR * 0.2;
@@ -2880,11 +4043,17 @@ class Player extends Unit {
                     const rel = now - rAni.startTime;
                     if (rel >= 0 && rel < rAni.duration) {
                         launchT = rel / rAni.duration;
-                        deploy = launchT >= 0.3 ? Math.min(1, (launchT - 0.3) / 0.7) : 0;
+                        deploy =
+                            launchT >= 0.3
+                                ? Math.min(1, (launchT - 0.3) / 0.7)
+                                : 0;
                     }
                 }
                 const popE = 1 - Math.pow(1 - deploy, 2);
-                const overshoot = Math.sin(deploy * Math.PI) * 0.08 * (deploy > 0 && deploy < 1 ? 1 : 0);
+                const overshoot =
+                    Math.sin(deploy * Math.PI) *
+                    0.08 *
+                    (deploy > 0 && deploy < 1 ? 1 : 0);
                 const bob = Math.sin(now * 0.01) * 0.9;
                 const rockScale = (0.55 + 0.45 * popE) * (1 + overshoot);
                 const rockVis = rockScale * 0.6;
@@ -2903,23 +4072,45 @@ class Player extends Unit {
 
                 // two phagocytosis flagellum draped over the top of the rocket, wrapping it
                 const flSpread = (1 - deploy) * drawR * 0.22;
-                const tension = (deploy >= 1 ? Math.sin(now * 0.014) : 0) * drawR * 0.1;
+                const tension =
+                    (deploy >= 1 ? Math.sin(now * 0.014) : 0) * drawR * 0.1;
                 ctx.lineWidth = 1.8;
                 const aAX = bX + pnx * pSide * (wBase * 0.4);
                 const aAY = bY + pny * pSide * (wBase * 0.4);
                 const lA = rl * 0.18;
                 const gAX = activeX + upX * gripR + fwdX * (lA - tension);
                 const gAY = activeY + upY * gripR + fwdY * (lA - tension);
-                const cAX = (aAX + gAX) / 2 + upX * (gripR + drawR * 0.12 + flSpread) + fwdX * drawR * 0.06;
-                const cAY = (aAY + gAY) / 2 + upY * (gripR + drawR * 0.12 + flSpread) + fwdY * drawR * 0.06;
-                const aBX = drawX + fwdX * drawR * 0.4 + pnx * pSide * (drawR * 0.26 + flSpread);
-                const aBY = drawY + fwdY * drawR * 0.4 + pny * pSide * (drawR * 0.26 + flSpread);
+                const cAX =
+                    (aAX + gAX) / 2 +
+                    upX * (gripR + drawR * 0.12 + flSpread) +
+                    fwdX * drawR * 0.06;
+                const cAY =
+                    (aAY + gAY) / 2 +
+                    upY * (gripR + drawR * 0.12 + flSpread) +
+                    fwdY * drawR * 0.06;
+                const aBX =
+                    drawX +
+                    fwdX * drawR * 0.4 +
+                    pnx * pSide * (drawR * 0.26 + flSpread);
+                const aBY =
+                    drawY +
+                    fwdY * drawR * 0.4 +
+                    pny * pSide * (drawR * 0.26 + flSpread);
                 const lB = -rl * 0.18;
                 const gBX = activeX + upX * gripR + fwdX * (lB - tension);
                 const gBY = activeY + upY * gripR + fwdY * (lB - tension);
-                const cBX = (aBX + gBX) / 2 + upX * (gripR + drawR * 0.12 + flSpread) + fwdX * drawR * 0.02;
-                const cBY = (aBY + gBY) / 2 + upY * (gripR + drawR * 0.12 + flSpread) + fwdY * drawR * 0.02;
-                for (const fl of [{ aX: aAX, aY: aAY, cX: cAX, cY: cAY, gX: gAX, gY: gAY }, { aX: aBX, aY: aBY, cX: cBX, cY: cBY, gX: gBX, gY: gBY }]) {
+                const cBX =
+                    (aBX + gBX) / 2 +
+                    upX * (gripR + drawR * 0.12 + flSpread) +
+                    fwdX * drawR * 0.02;
+                const cBY =
+                    (aBY + gBY) / 2 +
+                    upY * (gripR + drawR * 0.12 + flSpread) +
+                    fwdY * drawR * 0.02;
+                for (const fl of [
+                    { aX: aAX, aY: aAY, cX: cAX, cY: cAY, gX: gAX, gY: gAY },
+                    { aX: aBX, aY: aBY, cX: cBX, cY: cBY, gX: gBX, gY: gBY },
+                ]) {
                     ctx.globalAlpha = 0.5 + deploy * 0.4;
                     ctx.strokeStyle = shadeHex(this.color, 0.72);
                     ctx.beginPath();
@@ -2975,19 +4166,21 @@ class Player extends Unit {
             }
 
             // Draw invuln bubble shield (from dash level 2, revival/reconnect invulnerability, or dispensed aegis)
-            const isDashInvuln = this.dashLvl2 && (this.dashCooldownUntil - now) > this.dashCooldown / 2;
-            const isReviveInvuln = (this.invuln > 0) || (this.spawnInvuln > 0);
-            const isAegisInvuln = (this.aegisUntil && now < this.aegisUntil);
+            const isDashInvuln =
+                this.dashLvl2 &&
+                this.dashCooldownUntil - now > this.dashCooldown / 2;
+            const isReviveInvuln = this.invuln > 0 || this.spawnInvuln > 0;
+            const isAegisInvuln = this.aegisUntil && now < this.aegisUntil;
             if (isDashInvuln || isReviveInvuln || isAegisInvuln) {
                 ctx.save();
                 // Fast dual-stroke glow
                 ctx.strokeStyle = '#33ccff';
                 ctx.lineWidth = 6.5;
-                ctx.globalAlpha = 0.30;
+                ctx.globalAlpha = 0.3;
                 ctx.beginPath();
                 ctx.arc(drawX, drawY, drawR + 6, 0, Math.PI * 2);
                 ctx.stroke();
-                
+
                 ctx.lineWidth = 2.5;
                 ctx.globalAlpha = 0.95;
                 ctx.beginPath();
@@ -2997,7 +4190,7 @@ class Player extends Unit {
             }
 
             ctx.restore();
-            
+
             // Draw Concussive Shells slow indicator (blue pulsing ring)
             if (this.slowUntil && now < this.slowUntil) {
                 ctx.save();
@@ -3026,8 +4219,10 @@ class Player extends Unit {
 
         // Life bar is only visible once the player is damaged
         if (this.hp < this.maxHp && this.hp > 0) {
-            const bw = 30, bh = 4;
-            const bx = px - bw / 2, by = yOffset;
+            const bw = 30,
+                bh = 4;
+            const bx = px - bw / 2,
+                by = yOffset;
             const hpFrac = Math.max(0, Math.min(1, this.hp / this.maxHp));
 
             // Dynamic color gradient: healthy vibrant green -> amber -> deep dark crimson red
@@ -3046,11 +4241,11 @@ class Player extends Unit {
 
             // Blink emergency alarm when HP is 5% or less
             const isCritical = hpFrac <= 0.05;
-            const isBlinkOn = !isCritical || (Math.floor(now / 100) % 2 === 0);
+            const isBlinkOn = !isCritical || Math.floor(now / 100) % 2 === 0;
 
             ctx.save();
             if (isCritical) {
-                ctx.globalAlpha = isBlinkOn ? 1.0 : 0.20;
+                ctx.globalAlpha = isBlinkOn ? 1.0 : 0.2;
             }
 
             ctx.fillStyle = '#000';
@@ -3058,7 +4253,8 @@ class Player extends Unit {
             ctx.fillStyle = '#222';
             ctx.fillRect(bx, by, bw, bh);
 
-            const fillColor = (isCritical && isBlinkOn) ? '#ff1122' : `rgb(${r}, ${g}, ${b})`;
+            const fillColor =
+                isCritical && isBlinkOn ? '#ff1122' : `rgb(${r}, ${g}, ${b})`;
             ctx.fillStyle = fillColor;
             ctx.fillRect(bx, by, Math.max(1, bw * hpFrac), bh);
 
@@ -3072,33 +4268,50 @@ class Player extends Unit {
 
             yOffset += bh + 3;
         }
-        
+
         // Campervan duration indicator
         if (this.campervanUntil > now) {
             const timeRemaining = this.campervanUntil - now;
             const pct = Math.max(0, timeRemaining / 10000);
-            const dbw = 30, dbh = 2.5;
-            const dbx = this.x - dbw / 2, dby = yOffset;
+            const dbw = 30,
+                dbh = 2.5;
+            const dbx = this.x - dbw / 2,
+                dby = yOffset;
             yOffset += dbh + 3;
-            
+
             // Background
             ctx.fillStyle = '#000';
             ctx.fillRect(dbx - 1, dby - 1, dbw + 2, dbh + 2);
             ctx.fillStyle = '#222';
             ctx.fillRect(dbx, dby, dbw, dbh);
-            
+
             // Bright Gold/Orange bar decaying to empty (flashes red when <3s remaining)
-            ctx.fillStyle = timeRemaining < 3000 && Math.floor(now / 150) % 2 === 0 ? '#ff3300' : '#ffcc00';
+            ctx.fillStyle =
+                timeRemaining < 3000 && Math.floor(now / 150) % 2 === 0
+                    ? '#ff3300'
+                    : '#ffcc00';
             ctx.fillRect(dbx, dby, dbw * pct, dbh);
         }
     }
     drawDeadMarker(now) {
-        let remaining = Math.max(0, Math.ceil(((REVIVE_MS * this.reviveTimeModifier) - (now - this.deadAt)) / 1000));
-        if (GAME_STATE.activeBoss && this.deadAt >= GAME_STATE.activeBossStartTime) {
+        let remaining = Math.max(
+            0,
+            Math.ceil(
+                (REVIVE_MS * this.reviveTimeModifier - (now - this.deadAt)) /
+                    1000,
+            ),
+        );
+        if (
+            GAME_STATE.activeBoss &&
+            this.deadAt >= GAME_STATE.activeBossStartTime
+        ) {
             const cfg = BOSS_CONFIGS[GAME_STATE.activeBoss];
             if (cfg) {
                 const bossEnd = cfg.startMs + cfg.durationLimit;
-                remaining = Math.max(1, Math.ceil((bossEnd - GAME_STATE.elapsed) / 1000));
+                remaining = Math.max(
+                    1,
+                    Math.ceil((bossEnd - GAME_STATE.elapsed) / 1000),
+                );
             }
         }
         ctx.save();
@@ -3110,8 +4323,10 @@ class Player extends Unit {
         ctx.stroke();
         // small X
         ctx.beginPath();
-        ctx.moveTo(this.x - 6, this.y - 6); ctx.lineTo(this.x + 6, this.y + 6);
-        ctx.moveTo(this.x + 6, this.y - 6); ctx.lineTo(this.x - 6, this.y + 6);
+        ctx.moveTo(this.x - 6, this.y - 6);
+        ctx.lineTo(this.x + 6, this.y + 6);
+        ctx.moveTo(this.x + 6, this.y - 6);
+        ctx.lineTo(this.x - 6, this.y + 6);
         ctx.stroke();
         ctx.restore();
         // revive countdown next to the dead player

@@ -4,11 +4,13 @@
 // =========================================================================
 
 // 0. MOBILE PLATFORM DETECTION
-const isMobile = (typeof window !== 'undefined') && (
-    ('ontouchstart' in window) ||
-    (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
-    /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test((typeof navigator !== 'undefined' && navigator.userAgent) || '')
-);
+const isMobile =
+    typeof window !== 'undefined' &&
+    ('ontouchstart' in window ||
+        (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+        /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(
+            (typeof navigator !== 'undefined' && navigator.userAgent) || '',
+        ));
 
 if (typeof window !== 'undefined') {
     window.isMobile = isMobile;
@@ -32,32 +34,154 @@ const STATES = {
     LEVEL_UP: 3,
     PAUSED: 4,
     GAME_OVER: 5,
-    VICTORY: 6
+    VICTORY: 6,
 };
 
 // 2. DIFFICULTY SETTINGS
 const DIFFICULTIES = {
-    easy:   { name: 'Easy',   dmgMult: 4.0, speedMult: 1.5,  accuracy: 0.25,    takenMult: 0.25,  difficultyMultiplier: 1.5 },
-    normal: { name: 'Normal', dmgMult: 2.0, speedMult: 1.25, accuracy: 0.5,     takenMult: 0.50,  difficultyMultiplier: 1.25 },
-    hard:   { name: 'Hard',   dmgMult: 1.0, speedMult: 1.0,  accuracy: 1.0,     takenMult: 1.0,   difficultyMultiplier: 1.0 }
+    easy: {
+        name: 'Easy',
+        dmgMult: 4.0,
+        speedMult: 1.5,
+        accuracy: 0.25,
+        takenMult: 0.25,
+        difficultyMultiplier: 1.5,
+    },
+    normal: {
+        name: 'Normal',
+        dmgMult: 2.0,
+        speedMult: 1.25,
+        accuracy: 0.5,
+        takenMult: 0.5,
+        difficultyMultiplier: 1.25,
+    },
+    hard: {
+        name: 'Hard',
+        dmgMult: 1.0,
+        speedMult: 1.0,
+        accuracy: 1.0,
+        takenMult: 1.0,
+        difficultyMultiplier: 1.0,
+    },
 };
 
 // 3. MONSTER XP VALUES
 const MONSTER_BASE_XP = {
-    swarm: 1, brute: 2, mega_brute: 3, brute_lord: 4, speeder: 5,
-    meteor: 6, dasher: 7, shooter: 8, spiky: 10, baneling: 50,
-    marauder: 20, stalker: 30, zergling: 0, spine_crawler: 40, sentry: 40,
-    medivac: 60, warp_anomaly: 70, hellion: 80, shield_bearer: 90, viper: 100,
-    octopus: 500, felhound: 1000, behemoth: 0
+    swarm: 1,
+    brute: 2,
+    mega_brute: 3,
+    brute_lord: 4,
+    speeder: 5,
+    meteor: 6,
+    dasher: 7,
+    shooter: 8,
+    spiky: 10,
+    baneling: 50,
+    marauder: 20,
+    stalker: 30,
+    zergling: 0,
+    spine_crawler: 40,
+    sentry: 40,
+    medivac: 60,
+    warp_anomaly: 70,
+    hellion: 80,
+    shield_bearer: 90,
+    viper: 100,
+    octopus: 500,
+    felhound: 1000,
+    behemoth: 0,
 };
 
 // 4. PLAYER DEFINITIONS & DEFAULT CONTROLS
 const PLAYER_DEFS = [
-    { color: '#00ffcc', ring: '#003322', keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] }, keysText: 'WASD' },
-    { color: '#ff66cc', ring: '#33001f', keys: { up: ['arrowup'], left: ['arrowleft'], down: ['arrowdown'], right: ['arrowright'] }, keysText: '↑←↓→' },
-    { color: '#ffcc00', ring: '#332900', keys: { up: ['g'], left: ['c'], down: ['v'], right: ['b'] }, keysText: 'GCVB' },
-    { color: '#66aaff', ring: '#001a33', keys: { up: ['i'], left: ['j'], down: ['k'], right: ['l'] }, keysText: 'IJKL' }
+    {
+        name: 'Player 1',
+        color: '#00ffcc',
+        ring: '#003322',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    },
+    {
+        name: 'Player 2',
+        color: '#ff66cc',
+        ring: '#33001f',
+        keys: {
+            up: ['arrowup'],
+            left: ['arrowleft'],
+            down: ['arrowdown'],
+            right: ['arrowright'],
+        },
+        keysText: '↑←↓→',
+    },
+    {
+        name: 'Player 3',
+        color: '#ffcc00',
+        ring: '#332900',
+        keys: { up: ['g'], left: ['c'], down: ['v'], right: ['b'] },
+        keysText: 'GCVB',
+    },
+    {
+        name: 'Player 4',
+        color: '#66aaff',
+        ring: '#001a33',
+        keys: { up: ['i'], left: ['j'], down: ['k'], right: ['l'] },
+        keysText: 'IJKL',
+    },
 ];
+
+function getPlayerKeyLabels(playerIndex, gameMode) {
+    const currentMode =
+        gameMode ||
+        (typeof GAME_STATE !== 'undefined' ? GAME_STATE.gameMode : 'local');
+    if (currentMode === 'online') {
+        return {
+            up: 'W',
+            left: 'A',
+            down: 'S',
+            right: 'D',
+            rawUp: 'w',
+            rawLeft: 'a',
+            rawDown: 's',
+            rawRight: 'd',
+        };
+    }
+    const def = PLAYER_DEFS?.[playerIndex] ? PLAYER_DEFS[playerIndex] : null;
+    const formatKey = (k) => {
+        if (!k) return '';
+        const lower = k.toLowerCase();
+        if (lower === 'arrowup') return '↑';
+        if (lower === 'arrowleft') return '←';
+        if (lower === 'arrowdown') return '↓';
+        if (lower === 'arrowright') return '→';
+        return k.toUpperCase();
+    };
+    if (!def?.keys) {
+        return {
+            up: 'W',
+            left: 'A',
+            down: 'S',
+            right: 'D',
+            rawUp: 'w',
+            rawLeft: 'a',
+            rawDown: 's',
+            rawRight: 'd',
+        };
+    }
+    const upRaw = def.keys.up ? def.keys.up[0] : 'w';
+    const leftRaw = def.keys.left ? def.keys.left[0] : 'a';
+    const downRaw = def.keys.down ? def.keys.down[0] : 's';
+    const rightRaw = def.keys.right ? def.keys.right[0] : 'd';
+    return {
+        up: formatKey(upRaw),
+        left: formatKey(leftRaw),
+        down: formatKey(downRaw),
+        right: formatKey(rightRaw),
+        rawUp: upRaw,
+        rawLeft: leftRaw,
+        rawDown: downRaw,
+        rawRight: rightRaw,
+    };
+}
 
 // 5. TIMELINE PROGRESSION (MONSTER INTRODUCTIONS & BOSS EVENTS)
 const PROGRESSION = {
@@ -70,23 +194,23 @@ const PROGRESSION = {
         { type: 'dasher', time: 360000 },
         { type: 'shooter', time: 420000 },
         { type: 'spiky', time: 600000 },
-        { type: 'baneling', time: 720000 },      // Min 12 (12:00)
-        { type: 'marauder', time: 780000 },      // Min 13 (13:00)
-        { type: 'stalker', time: 840000 },       // Min 14 (14:00)
+        { type: 'baneling', time: 720000 }, // Min 12 (12:00)
+        { type: 'marauder', time: 780000 }, // Min 13 (13:00)
+        { type: 'stalker', time: 840000 }, // Min 14 (14:00)
         { type: 'spine_crawler', time: 900000 }, // Min 15 (15:00)
-        { type: 'sentry', time: 1080000 },       // Min 18 (18:00, after 2m Felhound Boss)
-        { type: 'medivac', time: 1140000 },      // Min 19 (19:00)
-        { type: 'hellion', time: 1200000 },      // Min 20 (20:00)
+        { type: 'sentry', time: 1080000 }, // Min 18 (18:00, after 2m Felhound Boss)
+        { type: 'medivac', time: 1140000 }, // Min 19 (19:00)
+        { type: 'hellion', time: 1200000 }, // Min 20 (20:00)
         { type: 'warp_anomaly', time: 1260000 }, // Min 21 (21:00, rare invisible warp anomaly)
-        { type: 'shield_bearer', time: 1320000 },// Min 22 (22:00)
-        { type: 'viper', time: 1380000 }         // Min 23 (23:00, rare flying abduct unit)
+        { type: 'shield_bearer', time: 1320000 }, // Min 22 (22:00)
+        { type: 'viper', time: 1380000 }, // Min 23 (23:00, rare flying abduct unit)
     ],
     bossEvents: [
         { type: 'octopus', start: 480000, durationLimit: 120000 }, // 8:00 (2 min limit)
-        { type: 'horde', start: 660000, durationLimit: 57000 },    // 11:00 (57 sec limit)
-        { type: 'felhound', start: 960000, durationLimit: 120000 },// 16:00 (2 min limit)
-        { type: 'behemoth', start: 1440000, durationLimit: 180000 }// 24:00 (3 min limit)
-    ]
+        { type: 'horde', start: 660000, durationLimit: 57000 }, // 11:00 (57 sec limit)
+        { type: 'felhound', start: 960000, durationLimit: 120000 }, // 16:00 (2 min limit)
+        { type: 'behemoth', start: 1440000, durationLimit: 180000 }, // 24:00 (3 min limit)
+    ],
 };
 
 // 6. DETAILED NUMERICAL GAME CONFIGURATION
@@ -101,7 +225,7 @@ const GAME_CONFIG = {
     XP: {
         EXPONENTIAL_GROWTH: 1.2,
         ADD_PER_LEVEL: 18,
-        BASE_LEVEL_XP: 15
+        BASE_LEVEL_XP: 15,
     },
     DASH: {
         DOUBLE_TAP_WINDOW_MS: 200,
@@ -110,7 +234,7 @@ const GAME_CONFIG = {
         COOLDOWN_MS: 2500, // 2.5s base cooldown
         BURST_MISSILES: 24,
         LVL2_RANGE_BOOST_PCT: 25,
-        LVL2_COOLDOWN_DIVISOR: 2 // halves cooldown (100% recharge speed boost)
+        LVL2_COOLDOWN_DIVISOR: 2, // halves cooldown (100% recharge speed boost)
     },
     TURRET: {
         PLACEMENT_INTERVAL_SEC: 10,
@@ -133,7 +257,7 @@ const GAME_CONFIG = {
         SAW_DPS: 15,
         SAW_RADIUS: 50,
         DISPENSER_CHANCE_PCT: 2,
-        DISPENSER_INTERVAL_SEC: 10
+        DISPENSER_INTERVAL_SEC: 10,
     },
     SUPPLIES: {
         HEALTH_PACK_HP: 30,
@@ -147,7 +271,7 @@ const GAME_CONFIG = {
         FREEZE_RADIUS: 350,
         FREEZE_DURATION_SEC: 3,
         OVERCLOCK_TURRET_SPEED_MULT: 2,
-        OVERCLOCK_DURATION_SEC: 5
+        OVERCLOCK_DURATION_SEC: 5,
     },
     UPGRADES: {
         SPEED_BOOST_PCT: 30,
@@ -193,13 +317,13 @@ const GAME_CONFIG = {
         CARAPACE_HEALER_SIZE_BOOST_PCT: 50,
         CARAPACE_HEALER_TEAM_HEAL_PCT: 0.25,
         ICE_TRAIL_SPEED_BOOST_PCT: 30,
-        ICE_TRAIL_SLOW_PCT: 50
+        ICE_TRAIL_SLOW_PCT: 50,
     },
     HAZARDS: {
         METEOR_FALL_MS: 1200,
         BURN_MS: 3000,
         BURN_TICK_DMG: 12,
-        PROJECTILE_HEAL: 0.002
+        PROJECTILE_HEAL: 0.002,
     },
     ENEMIES: {
         DASHER: {
@@ -210,9 +334,9 @@ const GAME_CONFIG = {
             LUNGE_COOLDOWN: 1500,
             SIDE_SPEED: 3.8,
             SIDE_MS: 240,
-            SIDE_GAP: 200
-        }
-    }
+            SIDE_GAP: 200,
+        },
+    },
 };
 
 // 7. SHORTCUT ACCESS CONSTANTS (FOR BACKWARD COMPATIBILITY)
@@ -282,11 +406,11 @@ const GAME_STATE = {
     pendingPicks: 0,
     countdownTimer: null,
     siphonCellsOwner: null,
-    showFps: false
+    showFps: false,
 };
 
 // Feature flag: set to true locally to expose the Upgrade Testing Lab button.
-let ENABLE_TESTING_LAB = false;
+const ENABLE_TESTING_LAB = false;
 
 // 9. GLOBAL WINDOW EXPORTS
 if (typeof window !== 'undefined') {
@@ -320,6 +444,7 @@ if (typeof window !== 'undefined') {
     window.DASHER_SIDE_SPEED = DASHER_SIDE_SPEED;
     window.DASHER_SIDE_MS = DASHER_SIDE_MS;
     window.DASHER_SIDE_GAP = DASHER_SIDE_GAP;
+    window.getPlayerKeyLabels = getPlayerKeyLabels;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -329,6 +454,7 @@ if (typeof module !== 'undefined' && module.exports) {
         DIFFICULTIES,
         MONSTER_BASE_XP,
         PLAYER_DEFS,
+        getPlayerKeyLabels,
         PROGRESSION,
         GAME_CONFIG,
         GAME_STATE,
@@ -353,6 +479,6 @@ if (typeof module !== 'undefined' && module.exports) {
         DASHER_LUNGE_COOLDOWN,
         DASHER_SIDE_SPEED,
         DASHER_SIDE_MS,
-        DASHER_SIDE_GAP
+        DASHER_SIDE_GAP,
     };
 }

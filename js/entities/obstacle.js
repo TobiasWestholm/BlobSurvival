@@ -1,12 +1,12 @@
 /**
  * BlobSurvival - Obstacle Entity Hierarchy & Collision Resolvers
- * 
+ *
  * Defines the base Obstacle entity class and concrete battlefield terrain
  * structures:
  * - Obstacle (Base Entity for physical/blocking barriers)
  * - ShieldObstacle / ShieldTerrain (Energy Arc Half-Circle Barriers)
  * - WallObstacle / WallDebrisObstacle (Basalt Rock Slabs & Crag Formations)
- * 
+ *
  * Also provides high-performance 2D arc and oriented-box collision resolvers.
  */
 
@@ -52,22 +52,43 @@ class ShieldObstacle extends Obstacle {
     }
 
     isExpired(now) {
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         return curTime >= this.expiresAt;
     }
 
     isAlive(now) {
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         return !this.isExpired(curTime);
     }
 
     resolveCollision(unit) {
-        return resolvePlayerArcWallCollision(unit, this.x, this.y, this.r, this.facingAngle);
+        return resolvePlayerArcWallCollision(
+            unit,
+            this.x,
+            this.y,
+            this.r,
+            this.facingAngle,
+        );
     }
 
     draw(now) {
         if (typeof ctx === 'undefined') return;
-        const curTime = (typeof now === 'number' && !isNaN(now)) ? now : (typeof gameClock !== 'undefined' ? gameClock : performance.now());
+        const curTime =
+            typeof now === 'number' && !Number.isNaN(now)
+                ? now
+                : typeof gameClock !== 'undefined'
+                  ? gameClock
+                  : performance.now();
         const remaining = Math.max(0, this.expiresAt - curTime);
         const fadeAlpha = remaining < 1000 ? remaining / 1000 : 1.0;
         ctx.save();
@@ -151,7 +172,14 @@ class WallObstacle extends Obstacle {
     }
 
     resolveCollision(unit) {
-        return resolvePlayerOrientedBoxCollision(unit, this.x, this.y, this.halfW, this.halfH, this.angle);
+        return resolvePlayerOrientedBoxCollision(
+            unit,
+            this.x,
+            this.y,
+            this.halfW,
+            this.halfH,
+            this.angle,
+        );
     }
 
     draw(now) {
@@ -262,7 +290,13 @@ class WallObstacle extends Obstacle {
         ctx.stroke();
 
         // Glowing crystal clusters (subterranean emerald ore)
-        for (const [cx, cy] of [[-hw * 0.5, -4], [0, 2], [hw * 0.45, -3], [-hw * 0.2, 5], [hw * 0.65, 4]]) {
+        for (const [cx, cy] of [
+            [-hw * 0.5, -4],
+            [0, 2],
+            [hw * 0.45, -3],
+            [-hw * 0.2, 5],
+            [hw * 0.65, 4],
+        ]) {
             ctx.fillStyle = '#22c55e';
             ctx.globalAlpha = 0.4;
             ctx.beginPath();
@@ -283,7 +317,7 @@ class WallObstacle extends Obstacle {
             [-hw * 0.65, hh * 1.1, 7],
             [hw * 0.65, hh * 1.05, 8],
             [hw * 0.98, hh * 0.3, 7],
-            [hw * 1.04, -hh * 0.2, 6]
+            [hw * 1.04, -hh * 0.2, 6],
         ];
         ctx.fillStyle = '#44403c';
         ctx.strokeStyle = '#1c1917';
@@ -304,10 +338,19 @@ const WallDebrisObstacle = WallObstacle;
 
 // ---------------- 4. Collision Resolution Functions ----------------
 
-function resolvePlayerOrientedBoxCollision(player, boxX, boxY, halfW, halfH, angle) {
+function resolvePlayerOrientedBoxCollision(
+    player,
+    boxX,
+    boxY,
+    halfW,
+    halfH,
+    angle,
+) {
     if (!player) return false;
-    const cos = Math.cos(-angle), sin = Math.sin(-angle);
-    const dx = player.x - boxX, dy = player.y - boxY;
+    const cos = Math.cos(-angle),
+        sin = Math.sin(-angle);
+    const dx = player.x - boxX,
+        dy = player.y - boxY;
     const localX = cos * dx - sin * dy;
     const localY = sin * dx + cos * dy;
 
@@ -322,7 +365,8 @@ function resolvePlayerOrientedBoxCollision(player, boxX, boxY, halfW, halfH, ang
     if (distSq < pr * pr) {
         const dist = Math.sqrt(distSq);
         let overlap = pr - dist;
-        let nx = 0, ny = 0;
+        let nx = 0,
+            ny = 0;
 
         if (dist > 0.0001) {
             nx = diffX / dist;
@@ -351,7 +395,8 @@ function resolvePlayerOrientedBoxCollision(player, boxX, boxY, halfW, halfH, ang
 
 function resolvePlayerArcWallCollision(player, cx, cy, arcRadius, facingAngle) {
     if (!player) return false;
-    const dx = player.x - cx, dy = player.y - cy;
+    const dx = player.x - cx,
+        dy = player.y - cy;
     const dist = Math.hypot(dx, dy);
     const halfArc = Math.PI * 0.5;
     const pr = player.r || 12;
@@ -363,7 +408,8 @@ function resolvePlayerArcWallCollision(player, cx, cy, arcRadius, facingAngle) {
         const tipAngle = facingAngle + side * halfArc;
         const tx = cx + Math.cos(tipAngle) * arcRadius;
         const ty = cy + Math.sin(tipAngle) * arcRadius;
-        const tdx = player.x - tx, tdy = player.y - ty;
+        const tdx = player.x - tx,
+            tdy = player.y - ty;
         const tdist = Math.hypot(tdx, tdy);
         const minTipDist = pr + 7;
         if (tdist < minTipDist && tdist > 0.001) {
@@ -391,7 +437,7 @@ function resolvePlayerArcWallCollision(player, cx, cy, arcRadius, facingAngle) {
                 }
             } else {
                 if (dist < arcRadius + (pr + wallThick)) {
-                    const overlap = (arcRadius + (pr + wallThick)) - dist;
+                    const overlap = arcRadius + (pr + wallThick) - dist;
                     player.x += (dx / dist) * overlap;
                     player.y += (dy / dist) * overlap;
                     collided = true;
@@ -405,26 +451,54 @@ function resolvePlayerArcWallCollision(player, cx, cy, arcRadius, facingAngle) {
 function resolvePlayerTerrainCollisions(player) {
     if (!player) return;
     // 1. Dropped shield terrains & Permanent Wall Debris Obstacles
-    if (typeof GAME_STATE !== 'undefined' && GAME_STATE.terrains && GAME_STATE.terrains.length > 0) {
+    if (
+        typeof GAME_STATE !== 'undefined' &&
+        GAME_STATE.terrains &&
+        GAME_STATE.terrains.length > 0
+    ) {
         for (const t of GAME_STATE.terrains) {
             if (t.resolveCollision) {
                 t.resolveCollision(player);
             } else if (t.isWallObstacle) {
-                resolvePlayerOrientedBoxCollision(player, t.x, t.y, t.halfW || 95, t.halfH || 22, t.angle || 0);
+                resolvePlayerOrientedBoxCollision(
+                    player,
+                    t.x,
+                    t.y,
+                    t.halfW || 95,
+                    t.halfH || 22,
+                    t.angle || 0,
+                );
             } else {
-                resolvePlayerArcWallCollision(player, t.x, t.y, t.r || 100, t.facingAngle || 0);
+                resolvePlayerArcWallCollision(
+                    player,
+                    t.x,
+                    t.y,
+                    t.r || 100,
+                    t.facingAngle || 0,
+                );
             }
         }
     }
 
     // 2. Gigantic shields CARRIED by alive Shield Bearers
-    if (typeof GAME_STATE !== 'undefined' && GAME_STATE.shieldBearers && GAME_STATE.shieldBearers.length > 0) {
+    if (
+        typeof GAME_STATE !== 'undefined' &&
+        GAME_STATE.shieldBearers &&
+        GAME_STATE.shieldBearers.length > 0
+    ) {
         for (let i = 0; i < GAME_STATE.shieldBearers.length; i++) {
             const e = GAME_STATE.shieldBearers[i];
             if (e.hp > 0) {
-                resolvePlayerArcWallCollision(player, e.x, e.y, e.shieldRadius || 100, e.facingAngle || 0);
+                resolvePlayerArcWallCollision(
+                    player,
+                    e.x,
+                    e.y,
+                    e.shieldRadius || 100,
+                    e.facingAngle || 0,
+                );
 
-                const dx = player.x - e.x, dy = player.y - e.y;
+                const dx = player.x - e.x,
+                    dy = player.y - e.y;
                 const dist = Math.hypot(dx, dy);
                 const minBodyDist = (e.r || 20) + (player.r || 12);
                 if (dist < minBodyDist && dist > 0.001) {
@@ -450,10 +524,12 @@ if (typeof window !== 'undefined') {
     window.ShieldTerrain = ShieldTerrain;
     window.WallObstacle = WallObstacle;
     window.WallDebrisObstacle = WallDebrisObstacle;
-    window.resolvePlayerOrientedBoxCollision = resolvePlayerOrientedBoxCollision;
+    window.resolvePlayerOrientedBoxCollision =
+        resolvePlayerOrientedBoxCollision;
     window.resolvePlayerArcWallCollision = resolvePlayerArcWallCollision;
     window.resolvePlayerTerrainCollisions = resolvePlayerTerrainCollisions;
-    window.resolveEnemyTerrainCollisionsAndPathing = resolveEnemyTerrainCollisionsAndPathing;
+    window.resolveEnemyTerrainCollisionsAndPathing =
+        resolveEnemyTerrainCollisionsAndPathing;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -466,6 +542,6 @@ if (typeof module !== 'undefined' && module.exports) {
         resolvePlayerOrientedBoxCollision,
         resolvePlayerArcWallCollision,
         resolvePlayerTerrainCollisions,
-        resolveEnemyTerrainCollisionsAndPathing
+        resolveEnemyTerrainCollisionsAndPathing,
     };
 }

@@ -2,15 +2,13 @@
  * BlobSurvival - 2D Canvas Renderer & Viewport Manager
  */
 
-// Mobile device detection (defined in config.js)
-const mobileActive = (typeof isMobile !== 'undefined') ? isMobile : ((typeof window !== 'undefined' && window.isMobile) || false);
-
-
-let canvas = (typeof document !== 'undefined') ? document.getElementById('gameCanvas') : null;
+let canvas =
+    typeof document !== 'undefined'
+        ? document.getElementById('gameCanvas')
+        : null;
 let ctx = canvas ? canvas.getContext('2d') : null;
-let W = (typeof window !== 'undefined') ? window.innerWidth : 1512;
-let H = (typeof window !== 'undefined') ? window.innerHeight : 900;
-let isGameEngineReady = true;
+let W = typeof window !== 'undefined' ? window.innerWidth : 1512;
+let H = typeof window !== 'undefined' ? window.innerHeight : 900;
 
 function initCanvasElements() {
     if (typeof document !== 'undefined') {
@@ -25,19 +23,41 @@ function initCanvasElements() {
 
 function dismissRotateHint() {
     if (typeof window !== 'undefined') window._rotateHintDismissed = true;
-    const hint = (typeof document !== 'undefined') ? document.getElementById('rotateHint') : null;
+    const hint =
+        typeof document !== 'undefined'
+            ? document.getElementById('rotateHint')
+            : null;
     if (hint) hint.style.display = 'none';
 }
 
 function updateRotateHint() {
-    const hint = (typeof document !== 'undefined') ? document.getElementById('rotateHint') : null;
+    const hint =
+        typeof document !== 'undefined'
+            ? document.getElementById('rotateHint')
+            : null;
     if (!hint) return;
-    const isMobileDevice = (typeof isMobile !== 'undefined') ? isMobile : ((typeof window !== 'undefined' && window.isMobile) || false);
-    const isOnlineClient = (typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online' && typeof netManager !== 'undefined' && netManager && netManager.isClient);
-    const isPortrait = (typeof window !== 'undefined') && (window.innerHeight > window.innerWidth);
-    const hostIsWidescreen = (typeof GAME_STATE !== 'undefined') && ((GAME_STATE.hostW || 1512) > (GAME_STATE.hostH || 900));
+    const isMobileDevice =
+        typeof isMobile !== 'undefined'
+            ? isMobile
+            : (typeof window !== 'undefined' && window.isMobile) || false;
+    const isOnlineClient =
+        typeof GAME_STATE !== 'undefined' &&
+        GAME_STATE.gameMode === 'online' &&
+        typeof netManager !== 'undefined' &&
+        netManager?.isClient;
+    const isPortrait =
+        typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+    const hostIsWidescreen =
+        typeof GAME_STATE !== 'undefined' &&
+        (GAME_STATE.hostW || 1512) > (GAME_STATE.hostH || 900);
 
-    if (isMobileDevice && isOnlineClient && hostIsWidescreen && isPortrait && !(typeof window !== 'undefined' && window._rotateHintDismissed)) {
+    if (
+        isMobileDevice &&
+        isOnlineClient &&
+        hostIsWidescreen &&
+        isPortrait &&
+        !(typeof window !== 'undefined' && window._rotateHintDismissed)
+    ) {
         hint.style.display = 'flex';
     } else {
         hint.style.display = 'none';
@@ -48,9 +68,19 @@ function resizeCanvas() {
     initCanvasElements();
     if (!canvas) return;
 
-    const rawW = typeof window !== 'undefined' ? (window.innerWidth || document.documentElement.clientWidth || 1512) : 1512;
-    const rawH = typeof window !== 'undefined' ? (window.innerHeight || document.documentElement.clientHeight || 900) : 900;
-    const isOnlineClient = (typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online' && typeof netManager !== 'undefined' && netManager && netManager.isClient);
+    const rawW =
+        typeof window !== 'undefined'
+            ? window.innerWidth || document.documentElement.clientWidth || 1512
+            : 1512;
+    const rawH =
+        typeof window !== 'undefined'
+            ? window.innerHeight || document.documentElement.clientHeight || 900
+            : 900;
+    const isOnlineClient =
+        typeof GAME_STATE !== 'undefined' &&
+        GAME_STATE.gameMode === 'online' &&
+        typeof netManager !== 'undefined' &&
+        netManager?.isClient;
 
     if (isOnlineClient && GAME_STATE.hostW && GAME_STATE.hostH) {
         // Authoritative virtual arena size from the Host
@@ -123,12 +153,18 @@ function resizeCanvas() {
         }
         if (GAME_STATE.hazards) {
             for (const h of GAME_STATE.hazards) {
-                if (h.x !== undefined) h.x = Math.max(15, Math.min(W - 15, h.x));
-                if (h.y !== undefined) h.y = Math.max(15, Math.min(H - 15, h.y));
-                if (h.x1 !== undefined) h.x1 = Math.max(15, Math.min(W - 15, h.x1));
-                if (h.y1 !== undefined) h.y1 = Math.max(15, Math.min(H - 15, h.y1));
-                if (h.x2 !== undefined) h.x2 = Math.max(15, Math.min(W - 15, h.x2));
-                if (h.y2 !== undefined) h.y2 = Math.max(15, Math.min(H - 15, h.y2));
+                if (h.x !== undefined)
+                    h.x = Math.max(15, Math.min(W - 15, h.x));
+                if (h.y !== undefined)
+                    h.y = Math.max(15, Math.min(H - 15, h.y));
+                if (h.x1 !== undefined)
+                    h.x1 = Math.max(15, Math.min(W - 15, h.x1));
+                if (h.y1 !== undefined)
+                    h.y1 = Math.max(15, Math.min(H - 15, h.y1));
+                if (h.x2 !== undefined)
+                    h.x2 = Math.max(15, Math.min(W - 15, h.x2));
+                if (h.y2 !== undefined)
+                    h.y2 = Math.max(15, Math.min(H - 15, h.y2));
             }
         }
         if (GAME_STATE.magneticMines) {
@@ -148,7 +184,14 @@ function resizeCanvas() {
     updateRotateHint();
 
     // If hosting in multiplayer, broadcast updated dimensions to clients immediately
-    if (typeof netManager !== 'undefined' && netManager && netManager.isHost && netManager.connections && netManager.connections.size > 0 && typeof serializeWorldForNetwork === 'function') {
+    if (
+        typeof netManager !== 'undefined' &&
+        netManager &&
+        netManager.isHost &&
+        netManager.connections &&
+        netManager.connections.size > 0 &&
+        typeof serializeWorldForNetwork === 'function'
+    ) {
         netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
     }
 }
@@ -178,27 +221,37 @@ function shadeHex(hex, factor) {
         return hex;
     }
     let h = m[1];
-    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    if (h.length === 3)
+        h = h
+            .split('')
+            .map((c) => c + c)
+            .join('');
     const num = parseInt(h, 16);
-    const comps = [(num >> 16) & 255, (num >> 8) & 255, num & 255].map(v => Math.max(0, Math.min(255, Math.round(v * factor))));
-    const res = '#' + comps.map(v => v.toString(16).padStart(2, '0')).join('');
+    const comps = [(num >> 16) & 255, (num >> 8) & 255, num & 255].map((v) =>
+        Math.max(0, Math.min(255, Math.round(v * factor))),
+    );
+    const res =
+        '#' + comps.map((v) => v.toString(16).padStart(2, '0')).join('');
     _shadeHexCache.set(key, res);
     return res;
 }
 
 function brightenColor(hex, factor = 1.8) {
-    if (!hex || hex[0] !== '#' || hex.length !== 7) return '#dd88ff';
+    if (hex?.[0] !== '#' || hex.length !== 7) return '#dd88ff';
     let r = parseInt(hex.slice(1, 3), 16);
     let g = parseInt(hex.slice(3, 5), 16);
     let b = parseInt(hex.slice(5, 7), 16);
     r = Math.min(255, Math.round(r * factor + 50));
     g = Math.min(255, Math.round(g * factor + 50));
     b = Math.min(255, Math.round(b * factor + 50));
-    return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+    return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
 }
 
 function drawBattlefieldBorder(now) {
-    const isOnlineClient = (GAME_STATE.gameMode === 'online' && typeof netManager !== 'undefined' && netManager && netManager.isClient);
+    const isOnlineClient =
+        GAME_STATE.gameMode === 'online' &&
+        typeof netManager !== 'undefined' &&
+        netManager?.isClient;
     const hostW = GAME_STATE.hostW || W;
     const hostH = GAME_STATE.hostH || H;
 
@@ -223,7 +276,7 @@ function drawBattlefieldBorder(now) {
         if (W > hostW) ctx.rect(hostW, 0, W - hostW, H);
         if (H > hostH) ctx.rect(0, hostH, Math.min(W, hostW), H - hostH);
         ctx.clip();
-        
+
         ctx.strokeStyle = 'rgba(0, 255, 204, 0.05)';
         ctx.lineWidth = 1.5;
         const step = 32;
@@ -237,8 +290,8 @@ function drawBattlefieldBorder(now) {
     }
 
     // 2. Smokey teal glowing border line around [0, 0, hostW, hostH]
-    const pulse = 0.70 + 0.30 * Math.sin(now * 0.004);
-    
+    const pulse = 0.7 + 0.3 * Math.sin(now * 0.004);
+
     // Outer diffuse smoke glow
     ctx.save();
     ctx.strokeStyle = `rgba(0, 230, 200, ${(0.35 * pulse).toFixed(2)})`;
@@ -261,18 +314,36 @@ function drawBattlefieldBorder(now) {
     ctx.lineWidth = 3.5;
     ctx.lineCap = 'square';
     // Top-Left
-    ctx.beginPath(); ctx.moveTo(0, cSize); ctx.lineTo(0, 0); ctx.lineTo(cSize, 0); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, cSize);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(cSize, 0);
+    ctx.stroke();
     // Top-Right
-    ctx.beginPath(); ctx.moveTo(hostW - cSize, 0); ctx.lineTo(hostW, 0); ctx.lineTo(hostW, cSize); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(hostW - cSize, 0);
+    ctx.lineTo(hostW, 0);
+    ctx.lineTo(hostW, cSize);
+    ctx.stroke();
     // Bottom-Left
-    ctx.beginPath(); ctx.moveTo(0, hostH - cSize); ctx.lineTo(0, hostH); ctx.lineTo(cSize, hostH); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, hostH - cSize);
+    ctx.lineTo(0, hostH);
+    ctx.lineTo(cSize, hostH);
+    ctx.stroke();
     // Bottom-Right
-    ctx.beginPath(); ctx.moveTo(hostW - cSize, hostH); ctx.lineTo(hostW, hostH); ctx.lineTo(hostW, hostH - cSize); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(hostW - cSize, hostH);
+    ctx.lineTo(hostW, hostH);
+    ctx.lineTo(hostW, hostH - cSize);
+    ctx.stroke();
 
     ctx.restore();
 }
 
-function drawGems(now = (typeof gameClock !== 'undefined' ? gameClock : performance.now())) {
+function drawGems(
+    now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+) {
     if (!ctx) initCanvasElements();
     if (!ctx) return;
     const gems = GAME_STATE.gems;
@@ -285,7 +356,9 @@ function drawGems(now = (typeof gameClock !== 'undefined' ? gameClock : performa
     for (let i = 0; i < len; i++) {
         const g = gems[i];
         if (g instanceof XPGem) {
-            const gx = g.x, gy = g.y, gr = g.r;
+            const gx = g.x,
+                gy = g.y,
+                gr = g.r;
             ctx.moveTo(gx, gy - gr);
             ctx.lineTo(gx + gr, gy);
             ctx.lineTo(gx, gy + gr);
@@ -301,7 +374,9 @@ function drawGems(now = (typeof gameClock !== 'undefined' ? gameClock : performa
     for (let i = 0; i < len; i++) {
         const g = gems[i];
         if (g instanceof XPGem) {
-            const gx = g.x, gy = g.y, cr = g.r * 0.4;
+            const gx = g.x,
+                gy = g.y,
+                cr = g.r * 0.4;
             ctx.moveTo(gx, gy - cr);
             ctx.lineTo(gx + cr, gy);
             ctx.lineTo(gx, gy + cr);
@@ -329,7 +404,14 @@ function drawParticles() {
         if (typeof p.draw === 'function' && !(p instanceof Particle)) {
             p.draw(); // Custom complex particles (e.g. GoldenPillarParticle, LifestealWisp)
         } else {
-            ctx.globalAlpha = (typeof p.getLifetimePercent === 'function') ? p.getLifetimePercent() : Math.max(0, (p.lifetime !== undefined ? p.lifetime : p.life) / (p.maxLifetime || p.maxLife || 1));
+            ctx.globalAlpha =
+                typeof p.getLifetimePercent === 'function'
+                    ? p.getLifetimePercent()
+                    : Math.max(
+                          0,
+                          (p.lifetime !== undefined ? p.lifetime : p.life) /
+                              (p.maxLifetime || p.maxLife || 1),
+                      );
             ctx.fillStyle = p.color;
             ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
         }
@@ -346,10 +428,16 @@ function draw(now) {
     ctx.lineWidth = 1;
     const grid = 80;
     for (let x = 0; x < W; x += grid) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
     }
     for (let y = 0; y < H; y += grid) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
     }
 
     // Draw Smokey Teal Host Battlefield Border
@@ -359,10 +447,28 @@ function draw(now) {
     for (const p of GAME_STATE.players) {
         if (!p.alive && p.martyrdomAuraEnabled) {
             ctx.save();
-            const baseRadius = 110 * (p.martyrsPresenceEnabled ? (1 + GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT / 100) : 1.0) * ((GAME_STATE.difficulty ? (GAME_STATE.difficulty.difficultyMultiplier || 1.0) : 1.0) / 2 + 0.5);
+            const baseRadius =
+                110 *
+                (p.martyrsPresenceEnabled
+                    ? 1 +
+                      GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT /
+                          100
+                    : 1.0) *
+                ((GAME_STATE.difficulty
+                    ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
+                    : 1.0) /
+                    2 +
+                    0.5);
             const pulse = 1 + Math.sin(now * 0.005) * 0.06;
             const radius = baseRadius * pulse;
-            const grad = ctx.createRadialGradient(p.x, p.y, 5, p.x, p.y, radius);
+            const grad = ctx.createRadialGradient(
+                p.x,
+                p.y,
+                5,
+                p.x,
+                p.y,
+                radius,
+            );
             grad.addColorStop(0, 'rgba(255, 215, 0, 0.25)'); // Golden center
             grad.addColorStop(0.7, 'rgba(255, 223, 0, 0.1)'); // Soft fade
             grad.addColorStop(1, 'rgba(255, 255, 255, 0)'); // Fully transparent edge
@@ -370,7 +476,7 @@ function draw(now) {
             ctx.beginPath();
             ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
             ctx.fill();
-            
+
             ctx.strokeStyle = 'rgba(255, 215, 0, 0.4)';
             ctx.lineWidth = 1.5;
             ctx.setLineDash([4, 4]);
@@ -389,12 +495,17 @@ function draw(now) {
     drawGems(now);
 
     // XP Tutorial arrow: point at the very first gem until it is picked up
-    if (GAME_STATE.firstXpGem && GAME_STATE.firstXpGem.alive) {
+    if (GAME_STATE.firstXpGem?.alive) {
         const gem = GAME_STATE.firstXpGem;
         // Find closest living player to base the arrow origin on
-        let playerX = W / 2, playerY = H / 2;
+        let playerX = W / 2,
+            playerY = H / 2;
         for (const p of GAME_STATE.players) {
-            if (p.alive) { playerX = p.x; playerY = p.y; break; }
+            if (p.alive) {
+                playerX = p.x;
+                playerY = p.y;
+                break;
+            }
         }
         const adx = gem.x - playerX;
         const ady = gem.y - playerY;
@@ -420,10 +531,18 @@ function draw(now) {
             // Arrow triangle head
             ctx.beginPath();
             ctx.moveTo(arrowTipX, arrowTipY);
-            ctx.lineTo(tailX + Math.cos(Math.atan2(ady, adx) + Math.PI - arrowSpread) * 16,
-                       tailY + Math.sin(Math.atan2(ady, adx) + Math.PI - arrowSpread) * 16);
-            ctx.lineTo(tailX + Math.cos(Math.atan2(ady, adx) + Math.PI + arrowSpread) * 16,
-                       tailY + Math.sin(Math.atan2(ady, adx) + Math.PI + arrowSpread) * 16);
+            ctx.lineTo(
+                tailX +
+                    Math.cos(Math.atan2(ady, adx) + Math.PI - arrowSpread) * 16,
+                tailY +
+                    Math.sin(Math.atan2(ady, adx) + Math.PI - arrowSpread) * 16,
+            );
+            ctx.lineTo(
+                tailX +
+                    Math.cos(Math.atan2(ady, adx) + Math.PI + arrowSpread) * 16,
+                tailY +
+                    Math.sin(Math.atan2(ady, adx) + Math.PI + arrowSpread) * 16,
+            );
             ctx.closePath();
             ctx.fill();
 
@@ -443,7 +562,7 @@ function draw(now) {
     }
     drawParticles();
     for (const e of GAME_STATE.enemies) {
-        if (e && e.alive && e.hp > 0) e.draw(now);
+        if (e?.alive && e.hp > 0) e.draw(now);
     }
     for (const p of GAME_STATE.projectiles) p.draw(now);
     for (const ep of GAME_STATE.enemyProjectiles) ep.draw();
@@ -455,7 +574,11 @@ function draw(now) {
     for (const key of Object.keys(BOSS_CONFIGS)) {
         const cfg = BOSS_CONFIGS[key];
         const preWarningStart = cfg.startMs - 5000;
-        if (GAME_STATE.elapsed >= preWarningStart && GAME_STATE.elapsed < cfg.startMs && !GAME_STATE.completedBosses.has(cfg.id)) {
+        if (
+            GAME_STATE.elapsed >= preWarningStart &&
+            GAME_STATE.elapsed < cfg.startMs &&
+            !GAME_STATE.completedBosses.has(cfg.id)
+        ) {
             ctx.save();
             ctx.textAlign = 'center';
             ctx.fillStyle = '#ff1100';
@@ -466,17 +589,29 @@ function draw(now) {
                 ctx.fillStyle = '#ffaa00';
                 ctx.fillText('PREPARE FOR BOSS BATTLE', W / 2, H / 2 + 20);
             } else if (cfg.id === 'horde') {
-                ctx.fillText('WARNING: HORDE APPROACHING...', W / 2, H / 2 - 20);
+                ctx.fillText(
+                    'WARNING: HORDE APPROACHING...',
+                    W / 2,
+                    H / 2 - 20,
+                );
                 ctx.font = '20px sans-serif';
                 ctx.fillStyle = '#ffaa00';
                 ctx.fillText('PREPARE YOUR DEFENSES', W / 2, H / 2 + 20);
             } else if (cfg.id === 'felhound') {
-                ctx.fillText('WARNING: HUNGRY FELHOUND APPROACHING...', W / 2, H / 2 - 20);
+                ctx.fillText(
+                    'WARNING: HUNGRY FELHOUND APPROACHING...',
+                    W / 2,
+                    H / 2 - 20,
+                );
                 ctx.font = '20px sans-serif';
                 ctx.fillStyle = '#ffaa00';
                 ctx.fillText('PREPARE FOR BOSS BATTLE', W / 2, H / 2 + 20);
             } else if (cfg.id === 'behemoth') {
-                ctx.fillText('WARNING: IMMINENT DEATH APPROACHING...', W / 2, H / 2 - 20);
+                ctx.fillText(
+                    'WARNING: IMMINENT DEATH APPROACHING...',
+                    W / 2,
+                    H / 2 - 20,
+                );
                 ctx.font = '20px sans-serif';
                 ctx.fillStyle = '#76ff03';
                 ctx.fillText('PREPARE FOR BOSS BATTLE', W / 2, H / 2 + 20);
@@ -495,7 +630,10 @@ function draw(now) {
         if (bossId === 'horde') {
             const hordeElapsed = now - GAME_STATE.hordeStartTime;
             if (hordeElapsed >= 52000 && hordeElapsed < 57000) {
-                const secsLeft = Math.max(1, Math.ceil((57000 - hordeElapsed) / 1000));
+                const secsLeft = Math.max(
+                    1,
+                    Math.ceil((57000 - hordeElapsed) / 1000),
+                );
                 ctx.font = 'bold 32px sans-serif';
                 ctx.fillStyle = '#ffaa00';
                 ctx.fillText(`HORDE ENDS IN ${secsLeft}...`, W / 2, 45);
@@ -509,14 +647,19 @@ function draw(now) {
     }
 
     // 3. Upgrade menu, countdown & pause menu focus: darken canvas background and highlight active players with fat arrows
-    if (GAME_STATE.current === STATES.LEVEL_UP || GAME_STATE.current === STATES.WEAPON_SELECT || GAME_STATE.current === STATES.COUNTDOWN || GAME_STATE.current === STATES.PAUSED) {
+    if (
+        GAME_STATE.current === STATES.LEVEL_UP ||
+        GAME_STATE.current === STATES.WEAPON_SELECT ||
+        GAME_STATE.current === STATES.COUNTDOWN ||
+        GAME_STATE.current === STATES.PAUSED
+    ) {
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
         ctx.fillRect(0, 0, W, H);
         ctx.restore();
 
         for (const p of GAME_STATE.players) {
-            if (!p || !p.alive || p.disconnected || p.kicked) continue;
+            if (!p?.alive || p.disconnected || p.kicked) continue;
 
             // Soft radial spotlight behind player
             ctx.save();
@@ -541,7 +684,7 @@ function draw(now) {
 }
 
 function drawPlayerFocusArrow(p, now) {
-    if (!p || !p.alive || p.disconnected || p.kicked) return;
+    if (!p?.alive || p.disconnected || p.kicked) return;
     const bob = Math.sin(performance.now() * 0.008) * 6;
     const pointDown = p.y >= 85;
     const headWidth = 32;
@@ -565,12 +708,22 @@ function drawPlayerFocusArrow(p, now) {
 
     // 1. Singleplayer: never display any weapon/upgrade badge over player.
     // 2. Multiplayer: display starting weapon once picked in lobby, then display chosen upgrade during level up.
-    const isMultiplayer = (GAME_STATE.gameMode === 'local' || GAME_STATE.gameMode === 'online' || GAME_STATE.players.length > 1);
+    const isMultiplayer =
+        GAME_STATE.gameMode === 'local' ||
+        GAME_STATE.gameMode === 'online' ||
+        GAME_STATE.players.length > 1;
     let badgeText = null;
     if (isMultiplayer) {
-        if (GAME_STATE.current === STATES.WEAPON_SELECT && p.selectedWeaponLabel) {
+        if (
+            GAME_STATE.current === STATES.WEAPON_SELECT &&
+            p.selectedWeaponLabel
+        ) {
             badgeText = p.selectedWeaponLabel;
-        } else if (GAME_STATE.current === STATES.LEVEL_UP && p.currentLevelUpgradeName) {
+        } else if (
+            (GAME_STATE.current === STATES.LEVEL_UP ||
+                GAME_STATE.current === STATES.COUNTDOWN) &&
+            p.currentLevelUpgradeName
+        ) {
             badgeText = p.currentLevelUpgradeName;
         }
     }
@@ -603,7 +756,7 @@ function drawPlayerFocusArrow(p, now) {
         ctx.stroke();
 
         // Player Label Pill above arrow
-        const labelText = `P${p.index + 1}`;
+        const labelText = p.name || `P${p.index + 1}`;
         ctx.font = 'bold 13px sans-serif';
         const textW = ctx.measureText(labelText).width;
         const pillW = textW + 14;
@@ -621,6 +774,8 @@ function drawPlayerFocusArrow(p, now) {
         ctx.textBaseline = 'middle';
         ctx.fillText(labelText, tipX, pillY + pillH / 2);
 
+        let highestY = pillY;
+
         // Weapon/Upgrade label badge above the player pill
         if (badgeText) {
             ctx.font = 'bold 12px sans-serif';
@@ -630,16 +785,41 @@ function drawPlayerFocusArrow(p, now) {
             const wPillX = tipX - wPillW / 2;
             const wPillY = pillY - wPillH - 4;
 
-            ctx.shadowColor = p.color;
-            ctx.shadowBlur = 8;
             ctx.fillStyle = 'rgba(12, 12, 18, 0.95)';
             ctx.strokeStyle = p.color;
             ctx.lineWidth = 2;
             drawPill(wPillX, wPillY, wPillW, wPillH, 6);
 
-            ctx.shadowBlur = 0;
             ctx.fillStyle = '#ffffff';
             ctx.fillText(badgeText, tipX, wPillY + wPillH / 2);
+            highestY = wPillY;
+        }
+
+        // Steer buttons key cluster during weapon select (all in local co-op, controlling player only in online)
+        const isLocalControllingPlayer =
+            GAME_STATE.gameMode === 'online' &&
+            (typeof netManager !== 'undefined' &&
+            netManager &&
+            netManager.localPlayerIndex !== undefined
+                ? p.index === netManager.localPlayerIndex
+                : p.index === 0);
+        const showKeyCluster =
+            GAME_STATE.current === STATES.WEAPON_SELECT &&
+            (GAME_STATE.gameMode === 'local' || isLocalControllingPlayer);
+        if (showKeyCluster) {
+            const keySize = 16;
+            const gap = 3;
+            const clusterH = keySize * 2 + gap;
+            const clusterTopY = highestY - clusterH - 6;
+            drawKeyboardKeyCluster(
+                ctx,
+                tipX,
+                clusterTopY,
+                p.index,
+                p.color,
+                keySize,
+                gap,
+            );
         }
     } else {
         // Point UP from below player when player is near the top edge
@@ -669,7 +849,7 @@ function drawPlayerFocusArrow(p, now) {
         ctx.stroke();
 
         // Player Label Pill below arrow
-        const labelText = `P${p.index + 1}`;
+        const labelText = p.name || `P${p.index + 1}`;
         ctx.font = 'bold 13px sans-serif';
         const textW = ctx.measureText(labelText).width;
         const pillW = textW + 14;
@@ -687,6 +867,8 @@ function drawPlayerFocusArrow(p, now) {
         ctx.textBaseline = 'middle';
         ctx.fillText(labelText, tipX, pillY + pillH / 2);
 
+        let lowestY = pillY + pillH;
+
         // Weapon/Upgrade label badge below the player pill
         if (badgeText) {
             ctx.font = 'bold 12px sans-serif';
@@ -696,19 +878,149 @@ function drawPlayerFocusArrow(p, now) {
             const wPillX = tipX - wPillW / 2;
             const wPillY = pillY + pillH + 4;
 
-            ctx.shadowColor = p.color;
-            ctx.shadowBlur = 8;
             ctx.fillStyle = 'rgba(12, 12, 18, 0.95)';
             ctx.strokeStyle = p.color;
             ctx.lineWidth = 2;
             drawPill(wPillX, wPillY, wPillW, wPillH, 6);
 
-            ctx.shadowBlur = 0;
             ctx.fillStyle = '#ffffff';
             ctx.fillText(badgeText, tipX, wPillY + wPillH / 2);
+            lowestY = wPillY + wPillH;
+        }
+
+        // Steer buttons key cluster during weapon select (all in local co-op, controlling player only in online)
+        const isLocalControllingPlayer =
+            GAME_STATE.gameMode === 'online' &&
+            (typeof netManager !== 'undefined' &&
+            netManager &&
+            netManager.localPlayerIndex !== undefined
+                ? p.index === netManager.localPlayerIndex
+                : p.index === 0);
+        const showKeyCluster =
+            GAME_STATE.current === STATES.WEAPON_SELECT &&
+            (GAME_STATE.gameMode === 'local' || isLocalControllingPlayer);
+        if (showKeyCluster) {
+            const keySize = 16;
+            const gap = 3;
+            const clusterTopY = lowestY + 6;
+            drawKeyboardKeyCluster(
+                ctx,
+                tipX,
+                clusterTopY,
+                p.index,
+                p.color,
+                keySize,
+                gap,
+            );
         }
     }
     ctx.restore();
+}
+
+function drawKeyboardKeyCluster(
+    ctx,
+    centerX,
+    topY,
+    playerIndex,
+    color,
+    keySize = 16,
+    gap = 3,
+) {
+    const keys =
+        typeof getPlayerKeyLabels === 'function'
+            ? getPlayerKeyLabels(playerIndex)
+            : { up: 'W', left: 'A', down: 'S', right: 'D' };
+
+    // Dynamic feedback if key is currently held down
+    const activeKeys =
+        typeof window !== 'undefined' && window.keys ? window.keys : null;
+    const isPressed = (rawKey) =>
+        Boolean(activeKeys && rawKey && activeKeys[rawKey]);
+
+    ctx.save();
+    ctx.font = `bold ${Math.round(keySize * 0.58)}px monospace, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Row 1: Up key (centered)
+    const upX = centerX - keySize / 2;
+    const upY = topY;
+    drawKeyCapCanvas(
+        ctx,
+        upX,
+        upY,
+        keySize,
+        keys.up,
+        color,
+        isPressed(keys.rawUp),
+    );
+
+    // Row 2: Left, Down, Right keys
+    const row2Y = topY + keySize + gap;
+    const downX = centerX - keySize / 2;
+    const leftX = downX - keySize - gap;
+    const rightX = downX + keySize + gap;
+
+    drawKeyCapCanvas(
+        ctx,
+        leftX,
+        row2Y,
+        keySize,
+        keys.left,
+        color,
+        isPressed(keys.rawLeft),
+    );
+    drawKeyCapCanvas(
+        ctx,
+        downX,
+        row2Y,
+        keySize,
+        keys.down,
+        color,
+        isPressed(keys.rawDown),
+    );
+    drawKeyCapCanvas(
+        ctx,
+        rightX,
+        row2Y,
+        keySize,
+        keys.right,
+        color,
+        isPressed(keys.rawRight),
+    );
+
+    ctx.restore();
+}
+
+function drawKeyCapCanvas(ctx, x, y, size, label, color, isPressed = false) {
+    if (isPressed) {
+        ctx.fillStyle = color;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.8;
+    } else {
+        ctx.fillStyle = 'rgba(14, 16, 24, 0.95)';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.4;
+    }
+
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(x, y, size, size, 3);
+    } else {
+        ctx.rect(x, y, size, size);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // Top highlight bevel if not pressed
+    if (!isPressed) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+        ctx.fillRect(x + 2, y + 2, size - 4, 1.5);
+    }
+
+    // Key label text
+    ctx.fillStyle = isPressed ? '#0c0e14' : color;
+    ctx.fillText(label, x + size / 2, y + size / 2 + 0.5);
 }
 
 if (typeof window !== 'undefined') {
@@ -726,6 +1038,8 @@ if (typeof window !== 'undefined') {
     window.drawGems = drawGems;
     window.drawParticles = drawParticles;
     window.drawPlayerFocusArrow = drawPlayerFocusArrow;
+    window.drawKeyboardKeyCluster = drawKeyboardKeyCluster;
+    window.drawKeyCapCanvas = drawKeyCapCanvas;
     window.draw = draw;
 }
 
@@ -745,6 +1059,8 @@ if (typeof module !== 'undefined' && module.exports) {
         drawGems,
         drawParticles,
         drawPlayerFocusArrow,
-        draw
+        drawKeyboardKeyCluster,
+        drawKeyCapCanvas,
+        draw,
     };
 }

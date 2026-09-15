@@ -20,7 +20,9 @@ class Unit extends Entity {
     }
 
     getHpPercent() {
-        return this.maxHp > 0 ? Math.max(0, Math.min(1, this.hp / this.maxHp)) : 0;
+        return this.maxHp > 0
+            ? Math.max(0, Math.min(1, this.hp / this.maxHp))
+            : 0;
     }
 
     heal(amount) {
@@ -49,14 +51,21 @@ class Unit extends Entity {
     onDeath(now, source) {}
 
     // Static Query Helpers
-    static findClosest(source, candidates = (typeof GAME_STATE !== 'undefined' ? GAME_STATE.enemies : []), maxRange = Infinity, filterFn = null) {
+    static findClosest(
+        source,
+        candidates = typeof GAME_STATE !== 'undefined'
+            ? GAME_STATE.enemies
+            : [],
+        maxRange = Infinity,
+        filterFn = null,
+    ) {
         if (!source || !candidates) return null;
         let closest = null;
         let minD2 = maxRange === Infinity ? Infinity : maxRange * maxRange;
         const count = candidates.length;
         for (let i = 0; i < count; i++) {
             const u = candidates[i];
-            if (!u || !u.isTargetable()) continue;
+            if (!u?.isTargetable()) continue;
             if (filterFn && !filterFn(u)) continue;
             const dx = u.x - source.x;
             const dy = u.y - source.y;
@@ -69,7 +78,13 @@ class Unit extends Entity {
         return closest;
     }
 
-    static findStrongestClosest(px, py, candidates = (typeof GAME_STATE !== 'undefined' ? GAME_STATE.enemies : [])) {
+    static findStrongestClosest(
+        px,
+        py,
+        candidates = typeof GAME_STATE !== 'undefined'
+            ? GAME_STATE.enemies
+            : [],
+    ) {
         if (!candidates) return null;
         let strongest = null;
         let highestMaxHp = -Infinity;
@@ -77,7 +92,7 @@ class Unit extends Entity {
         const count = candidates.length;
         for (let i = 0; i < count; i++) {
             const e = candidates[i];
-            if (!e || !e.isTargetable()) continue;
+            if (!e?.isTargetable()) continue;
             const dx = e.x - px;
             const dy = e.y - py;
             const d2 = dx * dx + dy * dy;
@@ -124,6 +139,6 @@ if (typeof module !== 'undefined' && module.exports) {
         Unit,
         isTargetable,
         isDamageable,
-        getStrongestClosestEnemy
+        getStrongestClosestEnemy,
     };
 }
