@@ -1,4 +1,24 @@
+# Dependencies
+node_modules/
+
+# OS Metadata
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor & IDE noise
+.idea/
+*.swp
+*.swo
+
+# Personal Notes & Agent Configs
 .agents/
 Game specification
 TODO
-.DS_Store

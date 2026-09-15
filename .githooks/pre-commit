@@ -1,0 +1,19 @@
+#!/bin/sh
+# Pre-commit hook: Run Biome linter on staged files
+
+# 1. Try native platform binary if installed in node_modules
+for bin in ./node_modules/@biomejs/cli-*/biome; do
+    if [ -x "$bin" ]; then
+        "$bin" lint --staged --no-errors-on-unmatched
+        exit $?
+    fi
+done
+
+# 2. Fall back to npx
+if command -v npx >/dev/null 2>&1; then
+    npx @biomejs/biome lint --staged --no-errors-on-unmatched
+    exit $?
+fi
+
+echo "[pre-commit] Biome binary not found. Skipping lint."
+exit 0

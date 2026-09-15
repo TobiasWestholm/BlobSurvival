@@ -1,0 +1,12 @@
+{
+    "devDependencies": {
+        "@biomejs/biome": "2.5.12"
+    },
+    "scripts": {
+        "lint": "biome lint .",
+        "format": "biome format .",
+        "check": "biome check .",
+        "fix": "biome check --write .",
+        "prepare": "git config core.hooksPath .githooks"
+    }
+}
