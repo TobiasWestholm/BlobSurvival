@@ -256,6 +256,7 @@ class Enemy extends Unit {
         let s = this.speed;
         let isAuraSlowed = false;
         for (const p of GAME_STATE.players) {
+            if (!p || p.disconnected) continue;
             if (!p.alive && p.martyrdomAuraEnabled) {
                 const auraRadius =
                     110 *
@@ -302,7 +303,7 @@ class Enemy extends Unit {
         if (this.isBoss()) {
             this.turretTarget = null;
             for (const p of GAME_STATE.players) {
-                if (!p.alive || p.spawnInvuln > 0) continue;
+                if (!p?.isTargetable()) continue;
                 const dx = p.x - this.x,
                     dy = p.y - this.y;
                 const d2 = dx * dx + dy * dy;
@@ -331,15 +332,13 @@ class Enemy extends Unit {
             if (
                 GAME_STATE.players.some(
                     (p) =>
-                        p.alive &&
-                        p.martyrsPresenceEnabled &&
-                        p.spawnInvuln <= 0,
+                        p?.isTargetable() &&
+                        p.martyrsPresenceEnabled,
                 )
             ) {
                 for (const p of GAME_STATE.players) {
                     if (
-                        !p.alive ||
-                        p.spawnInvuln > 0 ||
+                        !p?.isTargetable() ||
                         !p.martyrsPresenceEnabled
                     )
                         continue;
@@ -404,7 +403,7 @@ class Enemy extends Unit {
                     targetIsViperAttractor = true;
                 } else {
                     for (const p of GAME_STATE.players) {
-                        if (!p.alive || p.spawnInvuln > 0) continue;
+                        if (!p?.isTargetable()) continue;
                         const dx = p.x - this.x,
                             dy = p.y - this.y;
                         const d2 = dx * dx + dy * dy;
@@ -828,7 +827,7 @@ class MeteorEnemy extends Enemy {
             new BurningSurface(this.x, this.landY, this.blastRadius, now),
         );
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const dx = p.x - this.x,
                 dy = p.y - this.y;
             if (
@@ -1047,7 +1046,7 @@ class BanelingEnemy extends Enemy {
 
         // Damage players in radius
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const dx = p.x - this.x;
             const dy = p.y - this.y;
             if (
@@ -1119,7 +1118,7 @@ class BanelingEnemy extends Enemy {
         if (this.burrowed) {
             const triggerR = this.burrowTriggerRadius || 42;
             for (const p of GAME_STATE.players) {
-                if (!p.alive) continue;
+                if (!p?.isActive()) continue;
                 const maxDist = triggerR + p.r;
                 if (this.distanceToSq(p) <= maxDist * maxDist) {
                     this.detonateBaneling(now);
@@ -2578,7 +2577,7 @@ class HellionEnemy extends Enemy {
 
                 // Instant damage to all players in line of fire
                 for (const p of GAME_STATE.players) {
-                    if (!p.alive || p.isOnIce()) continue;
+                    if (!p?.isActive() || p.isOnIce()) continue;
                     if (
                         pointToSegmentDistance(
                             p.x,
@@ -2841,7 +2840,7 @@ class ShieldBearerEnemy extends Enemy {
         const sArc = this.shieldHalfArc || Math.PI * 0.5;
 
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const pdx = p.x - this.x,
                 pdy = p.y - this.y;
             const pdist = Math.hypot(pdx, pdy);
@@ -3108,7 +3107,7 @@ class ViperEnemy extends Enemy {
             // Check collision with all alive players
             let caughtPlayer = null;
             for (const p of GAME_STATE.players) {
-                if (!p.alive) continue;
+                if (!p?.isActive()) continue;
                 const maxDist = p.r + 10;
                 const dx = p.x - this.tongueTipX,
                     dy = p.y - this.tongueTipY;
@@ -3217,7 +3216,7 @@ class ViperEnemy extends Enemy {
                 let bestPlayer = null,
                     bestDistSq = Infinity;
                 for (const p of GAME_STATE.players) {
-                    if (!p.alive) continue;
+                    if (!p?.isActive()) continue;
                     const pdSq = this.distanceToSq(p);
                     if (pdSq < bestDistSq) {
                         bestDistSq = pdSq;
@@ -3249,7 +3248,7 @@ class ViperEnemy extends Enemy {
                 let bestPlayer = null,
                     bestDistSq = Infinity;
                 for (const p of GAME_STATE.players) {
-                    if (!p.alive) continue;
+                    if (!p?.isActive()) continue;
                     const pdSq = this.distanceToSq(p);
                     if (pdSq < bestDistSq) {
                         bestDistSq = pdSq;
@@ -3675,7 +3674,7 @@ class OctopusBoss extends BossEnemy {
             new MineExplosion(this.x, this.y, 220, now, null),
         );
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const dx = p.x - this.x,
                 dy = p.y - this.y;
             if (dx * dx + dy * dy < (220 + p.r) * (220 + p.r)) {
@@ -3849,7 +3848,7 @@ class OctopusBoss extends BossEnemy {
 
                 // Check all players caught in the currently extended lash segment
                 for (const p of GAME_STATE.players) {
-                    if (!p.alive || t.hitUnits.has(p)) continue;
+                    if (!p?.isActive() || t.hitUnits.has(p)) continue;
                     const dist = distToSeg(
                         p.x,
                         p.y,
@@ -3920,7 +3919,7 @@ class OctopusBoss extends BossEnemy {
         // Contact damage with the boss body (deals damage to all units)
         // 1. Players
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const pdx = p.x - this.x,
                 pdy = p.y - this.y;
             if (pdx * pdx + pdy * pdy < (p.r + this.r) * (p.r + this.r)) {
@@ -4124,11 +4123,11 @@ class FelhoundBoss extends BossEnemy {
         }
 
         // --- Targeting: pick closest alive player, re-evaluate every 2s ---
-        if (!this.targetPlayer?.alive || now >= this.retargetCooldown) {
+        if (!this.targetPlayer?.isTargetable() || now >= this.retargetCooldown) {
             let bestDist = Infinity,
                 bestPlayer = null;
             for (const p of GAME_STATE.players) {
-                if (!p.alive) continue;
+                if (!p?.isTargetable()) continue;
                 const dx = p.x - this.x,
                     dy = p.y - this.y;
                 const d2 = dx * dx + dy * dy;
@@ -4221,7 +4220,7 @@ class FelhoundBoss extends BossEnemy {
 
         // Contact damage to all players
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const pdx = p.x - this.x,
                 pdy = p.y - this.y;
             if (pdx * pdx + pdy * pdy < (p.r + this.r) * (p.r + this.r)) {
@@ -4326,9 +4325,9 @@ class FelhoundBoss extends BossEnemy {
             ctx.stroke();
 
             // Target hunting direction
-            const targetP = this.targetPlayer?.alive
+            const targetP = this.targetPlayer?.isTargetable()
                 ? this.targetPlayer
-                : GAME_STATE.players.find((p) => p.alive);
+                : GAME_STATE.players.find((p) => p?.isTargetable());
             const huntAngle = targetP
                 ? Math.atan2(targetP.y - this.y, targetP.x - this.x)
                 : Math.atan2(this.vy, this.vx) || 0;
@@ -4596,7 +4595,7 @@ class BehemothBoss extends BossEnemy {
 
     launchBileMortars(now) {
         // Launches 12 acid mortar pods with broad spread across players and arena
-        const alivePlayers = GAME_STATE.players.filter((p) => p.alive);
+        const alivePlayers = GAME_STATE.players.filter((p) => p?.isTargetable());
         if (alivePlayers.length === 0) return;
 
         const podCount = 12;
@@ -4638,7 +4637,7 @@ class BehemothBoss extends BossEnemy {
 
         // Damage and knock back players in frontal arc
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const maxDist = cleaveRange + p.r;
             if (this.distanceToSq(p) <= maxDist * maxDist) {
                 const dx = p.x - this.x,
@@ -4710,7 +4709,7 @@ class BehemothBoss extends BossEnemy {
 
         // Damage and launch players airborne from the Nydus Worm eruption bite & shockwave
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const maxDist = nydusEruptRadius + p.r;
             const dSq = this.distanceToSq(p);
             if (dSq <= maxDist * maxDist) {
@@ -5169,7 +5168,7 @@ class BehemothBoss extends BossEnemy {
 
             // Damage players in direct path
             for (const p of GAME_STATE.players) {
-                if (!p.alive) continue;
+                if (!p?.isActive()) continue;
                 const maxDist = this.r + p.r + 10;
                 if (this.distanceToSq(p) <= maxDist * maxDist) {
                     p.takeDamage(90, now, this);
@@ -5251,7 +5250,7 @@ class BehemothBoss extends BossEnemy {
             // Check collision with alive players
             let caughtPlayer = null;
             for (const p of GAME_STATE.players) {
-                if (!p.alive) continue;
+                if (!p?.isActive()) continue;
                 const maxDist = p.r + 16;
                 const dx = p.x - this.tongueTipX,
                     dy = p.y - this.tongueTipY;
@@ -5397,7 +5396,7 @@ class BehemothBoss extends BossEnemy {
             const cos = Math.cos(-this.wallPieceAngle);
             const sin = Math.sin(-this.wallPieceAngle);
             for (const p of GAME_STATE.players) {
-                if (!p.alive) continue;
+                if (!p?.isActive()) continue;
                 const dx = p.x - this.wallPieceX,
                     dy = p.y - this.wallPieceY;
                 const lx = cos * dx - sin * dy;

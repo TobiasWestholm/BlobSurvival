@@ -62,7 +62,7 @@ class Collectible extends Entity {
             this,
             GAME_STATE.players,
             range,
-            filterFn,
+            (p) => p?.isActive?.() && (!filterFn || filterFn(p)),
         );
         if (!player) return null;
 

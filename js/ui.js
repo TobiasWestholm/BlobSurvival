@@ -101,11 +101,12 @@ function renderLobbyWeaponPanels() {
         }
         if (lobbyStartBtn) {
             lobbyStartBtn.style.display = 'block';
+            const activePlayers = (GAME_STATE.players || []).filter(
+                (p) => p && !p.disconnected,
+            );
             const allReady =
-                GAME_STATE.players.length > 0 &&
-                GAME_STATE.players
-                    .filter((p) => p && !p.disconnected)
-                    .every((p) => p?.selectedWeapon);
+                activePlayers.length > 0 &&
+                activePlayers.every((p) => p?.selectedWeapon);
             lobbyStartBtn.disabled = !allReady;
             lobbyStartBtn.onclick = () => {
                 lobbyStartBtn.style.display = 'none';
@@ -516,23 +517,32 @@ function selectStartingWeapon(player, weaponId, weaponLabel, panel) {
         if (netManager.isClient) {
             netManager.sendWeaponSelection(weaponId);
         } else if (netManager.isHost) {
+            const activePlayers = GAME_STATE.players.filter(
+                (p) => p && !p.disconnected,
+            );
+            const allReady =
+                activePlayers.length > 0 &&
+                activePlayers.every((p) => p.selectedWeapon);
             netManager.broadcastLobbyState(
-                GAME_STATE.players.map((p) => ({
+                activePlayers.map((p) => ({
                     index: p.index,
                     name: p.name || `Player ${p.index + 1}`,
                     selectedWeapon: p.selectedWeapon,
                     selectedWeaponLabel: p.selectedWeaponLabel,
                 })),
-                GAME_STATE.players.every((p) => p?.selectedWeapon),
+                allReady,
             );
         }
     }
 
     const lobbyStartBtn = document.getElementById('lobbyStartBtn');
     if (lobbyStartBtn) {
-        lobbyStartBtn.disabled = !GAME_STATE.players.every(
-            (p) => p?.selectedWeapon,
+        const activePlayers = (GAME_STATE.players || []).filter(
+            (p) => p && !p.disconnected,
         );
+        lobbyStartBtn.disabled =
+            activePlayers.length === 0 ||
+            !activePlayers.every((p) => p.selectedWeapon);
     }
 }
 
@@ -714,75 +724,25 @@ function kickPlayerByHost(playerIndex) {
     if (typeof recalculateDynamicDifficulty === 'function')
         recalculateDynamicDifficulty();
 
+    let pickWasPending = false;
     if (panel) {
         panel.innerHTML = `<h3 class="panel-title" style="color: #ff4444;">Player ${playerIndex + 1}</h3><div style="color: #ff6666; font-size: 13px; margin-top: 10px; font-weight: bold;">✕ Kicked by Host</div>`;
         panel.classList.add('chosen');
         if (panel.dataset.pickDone !== 'true') {
             panel.dataset.pickDone = 'true';
-            GAME_STATE.pendingPicks--;
+            pickWasPending = true;
         }
+    } else if (p && !p._virtualPickDone) {
+        pickWasPending = true;
+    }
+    if (p) p._virtualPickDone = true;
+
+    if (pickWasPending) {
+        GAME_STATE.pendingPicks--;
     }
 
     if (GAME_STATE.pendingPicks <= 0) {
-        if (kickTimeoutId) {
-            clearTimeout(kickTimeoutId);
-            kickTimeoutId = null;
-        }
-        for (const pl of GAME_STATE.players) {
-            if (pl) {
-                pl.currentUpgradeOptions = null;
-            }
-        }
-        const layer = document.getElementById('levelUpLayer');
-        if (layer) layer.classList.remove('show');
-        GAME_STATE.pendingLevels--;
-        if (GAME_STATE.pendingLevels > 0) {
-            for (const pl of GAME_STATE.players) {
-                if (pl) pl.currentLevelUpgradeName = null;
-            }
-            if (
-                GAME_STATE.gameMode === 'online' &&
-                typeof netManager !== 'undefined' &&
-                netManager.isHost
-            ) {
-                for (const pl of GAME_STATE.players) {
-                    if (
-                        pl &&
-                        !pl.disconnected &&
-                        !pl.kicked &&
-                        typeof pickThreeFor === 'function'
-                    ) {
-                        pl.currentUpgradeOptions = pickThreeFor(pl);
-                    }
-                }
-                const upgradesMap = {};
-                for (const pl of GAME_STATE.players) {
-                    if (pl?.currentUpgradeOptions) {
-                        upgradesMap[pl.index] = pl.currentUpgradeOptions.map(
-                            (u) => u.id,
-                        );
-                    }
-                }
-                netManager.broadcast({
-                    type: 'LEVEL_UP_START',
-                    pendingLevels: GAME_STATE.pendingLevels,
-                    upgradesMap: upgradesMap,
-                });
-            }
-            beginSelectionRound();
-        } else {
-            if (
-                GAME_STATE.gameMode === 'online' &&
-                typeof netManager !== 'undefined' &&
-                netManager.isHost
-            ) {
-                netManager.broadcast({
-                    type: 'START_GAME_COUNTDOWN',
-                    isNewGame: false,
-                });
-            }
-            startCountdown(false);
-        }
+        finishSelectionRound();
     }
 }
 
@@ -1105,6 +1065,8 @@ function startCountdown(isNewGame = false) {
     if (layer) layer.classList.remove('show');
     const tipEl = document.getElementById('tipText');
     if (tipEl) tipEl.style.display = 'none';
+    const hostOverlay = document.getElementById('hostPauseOverlay');
+    if (hostOverlay) hostOverlay.style.display = 'none';
     stopTipRotation();
     const uiLayer = document.querySelector('.ui-layer');
     if (uiLayer) uiLayer.style.display = 'block';
@@ -1383,8 +1345,11 @@ function gameOver() {
 
     const m = document.getElementById('gameOverModal');
     const s = document.getElementById('gameOverStats');
+    const playerCount =
+        (GAME_STATE.players || []).filter((p) => p && !p.disconnected).length ||
+        1;
     const bestScore = getBestScore(
-        GAME_STATE.players.length,
+        playerCount,
         GAME_STATE.difficulty ? GAME_STATE.difficulty.name : 'normal',
     );
 
@@ -1428,8 +1393,11 @@ function showVictory() {
 
     const m = document.getElementById('victoryModal');
     const s = document.getElementById('victoryStats');
+    const playerCount =
+        (GAME_STATE.players || []).filter((p) => p && !p.disconnected).length ||
+        1;
     const bestScore = getBestScore(
-        GAME_STATE.players.length,
+        playerCount,
         GAME_STATE.difficulty ? GAME_STATE.difficulty.name : 'normal',
     );
 
@@ -1444,11 +1412,14 @@ function formatTime(ms) {
 }
 
 function buildStatsHTML(timeLabel, state, bestScore) {
+    const playerCount = state.players?.filter
+        ? state.players.filter((p) => p && !p.disconnected).length
+        : state.players?.length || 1;
     let html =
         `${timeLabel}: ${formatTime(state.elapsed)}<br>` +
         `Level: ${state.level}<br>` +
         `Kills: ${state.kills}<br>` +
-        `Players: ${state.players.length}<br>` +
+        `Players: ${playerCount}<br>` +
         `Difficulty: ${state.difficulty ? state.difficulty.name : 'Normal'}`;
 
     if (bestScore) {
@@ -1463,11 +1434,14 @@ function buildStatsHTML(timeLabel, state, bestScore) {
 
 function saveGameScore() {
     if (typeof GAME_STATE === 'undefined') return;
+    const playerCount =
+        (GAME_STATE.players || []).filter((p) => p && !p.disconnected).length ||
+        1;
     const score = {
         time: GAME_STATE.elapsed,
         level: GAME_STATE.level,
         kills: GAME_STATE.kills,
-        players: GAME_STATE.players.length,
+        players: playerCount,
         difficulty: GAME_STATE.difficulty
             ? GAME_STATE.difficulty.name
             : 'Normal',
@@ -1652,6 +1626,17 @@ function showStartMenu() {
     hideModal('victoryModal');
     hideModal('pauseModal');
 
+    const hostOverlay = document.getElementById('hostPauseOverlay');
+    if (hostOverlay) hostOverlay.style.display = 'none';
+
+    const resumeBtn = document.getElementById('resumeBtn');
+    if (resumeBtn) resumeBtn.style.display = 'block';
+    const pauseQuitBtn = document.getElementById('pauseQuitBtn');
+    if (pauseQuitBtn) {
+        const nameSpan = pauseQuitBtn.querySelector('.name');
+        if (nameSpan) nameSpan.textContent = 'MAIN MENU';
+    }
+
     const zone =
         document.getElementById('joystickZone') ||
         (typeof joystickZone !== 'undefined'
@@ -1698,6 +1683,70 @@ function updateFpsToggleBtn() {
 
 function togglePause() {
     if (typeof GAME_STATE === 'undefined') return;
+
+    const isOnlineClient =
+        GAME_STATE.gameMode === 'online' &&
+        typeof netManager !== 'undefined' &&
+        netManager?.isClient;
+
+    if (isOnlineClient) {
+        // Clients cannot pause the game simulation.
+        // Instead, the Esc menu toggles without modifying GAME_STATE.current,
+        // letting gameplay continue in real-time.
+        const modal = document.getElementById('pauseModal');
+        if (!modal) return;
+        if (modal.classList.contains('show')) {
+            modal.classList.remove('show');
+            const isMobileDevice =
+                typeof isMobile !== 'undefined'
+                    ? isMobile
+                    : (typeof window !== 'undefined' && window.isMobile) || false;
+            const zone =
+                document.getElementById('joystickZone') ||
+                (typeof joystickZone !== 'undefined'
+                    ? joystickZone
+                    : typeof window !== 'undefined'
+                      ? window.joystickZone
+                      : null);
+            if (isMobileDevice && zone) zone.style.display = 'block';
+        } else {
+            // Configure Esc menu for client:
+            // 1. Resume button should not exist
+            const resumeBtn = document.getElementById('resumeBtn');
+            if (resumeBtn) resumeBtn.style.display = 'none';
+
+            // 2. Main Menu replaced with Leave Game
+            const pauseQuitBtn = document.getElementById('pauseQuitBtn');
+            if (pauseQuitBtn) {
+                const nameSpan = pauseQuitBtn.querySelector('.name');
+                if (nameSpan) nameSpan.textContent = 'LEAVE GAME';
+            }
+
+            // 3. Update title/subtext
+            const title = modal.querySelector('h2');
+            if (title) title.textContent = 'GAME MENU';
+            const sub = modal.querySelector('p');
+            if (sub) {
+                sub.innerHTML =
+                    'Game is running in real-time.<br>Press <b style="color: #fff;">Escape</b> to close';
+            }
+
+            updateFpsToggleBtn();
+            const zone =
+                document.getElementById('joystickZone') ||
+                (typeof joystickZone !== 'undefined'
+                    ? joystickZone
+                    : typeof window !== 'undefined'
+                      ? window.joystickZone
+                      : null);
+            if (zone) zone.style.display = 'none';
+
+            modal.classList.add('show');
+        }
+        return;
+    }
+
+    // Host or Local/Single-player:
     if (GAME_STATE.current === STATES.GAMEPLAY) {
         GAME_STATE.current = STATES.PAUSED;
         if (typeof SoundEngine !== 'undefined' && SoundEngine.setMuffled) {
@@ -1712,11 +1761,59 @@ function togglePause() {
                   : null);
         if (zone) zone.style.display = 'none';
         updateFpsToggleBtn();
+
         const modal = document.getElementById('pauseModal');
-        if (modal) modal.classList.add('show');
+        if (modal) {
+            const resumeBtn = document.getElementById('resumeBtn');
+            if (resumeBtn) resumeBtn.style.display = 'block';
+
+            const pauseQuitBtn = document.getElementById('pauseQuitBtn');
+            if (pauseQuitBtn) {
+                const nameSpan = pauseQuitBtn.querySelector('.name');
+                if (nameSpan) nameSpan.textContent = 'MAIN MENU';
+            }
+
+            const title = modal.querySelector('h2');
+            if (title) title.textContent = 'GAME PAUSED';
+            const sub = modal.querySelector('p');
+            if (sub) {
+                sub.innerHTML =
+                    'Press <b style="color: #fff;">Escape</b> or click below to resume';
+            }
+
+            modal.classList.add('show');
+        }
+
+        // Host broadcasts pause event to clients
+        if (
+            GAME_STATE.gameMode === 'online' &&
+            typeof netManager !== 'undefined' &&
+            netManager?.isHost
+        ) {
+            netManager.broadcast({
+                type: 'PAUSE_SYNC',
+                paused: true,
+            });
+        }
     } else if (GAME_STATE.current === STATES.PAUSED) {
         const modal = document.getElementById('pauseModal');
         if (modal) modal.classList.remove('show');
+
+        // Host broadcasts countdown to clients so all resume simultaneously
+        if (
+            GAME_STATE.gameMode === 'online' &&
+            typeof netManager !== 'undefined' &&
+            netManager?.isHost
+        ) {
+            netManager.broadcast({
+                type: 'PAUSE_SYNC',
+                paused: false,
+            });
+            netManager.broadcast({
+                type: 'START_GAME_COUNTDOWN',
+                isNewGame: false,
+            });
+        }
         startCountdown(false);
     }
 }
@@ -1742,7 +1839,7 @@ function updateUI() {
                 if (p.disconnected || p.kicked) {
                     return `<div style="margin-top:2px;"><span style="color:${p.color};opacity:0.65">${pName} (Disconnected)</span></div>`;
                 }
-                if (p.alive) {
+                if (typeof p.isAlive === 'function' ? p.isAlive() : p.alive) {
                     return `<div style="margin-top:2px;"><span style="color:${p.color}">${pName} ${Math.ceil(p.hp)}/${p.maxHp}</span></div>`;
                 }
                 let rem = Math.max(

@@ -162,20 +162,17 @@ class Player extends Unit {
         }
     }
 
+    isActive() {
+        return this.isAlive() && !this.disconnected && !this.kicked;
+    }
+
     isTargetable() {
-        return (
-            this.isAlive() &&
-            !this.disconnected &&
-            !this.kicked &&
-            this.spawnInvuln <= 0
-        );
+        return this.isActive() && this.spawnInvuln <= 0;
     }
 
     isDamageable() {
         return (
-            this.isAlive() &&
-            !this.disconnected &&
-            !this.kicked &&
+            this.isActive() &&
             this.invuln <= 0 &&
             this.spawnInvuln <= 0
         );
@@ -223,6 +220,7 @@ class Player extends Unit {
                 );
             }
             if (
+                (!GAME_STATE.isOnline || GAME_STATE.isHost) &&
                 this.iceTrailEnabled &&
                 (this.lastX !== this.x || this.lastY !== this.y)
             ) {
@@ -316,29 +314,31 @@ class Player extends Unit {
                     this.y,
                     now,
                 );
-                if (this.dashLvl2) {
-                    GAME_STATE.hazards.push(
-                        new BurningTrailSegment(
-                            this.lastX,
-                            this.lastY,
-                            this.x,
-                            this.y,
-                            now,
-                            this,
-                        ),
-                    );
-                }
-                if (this.iceTrailEnabled) {
-                    GAME_STATE.hazards.push(
-                        new IceTrailSegment(
-                            this.lastX,
-                            this.lastY,
-                            this.x,
-                            this.y,
-                            now,
-                            this,
-                        ),
-                    );
+                if (!GAME_STATE.isOnline || GAME_STATE.isHost) {
+                    if (this.dashLvl2) {
+                        GAME_STATE.hazards.push(
+                            new BurningTrailSegment(
+                                this.lastX,
+                                this.lastY,
+                                this.x,
+                                this.y,
+                                now,
+                                this,
+                            ),
+                        );
+                    }
+                    if (this.iceTrailEnabled) {
+                        GAME_STATE.hazards.push(
+                            new IceTrailSegment(
+                                this.lastX,
+                                this.lastY,
+                                this.x,
+                                this.y,
+                                now,
+                                this,
+                            ),
+                        );
+                    }
                 }
             }
             this.agilityFade = Math.min(
@@ -701,6 +701,7 @@ class Player extends Unit {
             this.spawnLaserTrails(this.lastX, this.lastY, this.x, this.y, now);
         }
         if (
+            (!GAME_STATE.isOnline || GAME_STATE.isHost) &&
             this.iceTrailEnabled &&
             (this.lastX !== this.x || this.lastY !== this.y)
         ) {
@@ -960,6 +961,7 @@ class Player extends Unit {
         return false;
     }
     fireDashBurst(now = gameClock) {
+        if (GAME_STATE.isOnline && !GAME_STATE.isHost) return;
         const mm = this.weapons.find((w) => w.id === 'magic_missile');
         const rangeMultiplier = this.dashLvl2
             ? 1 + GAME_CONFIG.DASH.LVL2_RANGE_BOOST_PCT / 100
@@ -1090,8 +1092,7 @@ class Player extends Unit {
         isRedirected = false,
     ) {
         if (
-            !this.isAlive() ||
-            this.invuln > 0 ||
+            !this.isDamageable() ||
             this.dashing ||
             this.campervanUntil > now ||
             (this.aegisUntil && now < this.aegisUntil)
@@ -1138,7 +1139,12 @@ class Player extends Unit {
             // Check for nearby living allies with Sacrificial Aegis protecting this player
             const protectors = [];
             for (const op of GAME_STATE.players) {
-                if (op !== this && op.alive && op.sacrificialAegisEnabled) {
+                if (
+                    op &&
+                    op !== this &&
+                    op.isActive?.() &&
+                    op.sacrificialAegisEnabled
+                ) {
                     const dx = op.x - this.x;
                     const dy = op.y - this.y;
                     const radius =
@@ -1210,7 +1216,7 @@ class Player extends Unit {
                 this.maxHp *
                 (GAME_CONFIG.UPGRADES.CARAPACE_HEALER_TEAM_HEAL_PCT / 100);
             for (const p of GAME_STATE.players) {
-                if (p.alive) p.heal(healAmt);
+                if (p?.isActive?.()) p.heal(healAmt);
             }
         }
         let reflectTarget = null;
@@ -1253,10 +1259,11 @@ class Player extends Unit {
             this.triggerFinalBlast(now);
         }
         // Instant game over only if everyone is simultaneously down.
-        if (!GAME_STATE.players.some((p) => p.alive)) gameOver();
+        if (!GAME_STATE.players.some((p) => p?.isActive())) gameOver();
     }
     spawnLaserTrails(x1, y1, x2, y2, now) {
         if (!this.speedLvl2) return;
+        if (GAME_STATE.isOnline && !GAME_STATE.isHost) return;
         const dx = x2 - x1;
         const dy = y2 - y1;
         const len = Math.sqrt(dx * dx + dy * dy);
@@ -1395,6 +1402,7 @@ class Player extends Unit {
         // reappears exactly where it fell
     }
     draw(now) {
+        if (this.disconnected || this.kicked) return;
         if (this.alive) {
             const flail = this.weapons.find((w) => w.id === 'player_flail');
             if (flail) flail.draw(now);
@@ -3082,7 +3090,7 @@ class Player extends Unit {
                 // streaming inward toward the blood drop whenever an ally takes damage
                 if (this.sacrificialAegisEnabled) {
                     const livingAllies = GAME_STATE.players.filter(
-                        (p) => p !== this && p.alive,
+                        (p) => p && p !== this && p.isActive?.(),
                     );
                     const targets =
                         livingAllies.length > 0

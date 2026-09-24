@@ -259,6 +259,7 @@
     }
     #gameOverModal h2 { color: #ff4444; }
     #countdown { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: clamp(80px, 7.9vw, 160px); font-weight: bold; color: #00ffcc; text-shadow: 0 0 25px #000, 0 0 12px #00ffcc; pointer-events: none; z-index: 200; }
+    #hostPauseOverlay { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(14, 16, 22, 0.88); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 2px solid #00ffcc; border-radius: clamp(8px, 0.7vw, 14px); padding: clamp(14px, 1.5vw, 24px) clamp(24px, 2.5vw, 44px); box-shadow: 0 0 25px rgba(0, 255, 204, 0.25); font-size: clamp(20px, 2.5vw, 36px); font-weight: bold; color: #00ffcc; text-shadow: 0 0 15px rgba(0, 255, 204, 0.6); pointer-events: none; z-index: 200; text-align: center; letter-spacing: 1.5px; box-sizing: border-box; max-width: 90vw; }
     #levelUpLayer { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 140; }
     #levelUpLayer.show { display: block; }
     .player-panel {
@@ -1524,6 +1525,7 @@
 
 <canvas id="gameCanvas"></canvas>
 <div id="countdown"></div>
+<div id="hostPauseOverlay">Game Paused by host</div>
 <div id="tipText"></div>
 
 </body>

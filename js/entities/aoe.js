@@ -36,7 +36,7 @@ class BurningSurface extends Entity {
 
         if (typeof GAME_STATE !== 'undefined' && GAME_STATE.players) {
             for (const p of GAME_STATE.players) {
-                if (!p.alive || p.isOnIce?.()) continue;
+                if (!p?.isActive() || p.isOnIce?.()) continue;
                 const dx = p.x - this.x,
                     dy = p.y - this.y;
                 if (dx * dx + dy * dy < (this.r + p.r) * (this.r + p.r)) {
@@ -904,7 +904,7 @@ class PlayerMine extends Entity {
 
         // 1. Viscous Secretion Bridge: Liquid tether connecting mother cell to newly secreted vacuole drop
         if (
-            this.player?.alive &&
+            this.player?.isActive() &&
             this.spawnTime &&
             curTime - this.spawnTime < 240
         ) {
@@ -1028,7 +1028,7 @@ class AcidPoolHazard extends Entity {
         const canTick = curTime - this.lastDamageTick >= 200;
         if (typeof GAME_STATE !== 'undefined' && GAME_STATE.players) {
             for (const p of GAME_STATE.players) {
-                if (!p.alive) continue;
+                if (!p?.isActive()) continue;
                 const maxDist = this.r + p.r;
                 if (this.distanceToSq(p) <= maxDist * maxDist) {
                     p.acidSlowUntil = Math.max(
@@ -1154,7 +1154,7 @@ class BileMortarPod extends Entity {
             }
             if (typeof GAME_STATE !== 'undefined' && GAME_STATE.players) {
                 for (const p of GAME_STATE.players) {
-                    if (!p.alive) continue;
+                    if (!p?.isActive()) continue;
                     const maxDist = 65 + p.r;
                     const dx = p.x - this.targetX,
                         dy = p.y - this.targetY;
@@ -1453,7 +1453,7 @@ function applyExplosionHealing(
     const healedPlayers = [];
     if (typeof GAME_STATE !== 'undefined' && GAME_STATE.players) {
         for (const p of GAME_STATE.players) {
-            if (!p.isAlive?.()) continue;
+            if (!p?.isActive()) continue;
             const dx = p.x - x;
             const dy = p.y - y;
             if (dx * dx + dy * dy <= (radius + p.r) * (radius + p.r)) {
@@ -1516,7 +1516,7 @@ function triggerWarpAnomalyDeathEffect(x, y, radius = 320, now) {
     // 1. Affect Players (airborne physics & loss of steer control)
     if (typeof GAME_STATE !== 'undefined' && GAME_STATE.players) {
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const dx = p.x - x;
             const dy = p.y - y;
             const dist = Math.hypot(dx, dy);

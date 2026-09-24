@@ -761,7 +761,7 @@ class SniperProjectile extends Projectile {
 function checkDeflectorOrbiterBlock(proj, now) {
     if (!proj?.alive) return false;
     for (const p of GAME_STATE.players) {
-        if (!p.alive) continue;
+        if (!p?.isActive()) continue;
         const deflectorWeapon = p.weapons
             ? p.weapons.find((w) => w.id === 'projectile_shield')
             : null;
@@ -847,7 +847,7 @@ class MarauderMissile extends Projectile {
         if (checkDeflectorOrbiterBlock(this, now)) return;
 
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const dx = p.x - this.x,
                 dy = p.y - this.y;
             if (dx * dx + dy * dy < (p.r + this.r) * (p.r + this.r)) {
@@ -937,7 +937,7 @@ class ShooterProjectile extends Projectile {
         )
             return;
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const dx = p.x - this.x,
                 dy = p.y - this.y;
             if (dx * dx + dy * dy < (p.r + this.r) * (p.r + this.r)) {
@@ -1017,7 +1017,7 @@ class SpikyProjectile extends Projectile {
         )
             return;
         for (const p of GAME_STATE.players) {
-            if (!p.alive) continue;
+            if (!p?.isActive()) continue;
             const dx = p.x - this.x,
                 dy = p.y - this.y;
             if (dx * dx + dy * dy < (p.r + this.r) * (p.r + this.r)) {
@@ -1061,7 +1061,7 @@ class OrbitProjectile extends Projectile {
         this.hitCooldown = new Map(); // enemy -> nextHitTime
     }
     update(dt, dtFactor = 1.0, now) {
-        if (now > this.expires || !this.player.alive) {
+        if (now > this.expires || !this.player?.isActive()) {
             this.alive = false;
             return;
         }
@@ -1370,7 +1370,7 @@ class DeflectorOrbiter extends Projectile {
         this.growth = 0.0;
     }
     update(dt, dtFactor = 1.0, now) {
-        if (now - this.spawnTime > this.lifespan || !this.player.alive) {
+        if (now - this.spawnTime > this.lifespan || !this.player?.isActive()) {
             this.alive = false;
             return;
         }
@@ -2605,7 +2605,7 @@ class MagicMissileProjectile extends Projectile {
             const curTime = now || performance.now();
             ctx.save();
 
-            if (this.player?.alive && this.spawnTime) {
+            if (this.player?.isActive() && this.spawnTime) {
                 const pdx = this.x - this.player.x;
                 const pdy = this.y - this.player.y;
                 const pdist = Math.hypot(pdx, pdy);

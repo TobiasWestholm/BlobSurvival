@@ -444,6 +444,7 @@ function draw(now) {
 
     // Draw Martyrdom Auras
     for (const p of GAME_STATE.players) {
+        if (!p || p.disconnected || p.kicked) continue;
         if (!p.alive && p.martyrdomAuraEnabled) {
             ctx.save();
             const baseRadius =
@@ -500,7 +501,7 @@ function draw(now) {
         let playerX = W / 2,
             playerY = H / 2;
         for (const p of GAME_STATE.players) {
-            if (p.alive) {
+            if (p?.alive && !p.disconnected) {
                 playerX = p.x;
                 playerY = p.y;
                 break;
@@ -710,7 +711,9 @@ function drawPlayerFocusArrow(p, now) {
     const isMultiplayer =
         GAME_STATE.gameMode === 'local' ||
         GAME_STATE.gameMode === 'online' ||
-        GAME_STATE.players.length > 1;
+        (GAME_STATE.players &&
+            GAME_STATE.players.filter((pl) => pl && !pl.disconnected).length >
+                1);
     let badgeText = null;
     if (isMultiplayer) {
         if (

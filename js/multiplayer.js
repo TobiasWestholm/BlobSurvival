@@ -30,9 +30,17 @@ class NetworkManager {
         this.isReconnecting = false;
     }
 
-    sendConn(target, payload) {
+    sendConn(target, payload, maxBufferedAmount = null) {
         if (!target) return;
         try {
+            if (
+                maxBufferedAmount !== null &&
+                target.dataChannel &&
+                typeof target.dataChannel.bufferedAmount === 'number' &&
+                target.dataChannel.bufferedAmount > maxBufferedAmount
+            ) {
+                return;
+            }
             if (target.open) {
                 target.send(payload);
             }
@@ -920,6 +928,20 @@ class NetworkManager {
         this.peerPlayerMap.delete(peerId);
         this.playerPeerMap.delete(playerIndex);
         this.peerLastSeenMap.delete(peerId);
+
+        const isLobby =
+            typeof GAME_STATE === 'undefined' ||
+            typeof STATES === 'undefined' ||
+            GAME_STATE.current === STATES.WEAPON_SELECT ||
+            GAME_STATE.current === STATES.START_MENU;
+        if (isLobby) {
+            const sessionToken = this.playerSessionMap.get(playerIndex);
+            if (sessionToken) {
+                this.sessionPlayerMap.delete(sessionToken);
+            }
+            this.playerSessionMap.delete(playerIndex);
+        }
+
         if (typeof window.onOnlinePlayerDisconnected === 'function') {
             window.onOnlinePlayerDisconnected(playerIndex, peerId);
         }
@@ -942,9 +964,9 @@ class NetworkManager {
         for (const [peerId, conn] of this.connections.entries()) {
             const streamConn = this.streamConnections.get(peerId);
             if (streamConn?.open) {
-                this.sendConn(streamConn, payload);
+                this.sendConn(streamConn, payload, 65536);
             } else if (conn?.open) {
-                this.sendConn(conn, payload);
+                this.sendConn(conn, payload, 65536);
             }
         }
     }
@@ -977,9 +999,9 @@ class NetworkManager {
         };
 
         if (this.streamConnection?.open) {
-            this.sendConn(this.streamConnection, msg);
+            this.sendConn(this.streamConnection, msg, 32768);
         } else if (this.hostConnection?.open) {
-            this.sendConn(this.hostConnection, msg);
+            this.sendConn(this.hostConnection, msg, 32768);
         }
     }
 
@@ -1022,20 +1044,19 @@ class NetworkManager {
         } else if (this.isHost) {
             const hostPlayer = GAME_STATE.players?.[0];
             if (hostPlayer) hostPlayer.name = cleaned || 'Player 1';
+            const activePlayers = (GAME_STATE.players || []).filter(
+                (pl) => pl && !pl.disconnected,
+            );
             const allReady =
-                GAME_STATE.players.length > 0 &&
-                GAME_STATE.players
-                    .filter((pl) => pl && !pl.disconnected)
-                    .every((pl) => pl.selectedWeapon);
+                activePlayers.length > 0 &&
+                activePlayers.every((pl) => pl.selectedWeapon);
             this.broadcastLobbyState(
-                GAME_STATE.players
-                    .filter((pl) => pl && !pl.disconnected)
-                    .map((p) => ({
-                        index: p.index,
-                        name: p.name || `Player ${p.index + 1}`,
-                        selectedWeapon: p.selectedWeapon,
-                        selectedWeaponLabel: p.selectedWeaponLabel,
-                    })),
+                activePlayers.map((p) => ({
+                    index: p.index,
+                    name: p.name || `Player ${p.index + 1}`,
+                    selectedWeapon: p.selectedWeapon,
+                    selectedWeaponLabel: p.selectedWeaponLabel,
+                })),
                 allReady,
             );
         }
@@ -1135,6 +1156,18 @@ function despawnPlayerEntities(playerIndex) {
             ) {
                 e.targetPlayer = null;
             }
+            if (
+                e.target === player ||
+                (e.target && e.target.index === playerIndex)
+            ) {
+                e.target = null;
+            }
+            if (
+                e.turretTarget === player ||
+                (e.turretTarget && e.turretTarget.index === playerIndex)
+            ) {
+                e.turretTarget = null;
+            }
         }
     }
 }
@@ -1164,7 +1197,9 @@ window.onOnlinePlayerJoined = (assignedSlot, peerId, isReconnection) => {
             const diedBeforeBoss =
                 !GAME_STATE.activeBoss ||
                 p.deadAt < GAME_STATE.activeBossStartTime;
-            const isActuallyAlive = p.alive && p.hp > 0;
+            const isActuallyAlive =
+                (typeof p.isAlive === 'function' ? p.isAlive() : p.alive) &&
+                p.hp > 0;
             const deathTimerExpired =
                 !isActuallyAlive &&
                 p.deadAt &&
@@ -1231,18 +1266,20 @@ window.onOnlinePlayerJoined = (assignedSlot, peerId, isReconnection) => {
 
     if (GAME_STATE.current === STATES.WEAPON_SELECT) {
         renderLobbyWeaponPanels();
+        const activePlayers = (GAME_STATE.players || []).filter(
+            (pl) => pl && !pl.disconnected,
+        );
+        const allReady =
+            activePlayers.length > 0 &&
+            activePlayers.every((p) => p.selectedWeapon);
         netManager.broadcastLobbyState(
-            GAME_STATE.players
-                .filter((pl) => pl && !pl.disconnected)
-                .map((p) => ({
-                    index: p.index,
-                    name: p.name || `Player ${p.index + 1}`,
-                    selectedWeapon: p.selectedWeapon,
-                    selectedWeaponLabel: p.selectedWeaponLabel,
-                })),
-            GAME_STATE.players
-                .filter((pl) => pl && !pl.disconnected)
-                .every((p) => p.selectedWeapon),
+            activePlayers.map((p) => ({
+                index: p.index,
+                name: p.name || `Player ${p.index + 1}`,
+                selectedWeapon: p.selectedWeapon,
+                selectedWeaponLabel: p.selectedWeaponLabel,
+            })),
+            allReady,
         );
     }
 };
@@ -1253,19 +1290,30 @@ window.onOnlinePlayerDisconnected = (playerIndex, peerId) => {
     recalculateDynamicDifficulty();
 
     if (GAME_STATE.current === STATES.WEAPON_SELECT) {
+        if (GAME_STATE.players?.[playerIndex]) {
+            delete GAME_STATE.players[playerIndex];
+            while (
+                GAME_STATE.players.length > 1 &&
+                !GAME_STATE.players[GAME_STATE.players.length - 1]
+            ) {
+                GAME_STATE.players.pop();
+            }
+        }
         renderLobbyWeaponPanels();
+        const activePlayers = (GAME_STATE.players || []).filter(
+            (pl) => pl && !pl.disconnected,
+        );
+        const allReady =
+            activePlayers.length > 0 &&
+            activePlayers.every((p) => p.selectedWeapon);
         netManager.broadcastLobbyState(
-            GAME_STATE.players
-                .filter((pl) => pl && !pl.disconnected)
-                .map((p) => ({
-                    index: p.index,
-                    name: p.name || `Player ${p.index + 1}`,
-                    selectedWeapon: p.selectedWeapon,
-                    selectedWeaponLabel: p.selectedWeaponLabel,
-                })),
-            GAME_STATE.players
-                .filter((pl) => pl && !pl.disconnected)
-                .every((p) => p.selectedWeapon),
+            activePlayers.map((p) => ({
+                index: p.index,
+                name: p.name || `Player ${p.index + 1}`,
+                selectedWeapon: p.selectedWeapon,
+                selectedWeaponLabel: p.selectedWeaponLabel,
+            })),
+            allReady,
         );
     } else if (
         GAME_STATE.current === STATES.LEVEL_UP &&
@@ -1450,23 +1498,22 @@ window.onRemoteWeaponSelected = (playerIndex, weaponId) => {
             renderLobbyWeaponPanels();
         }
 
+        const activePlayers = (GAME_STATE.players || []).filter(
+            (pl) => pl && !pl.disconnected,
+        );
         const allReady =
-            GAME_STATE.players.length > 0 &&
-            GAME_STATE.players
-                .filter((pl) => pl && !pl.disconnected)
-                .every((pl) => pl.selectedWeapon);
+            activePlayers.length > 0 &&
+            activePlayers.every((pl) => pl.selectedWeapon);
         const lobbyStartBtn = document.getElementById('lobbyStartBtn');
         if (lobbyStartBtn) lobbyStartBtn.disabled = !allReady;
 
         netManager.broadcastLobbyState(
-            GAME_STATE.players
-                .filter((pl) => pl && !pl.disconnected)
-                .map((pl) => ({
-                    index: pl.index,
-                    name: pl.name || `Player ${pl.index + 1}`,
-                    selectedWeapon: pl.selectedWeapon,
-                    selectedWeaponLabel: pl.selectedWeaponLabel,
-                })),
+            activePlayers.map((pl) => ({
+                index: pl.index,
+                name: pl.name || `Player ${pl.index + 1}`,
+                selectedWeapon: pl.selectedWeapon,
+                selectedWeaponLabel: pl.selectedWeaponLabel,
+            })),
             allReady,
         );
     }
@@ -1486,20 +1533,19 @@ window.onRemotePlayerNameChanged = (playerIndex, newName) => {
                 renderLobbyWeaponPanels();
             }
             if (netManager?.isHost) {
+                const activePlayers = (GAME_STATE.players || []).filter(
+                    (pl) => pl && !pl.disconnected,
+                );
                 const allReady =
-                    GAME_STATE.players.length > 0 &&
-                    GAME_STATE.players
-                        .filter((pl) => pl && !pl.disconnected)
-                        .every((pl) => pl.selectedWeapon);
+                    activePlayers.length > 0 &&
+                    activePlayers.every((pl) => pl.selectedWeapon);
                 netManager.broadcastLobbyState(
-                    GAME_STATE.players
-                        .filter((pl) => pl && !pl.disconnected)
-                        .map((pl) => ({
-                            index: pl.index,
-                            name: pl.name || `Player ${pl.index + 1}`,
-                            selectedWeapon: pl.selectedWeapon,
-                            selectedWeaponLabel: pl.selectedWeaponLabel,
-                        })),
+                    activePlayers.map((pl) => ({
+                        index: pl.index,
+                        name: pl.name || `Player ${pl.index + 1}`,
+                        selectedWeapon: pl.selectedWeapon,
+                        selectedWeaponLabel: pl.selectedWeaponLabel,
+                    })),
                     allReady,
                 );
             }
@@ -1591,6 +1637,8 @@ window.onOnlineCountdownStarted = (isNewGame) => {
     if (tipEl) tipEl.style.display = 'none';
     const inviteBanner = document.getElementById('inviteCodeBanner');
     if (inviteBanner) inviteBanner.style.display = 'none';
+    const hostOverlay = document.getElementById('hostPauseOverlay');
+    if (hostOverlay) hostOverlay.style.display = 'none';
     if (isNewGame) {
         if (typeof GAME_STATE !== 'undefined') {
             GAME_STATE.enemies = [];
@@ -1968,7 +2016,7 @@ function packWorldSnapshotBinary() {
     // 1. Players
     const players =
         typeof GAME_STATE !== 'undefined' && GAME_STATE.players
-            ? GAME_STATE.players
+            ? GAME_STATE.players.filter(Boolean)
             : [];
     view.setUint8(offset, players.length);
     offset += 1;
@@ -2003,7 +2051,9 @@ function packWorldSnapshotBinary() {
         offset += 1;
 
         let pFlags = 0;
-        if (p.alive) pFlags |= 1 << 0;
+        if (typeof p.isAlive === 'function' ? p.isAlive() : p.alive) {
+            pFlags |= 1 << 0;
+        }
         if (p.isMoving) pFlags |= 1 << 1;
         if (p.martyrdomAuraEnabled) pFlags |= 1 << 2;
         if (p.martyrsPresenceEnabled) pFlags |= 1 << 3;
@@ -2880,7 +2930,9 @@ function serializeWorldForNetwork() {
 
 function serializeWorldForNetworkJSON() {
     // 1. Players
-    const players = GAME_STATE.players.map((p) => {
+    const players = (GAME_STATE.players || [])
+        .filter(Boolean)
+        .map((p) => {
         const flail = p.weapons
             ? p.weapons.find((w) => w.id === 'player_flail')
             : null;
@@ -2894,8 +2946,16 @@ function serializeWorldForNetworkJSON() {
             y: Math.round(p.y),
             hp: Math.round(p.hp * 10) / 10,
             mhp: p.maxHp,
-            al: p.alive && p.hp > 0 ? 1 : 0,
-            da: !p.alive && p.deadAt ? Math.round(p.deadAt) : 0,
+            al:
+                (typeof p.isAlive === 'function' ? p.isAlive() : p.alive) &&
+                p.hp > 0
+                    ? 1
+                    : 0,
+            da:
+                !(typeof p.isAlive === 'function' ? p.isAlive() : p.alive) &&
+                p.deadAt
+                    ? Math.round(p.deadAt)
+                    : 0,
             fa: Math.round(p.facingAngle * 100) / 100,
             mv: p.isMoving ? 1 : 0,
             w: p.selectedWeapon || '',
@@ -3281,11 +3341,42 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 );
                 GAME_STATE.players[sp.i] = p;
             }
+            const wasAlive =
+                typeof p.isAlive === 'function' ? p.isAlive() : p.alive;
             p.hp = sp.hp;
             p.maxHp = sp.mhp;
-            p.alive = sp.al === 1 && sp.hp > 0;
-            if (sp.da !== undefined && !p.alive) {
+            const nowAlive = sp.al === 1 && sp.hp > 0;
+            p.alive = nowAlive;
+            if (sp.da !== undefined && !nowAlive) {
                 p.deadAt = sp.da;
+            }
+
+            // Sync death & revive sound and visual effects on client
+            if (wasAlive && !nowAlive) {
+                if (
+                    typeof SoundEngine !== 'undefined' &&
+                    SoundEngine.playerDeath
+                ) {
+                    SoundEngine.playerDeath();
+                }
+            } else if (!wasAlive && nowAlive) {
+                p.x = sp.x;
+                p.y = sp.y;
+                if (
+                    typeof SoundEngine !== 'undefined' &&
+                    SoundEngine.playerRevived
+                ) {
+                    SoundEngine.playerRevived();
+                }
+                if (typeof triggerReviveAnimation === 'function') {
+                    const animTime =
+                        typeof gameClock !== 'undefined'
+                            ? gameClock
+                            : typeof performance !== 'undefined'
+                              ? performance.now()
+                              : 0;
+                    triggerReviveAnimation(p, animTime);
+                }
             }
             if (sp.nm && sp.nm !== p.name) {
                 p.name = sp.nm;
@@ -4048,6 +4139,29 @@ window.onOnlineLevelUpStarted = (pendingLevels, upgradesMap) => {
     beginSelectionRound();
 };
 
+window.onOnlinePauseSynced = (paused) => {
+    const hostOverlay = document.getElementById('hostPauseOverlay');
+    if (paused) {
+        if (typeof GAME_STATE !== 'undefined') {
+            GAME_STATE.current = STATES.PAUSED;
+        }
+        if (typeof SoundEngine !== 'undefined' && SoundEngine.setMuffled) {
+            SoundEngine.setMuffled(true, 0.5);
+        }
+        const zone =
+            document.getElementById('joystickZone') ||
+            (typeof joystickZone !== 'undefined'
+                ? joystickZone
+                : typeof window !== 'undefined'
+                  ? window.joystickZone
+                  : null);
+        if (zone) zone.style.display = 'none';
+        if (hostOverlay) hostOverlay.style.display = 'block';
+    } else {
+        if (hostOverlay) hostOverlay.style.display = 'none';
+    }
+};
+
 window.onOnlineGameOver = () => {
     gameOver();
 };
@@ -4204,7 +4318,7 @@ function interpolateNetworkWorld(renderTime, dtFactor = 1.0) {
 function recalculateDynamicDifficulty() {
     if (typeof GAME_STATE === 'undefined' || !GAME_STATE.players) return;
     const activePlayers =
-        GAME_STATE.players.filter((p) => !p.disconnected).length || 1;
+        GAME_STATE.players.filter((p) => p && !p.disconnected).length || 1;
     const diff = GAME_STATE.difficulty || DIFFICULTIES.normal;
     GAME_STATE.dmgFactor =
         (1.5 / (activePlayers + 0.5)) * (diff.dmgMult || 1.0);
@@ -4233,4 +4347,12 @@ if (typeof window !== 'undefined') {
     window.clientEnemyCache = clientEnemyCache;
     window.clientProjectileCache = clientProjectileCache;
     window.clientEnemyProjectileCache = clientEnemyProjectileCache;
+
+    const handleWindowUnload = () => {
+        if (typeof netManager !== 'undefined' && netManager) {
+            netManager.reset();
+        }
+    };
+    window.addEventListener('beforeunload', handleWindowUnload);
+    window.addEventListener('pagehide', handleWindowUnload);
 }

@@ -175,6 +175,7 @@ function startGame(playerCount, difficultyKey) {
 
 // ---------------- Main loop ----------------
 let lastFrameTime = performance.now();
+let mainRafId = null;
 // Gameplay clock: only advances during GAMEPLAY, so meteor falls, shooter cooldowns,
 // revive timers, weapon/projectile/hazard timing all freeze on the upgrade/countdown screens.
 let gameClock = 0;
@@ -203,8 +204,8 @@ function update(dt, dtFactor, now) {
     }
 
     for (const p of GAME_STATE.players) {
-        if (!p || p.kicked) continue;
-        if (!p.alive) {
+        if (!p || p.kicked || p.disconnected) continue;
+        if (!p.isAlive()) {
             const diedBeforeBoss =
                 !GAME_STATE.activeBoss ||
                 p.deadAt < GAME_STATE.activeBossStartTime;
@@ -214,7 +215,7 @@ function update(dt, dtFactor, now) {
             ) {
                 p.revive();
             }
-        } else if (!p.disconnected) {
+        } else {
             p.update(dt, dtFactor, now);
             resolvePlayerTerrainCollisions(p);
         }
@@ -222,8 +223,8 @@ function update(dt, dtFactor, now) {
 
     // Process Martyrdom Auras (healing and damage)
     for (const p of GAME_STATE.players) {
-        if (!p || p.kicked) continue;
-        if (!p.alive && p.martyrdomAuraEnabled) {
+        if (!p || p.kicked || p.disconnected) continue;
+        if (!p.isAlive() && p.martyrdomAuraEnabled) {
             const auraRadius =
                 110 *
                 (p.martyrsPresenceEnabled
@@ -238,7 +239,7 @@ function update(dt, dtFactor, now) {
                     0.5);
             // 1. Heal other alive players standing in it (10% max HP per second)
             for (const op of GAME_STATE.players) {
-                if (op.alive && op !== p) {
+                if (op?.isActive() && op !== p) {
                     const dx = op.x - p.x;
                     const dy = op.y - p.y;
                     if (dx * dx + dy * dy < auraRadius * auraRadius) {
@@ -341,10 +342,13 @@ function update(dt, dtFactor, now) {
     }
 
     // Process dead enemies -> drop gems & trigger death abilities
-    const hasHealPackUpgrade = GAME_STATE.players.some(
-        (p) => p.alive && p.healPackEnabled,
+    const validPlayers = (GAME_STATE.players || []).filter(
+        (p) => p && !p.disconnected,
     );
-    const healPackChance = 0.005 + 0.005 * GAME_STATE.players.length;
+    const hasHealPackUpgrade = validPlayers.some(
+        (p) => p.isAlive() && p.healPackEnabled,
+    );
+    const healPackChance = 0.005 + 0.005 * validPlayers.length;
     let anyEnemyDied = false;
 
     for (let i = 0; i < GAME_STATE.enemies.length; i++) {
@@ -496,6 +500,8 @@ function isLastBossCleared(winCond) {
 }
 
 function loop(now) {
+    mainRafId = null;
+    const isHidden = typeof document !== 'undefined' && document.hidden;
     const dt = Math.min(50, now - lastFrameTime);
     lastFrameTime = now;
     const dtFactor = dt / (1000 / 120); // 1.0 at 120 Hz (8.333ms per frame)
@@ -527,7 +533,7 @@ function loop(now) {
 
             // 2. Predictively update client's own player movement for 0-latency feel
             const myPlayer = GAME_STATE.players[netManager.localPlayerIndex];
-            if (myPlayer?.alive) {
+            if (myPlayer?.isAlive?.()) {
                 myPlayer.update(dt, dtFactor, gameClock);
                 resolvePlayerTerrainCollisions(myPlayer);
             }
@@ -545,7 +551,7 @@ function loop(now) {
                         GAME_STATE.players[
                             p.playerIndex !== undefined ? p.playerIndex : 0
                         ];
-                    if (owner?.alive) {
+                    if (owner?.isAlive?.()) {
                         const baseRot = p.type === 'fire_ring' ? 0.03 : -0.075;
                         const rotSpeed =
                             baseRot / (owner.cooldownModifier || 1.0);
@@ -611,7 +617,13 @@ function loop(now) {
 
             // 6. Smoothly advance remote players' flail and facing angle at 60 FPS
             for (const rp of GAME_STATE.players) {
-                if (!rp || rp.index === netManager.localPlayerIndex) continue;
+                if (
+                    !rp ||
+                    rp.disconnected ||
+                    rp.kicked ||
+                    rp.index === netManager.localPlayerIndex
+                )
+                    continue;
                 if (rp.weapons) {
                     const flail = rp.weapons.find(
                         (w) => w.id === 'player_flail',
@@ -637,17 +649,21 @@ function loop(now) {
             for (const pa of GAME_STATE.particles) pa.update(dt, dtFactor);
 
             // 8. Render authoritative world snapshot from host
-            draw(gameClock);
+            if (!isHidden) {
+                draw(gameClock);
 
-            // Throttle UI DOM updates to 10Hz (every 6 frames) to prevent layout thrashing
-            GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
-            if (GAME_STATE.uiTick % 6 === 0) {
-                updateUI();
+                // Throttle UI DOM updates to 10Hz (every 6 frames) to prevent layout thrashing
+                GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
+                if (GAME_STATE.uiTick % 6 === 0) {
+                    updateUI();
+                }
             }
         } else {
             // HOST / SINGLEPLAYER / LOCAL: Authoritative simulation
             update(dt, dtFactor, gameClock);
-            draw(gameClock);
+            if (!isHidden) {
+                draw(gameClock);
+            }
 
             // 30 Hz authoritative sync broadcast to clients (every 2nd frame at 60fps = 33ms) for ultra-smooth 60fps client display
             GAME_STATE.netTick = (GAME_STATE.netTick || 0) + 1;
@@ -659,20 +675,24 @@ function loop(now) {
                 netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
             }
 
-            // Throttle UI DOM layout reflow updates to 10Hz (every 6 frames)
-            GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
-            if (GAME_STATE.uiTick % 6 === 0) {
-                updateUI();
+            if (!isHidden) {
+                // Throttle UI DOM layout reflow updates to 10Hz (every 6 frames)
+                GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
+                if (GAME_STATE.uiTick % 6 === 0) {
+                    updateUI();
+                }
             }
         }
     } else if (GAME_STATE.current === STATES.WEAPON_SELECT) {
         // Pre-game Starting Weapon selection lobby: update blobs so players can freely move around!
         updateLobbyPlayers(dt, dtFactor, now);
         SoundEngine.updateMusic(now);
-        draw(gameClock);
-        GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
-        if (GAME_STATE.uiTick % 6 === 0) {
-            updateUI();
+        if (!isHidden) {
+            draw(gameClock);
+            GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
+            if (GAME_STATE.uiTick % 6 === 0) {
+                updateUI();
+            }
         }
     } else if (
         GAME_STATE.current === STATES.LEVEL_UP ||
@@ -680,18 +700,24 @@ function loop(now) {
         GAME_STATE.current === STATES.PAUSED
     ) {
         SoundEngine.updateMusic(now);
-        draw(gameClock);
-        GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
-        if (GAME_STATE.uiTick % 6 === 0) {
-            updateUI();
+        if (!isHidden) {
+            draw(gameClock);
+            GAME_STATE.uiTick = (GAME_STATE.uiTick || 0) + 1;
+            if (GAME_STATE.uiTick % 6 === 0) {
+                updateUI();
+            }
         }
     } else if (GAME_STATE.current === STATES.START_MENU) {
         SoundEngine.updateMusic(now);
     } else if (GAME_STATE.current === STATES.GAME_OVER) {
         SoundEngine.updateMusic(now);
-        draw(gameClock);
+        if (!isHidden) {
+            draw(gameClock);
+        }
     }
-    requestAnimationFrame(loop);
+    if (!isHidden) {
+        mainRafId = requestAnimationFrame(loop);
+    }
 }
 
 function updateLobbyPlayers(dt, dtFactor, now) {
@@ -699,12 +725,16 @@ function updateLobbyPlayers(dt, dtFactor, now) {
         sendClientLocalInput();
         const myIndex = netManager.localPlayerIndex;
         const myPlayer = GAME_STATE.players[myIndex];
-        if (myPlayer) {
+        if (myPlayer && !myPlayer.disconnected && !myPlayer.kicked) {
             myPlayer.update(dt, dtFactor, now);
+        }
+        if (typeof interpolateNetworkWorld === 'function') {
+            interpolateNetworkWorld(performance.now() - 66, dtFactor);
         }
     } else {
         // Host & Local players
         for (const p of GAME_STATE.players) {
+            if (!p || p.disconnected || p.kicked) continue;
             p.update(dt, dtFactor, now);
         }
         // 30 Hz authoritative sync broadcast to clients during lobby (every 2nd frame at 60fps = 33ms)
@@ -718,6 +748,8 @@ function updateLobbyPlayers(dt, dtFactor, now) {
             netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
         }
     }
+    for (const pa of GAME_STATE.particles) pa.update(dt, dtFactor);
+    compactAlive(GAME_STATE.particles, (p) => p.alive);
 }
 
 let bgWorker = null;
@@ -768,26 +800,30 @@ function setupHostBackgroundKeepAlive() {
     }
 
     document.addEventListener('visibilitychange', () => {
-        if (
-            typeof netManager === 'undefined' ||
-            !netManager.isHost ||
-            netManager.connections.size === 0
-        )
-            return;
         if (document.hidden) {
-            if (bgWorker) {
-                bgWorker.postMessage('start');
-            } else if (!bgInterval) {
-                bgInterval = setInterval(() => {
-                    if (
-                        document.hidden &&
-                        typeof loop === 'function' &&
-                        netManager.isHost &&
-                        netManager.connections.size > 0
-                    ) {
-                        loop(performance.now());
-                    }
-                }, 16);
+            if (mainRafId) {
+                cancelAnimationFrame(mainRafId);
+                mainRafId = null;
+            }
+            if (
+                typeof netManager !== 'undefined' &&
+                netManager.isHost &&
+                netManager.connections.size > 0
+            ) {
+                if (bgWorker) {
+                    bgWorker.postMessage('start');
+                } else if (!bgInterval) {
+                    bgInterval = setInterval(() => {
+                        if (
+                            document.hidden &&
+                            typeof loop === 'function' &&
+                            netManager.isHost &&
+                            netManager.connections.size > 0
+                        ) {
+                            loop(performance.now());
+                        }
+                    }, 16);
+                }
             }
         } else {
             if (bgWorker) {
@@ -796,6 +832,14 @@ function setupHostBackgroundKeepAlive() {
             if (bgInterval) {
                 clearInterval(bgInterval);
                 bgInterval = null;
+            }
+            lastFrameTime = performance.now();
+            if (mainRafId) {
+                cancelAnimationFrame(mainRafId);
+                mainRafId = null;
+            }
+            if (typeof loop === 'function') {
+                mainRafId = requestAnimationFrame(loop);
             }
         }
     });
@@ -816,10 +860,10 @@ if (typeof window !== 'undefined') {
     if (document.readyState === 'loading') {
         window.addEventListener('DOMContentLoaded', () => {
             setupHostBackgroundKeepAlive();
-            requestAnimationFrame(loop);
+            mainRafId = requestAnimationFrame(loop);
         });
     } else {
         setupHostBackgroundKeepAlive();
-        requestAnimationFrame(loop);
+        mainRafId = requestAnimationFrame(loop);
     }
 }
