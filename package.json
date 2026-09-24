@@ -1,12 +1,15 @@
 {
     "devDependencies": {
-        "@biomejs/biome": "2.5.12"
+        "@biomejs/biome": "2.5.12",
+        "@types/peerjs": "^0.0.30",
+        "typescript": "^7.0.2"
     },
     "scripts": {
         "lint": "biome lint .",
         "format": "biome format .",
         "check": "biome check .",
         "fix": "biome check --write .",
-        "prepare": "git config core.hooksPath .githooks"
+        "prepare": "git config core.hooksPath .githooks",
+        "typecheck": "tsc -p jsconfig.json"
     }
 }

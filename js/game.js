@@ -599,9 +599,13 @@ function loop(now) {
 
             // 5. Smoothly advance collectibles (XP gems, health packs, supply drops) toward host targets at 60 FPS
             for (const g of GAME_STATE.gems) {
-                if (g && g.targetX !== undefined && g.targetY !== undefined) {
-                    g.x += (g.targetX - g.x) * 0.4 * dtFactor;
-                    g.y += (g.targetY - g.y) * 0.4 * dtFactor;
+                if (
+                    g &&
+                    g['targetX'] !== undefined &&
+                    g['targetY'] !== undefined
+                ) {
+                    g.x += (g['targetX'] - g.x) * 0.4 * dtFactor;
+                    g.y += (g['targetY'] - g.y) * 0.4 * dtFactor;
                 }
             }
 
@@ -818,17 +822,4 @@ if (typeof window !== 'undefined') {
         setupHostBackgroundKeepAlive();
         requestAnimationFrame(loop);
     }
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        startGame,
-        update,
-        loop,
-        addXp,
-        updateLobbyPlayers,
-        getGameWinCondition,
-        isLastBossCleared,
-        compactAlive,
-    };
 }

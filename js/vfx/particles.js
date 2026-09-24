@@ -339,13 +339,3 @@ if (typeof window !== 'undefined') {
     window.spawnHitParticles = spawnHitParticles;
     window.triggerReviveAnimation = triggerReviveAnimation;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        Particle,
-        LifestealWisp,
-        GoldenPillarParticle,
-        spawnHitParticles,
-        triggerReviveAnimation,
-    };
-}

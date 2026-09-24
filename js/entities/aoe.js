@@ -1738,22 +1738,3 @@ if (typeof window !== 'undefined') {
     window.triggerWarpAnomalyDeathEffect = triggerWarpAnomalyDeathEffect;
     window.triggerFullBoardMineExplosion = triggerFullBoardMineExplosion;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        BurningSurface,
-        BurningTrailSegment,
-        LaserTrailSegment,
-        IceTrailSegment,
-        drawCryoMineFrost,
-        drawBioMineVesicle,
-        PlayerMine,
-        AcidPoolHazard,
-        BileMortarPod,
-        WhiteHolePush,
-        BlackHolePull,
-        applyExplosionHealing,
-        triggerWarpAnomalyDeathEffect,
-        triggerFullBoardMineExplosion,
-    };
-}

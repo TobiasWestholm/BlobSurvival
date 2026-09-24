@@ -520,21 +520,3 @@ if (typeof window !== 'undefined') {
     window.endBossWave = endBossWave;
     window.updateBossState = updateBossState;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        aliveCentroid,
-        spawnEnemy,
-        spawnOctopus,
-        spawnFelhound,
-        spawnBehemoth,
-        spawnHordeRing,
-        spawnHordeWave,
-        spawnFromEdge,
-        BOSS_CONFIGS,
-        dropBossHealthPacks,
-        startBossWave,
-        endBossWave,
-        updateBossState,
-    };
-}

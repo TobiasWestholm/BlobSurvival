@@ -621,7 +621,7 @@ function renderUpgradeTree() {
         totalSelected += count;
     }
     const selCountEl = document.getElementById('selectedUpgradesCount');
-    if (selCountEl) selCountEl.textContent = totalSelected;
+    if (selCountEl) selCountEl.textContent = String(totalSelected);
     if (typeof updateTestingLabRecommendation === 'function') {
         updateTestingLabRecommendation();
     }
@@ -887,7 +887,7 @@ function updateTestingLabRecommendation() {
         totalSelected += count;
     }
     const selCountEl = document.getElementById('selectedUpgradesCount');
-    if (selCountEl) selCountEl.textContent = totalSelected;
+    if (selCountEl) selCountEl.textContent = String(totalSelected);
 
     const targetLevel = Math.max(1, totalSelected);
     const estMin = estimateMinuteForPlayerLevel(targetLevel);

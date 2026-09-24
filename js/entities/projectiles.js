@@ -1636,6 +1636,7 @@ class ShrapnelProjectile extends Projectile {
         this.isExplosive = isExplosive;
         this.aoeRadius = aoeRadius;
         this.sourceUnitType = sourceUnitType;
+        this.sourceTurret = null;
     }
     update(dt, dtFactor = 1.0, now) {
         const prevX = this.x;
@@ -1796,8 +1797,8 @@ class ShrapnelProjectile extends Projectile {
                 maxY + pad,
                 (e) => {
                     if (
-                        e.hp <= 0 ||
-                        e.burrowed ||
+                        !e.isAlive() ||
+                        e['burrowed'] ||
                         e.airborne ||
                         !isOnPlayableArea(e)
                     )
@@ -1868,8 +1869,8 @@ class ShrapnelProjectile extends Projectile {
                 maxY + pad,
                 (e) => {
                     if (
-                        e.hp <= 0 ||
-                        e.burrowed ||
+                        !e.isAlive() ||
+                        e['burrowed'] ||
                         e.airborne ||
                         !isOnPlayableArea(e)
                     )
@@ -2078,6 +2079,8 @@ class MagicMissileProjectile extends Projectile {
         this.sourceUnitType = sourceUnitType;
         this.isExplosive = false;
         this.aoeRadius = 0;
+        this.sourceTurret = null;
+        this.spawnAngle = 0;
     }
     update(dt, dtFactor = 1.0, now) {
         const prevX = this.x;
@@ -2281,8 +2284,8 @@ class MagicMissileProjectile extends Projectile {
             maxY + pad,
             (e) => {
                 if (
-                    e.hp <= 0 ||
-                    e.burrowed ||
+                    !e.isAlive() ||
+                    e['burrowed'] ||
                     e.airborne ||
                     !isOnPlayableArea(e)
                 )

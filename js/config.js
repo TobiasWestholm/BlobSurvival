@@ -446,39 +446,3 @@ if (typeof window !== 'undefined') {
     window.DASHER_SIDE_GAP = DASHER_SIDE_GAP;
     window.getPlayerKeyLabels = getPlayerKeyLabels;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        isMobile,
-        STATES,
-        DIFFICULTIES,
-        MONSTER_BASE_XP,
-        PLAYER_DEFS,
-        getPlayerKeyLabels,
-        PROGRESSION,
-        GAME_CONFIG,
-        GAME_STATE,
-        REVIVE_MS,
-        REVIVE_INVULN,
-        METEOR_FALL_MS,
-        BURN_MS,
-        BURN_TICK,
-        PROJECTILE_HEAL,
-        XP_EXPONENTIAL,
-        XP_ADD_PER_LEVEL,
-        LVL2_XP,
-        DOUBLE_TAP_MS,
-        PLAYER_DASH_SPEED,
-        PLAYER_DASH_MS,
-        PLAYER_DASH_COOLDOWN,
-        PLAYER_DASH_BURST,
-        DASHER_LUNGE_RANGE,
-        DASHER_LUNGE_MINDIST,
-        DASHER_LUNGE_SPEED,
-        DASHER_LUNGE_MS,
-        DASHER_LUNGE_COOLDOWN,
-        DASHER_SIDE_SPEED,
-        DASHER_SIDE_MS,
-        DASHER_SIDE_GAP,
-    };
-}

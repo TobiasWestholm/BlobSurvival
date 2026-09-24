@@ -492,9 +492,3 @@ function drawOrganicBlobPath(
 if (typeof window !== 'undefined') {
     window.drawOrganicBlobPath = drawOrganicBlobPath;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        drawOrganicBlobPath,
-    };
-}

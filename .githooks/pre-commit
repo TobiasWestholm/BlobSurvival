@@ -1,19 +1,34 @@
 #!/bin/sh
-# Pre-commit hook: Run Biome linter on staged files
+# Pre-commit hook: Run Biome linter on staged files and TypeScript typechecker
 
-# 1. Try native platform binary if installed in node_modules
+# 1. Run Biome linter on staged files
+echo "[pre-commit] Running Biome linter..."
+LINTED=0
+
 for bin in ./node_modules/@biomejs/cli-*/biome; do
     if [ -x "$bin" ]; then
-        "$bin" lint --staged --no-errors-on-unmatched
-        exit $?
+        "$bin" lint --staged --no-errors-on-unmatched || exit 1
+        LINTED=1
+        break
     fi
 done
 
-# 2. Fall back to npx
-if command -v npx >/dev/null 2>&1; then
-    npx @biomejs/biome lint --staged --no-errors-on-unmatched
-    exit $?
+if [ "$LINTED" -eq 0 ]; then
+    if command -v npx >/dev/null 2>&1; then
+        npx @biomejs/biome lint --staged --no-errors-on-unmatched || exit 1
+    else
+        echo "[pre-commit] Biome binary not found. Skipping lint."
+    fi
 fi
 
-echo "[pre-commit] Biome binary not found. Skipping lint."
+# 2. Run TypeScript typechecker
+echo "[pre-commit] Running TypeScript typecheck..."
+if [ -x "./node_modules/.bin/tsc" ]; then
+    ./node_modules/.bin/tsc -p jsconfig.json || exit 1
+elif command -v npx >/dev/null 2>&1; then
+    npx tsc -p jsconfig.json || exit 1
+else
+    echo "[pre-commit] TypeScript compiler not found. Skipping typecheck."
+fi
+
 exit 0

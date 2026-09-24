@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        "checkJs": true,
+        "target": "ES2022",
+        "strictNullChecks": false,
+        "lib": ["DOM", "DOM.Iterable", "ES2022"],
+        "noEmit": true,
+        "noImplicitAny": false,
+        "useUnknownInCatchVariables": false,
+        "types": ["peerjs"]
+    },
+    "include": ["js/**/*", "globals.d.ts"],
+    "exclude": ["node_modules"]
+}

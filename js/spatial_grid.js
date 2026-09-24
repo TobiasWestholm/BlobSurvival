@@ -463,15 +463,3 @@ if (typeof window !== 'undefined') {
     window.testOrientedBoxHit = testOrientedBoxHit;
     window.findShieldArcIntersection = findShieldArcIntersection;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        SPATIAL_GRID_CELL_SIZE,
-        SPATIAL_GRID,
-        isOnPlayableArea,
-        pointToSegmentDistance,
-        testShieldArcHit,
-        testOrientedBoxHit,
-        findShieldArcIntersection,
-    };
-}

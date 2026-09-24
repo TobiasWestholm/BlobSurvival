@@ -17,7 +17,6 @@ function initCanvasElements() {
     }
     if (!ctx) {
         if (typeof window !== 'undefined' && window.ctx) ctx = window.ctx;
-        else if (typeof global !== 'undefined' && global.ctx) ctx = global.ctx;
     }
 }
 
@@ -1041,26 +1040,4 @@ if (typeof window !== 'undefined') {
     window.drawKeyboardKeyCluster = drawKeyboardKeyCluster;
     window.drawKeyCapCanvas = drawKeyCapCanvas;
     window.draw = draw;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        isMobile,
-        canvas,
-        ctx,
-        W,
-        H,
-        resizeCanvas,
-        dismissRotateHint,
-        updateRotateHint,
-        shadeHex,
-        brightenColor,
-        drawBattlefieldBorder,
-        drawGems,
-        drawParticles,
-        drawPlayerFocusArrow,
-        drawKeyboardKeyCluster,
-        drawKeyCapCanvas,
-        draw,
-    };
 }

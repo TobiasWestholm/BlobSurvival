@@ -486,8 +486,8 @@ class NetworkManager {
                     }
                 }
 
-                if (typeof onOnlinePlayerJoined === 'function') {
-                    onOnlinePlayerJoined(assignedSlot, conn.peer, true);
+                if (typeof window.onOnlinePlayerJoined === 'function') {
+                    window.onOnlinePlayerJoined(assignedSlot, conn.peer, true);
                 }
 
                 const recPlayer =
@@ -611,8 +611,8 @@ class NetworkManager {
                 hostH: typeof H !== 'undefined' ? H : 945,
             });
 
-            if (typeof onOnlinePlayerJoined === 'function') {
-                onOnlinePlayerJoined(assignedSlot, conn.peer, false);
+            if (typeof window.onOnlinePlayerJoined === 'function') {
+                window.onOnlinePlayerJoined(assignedSlot, conn.peer, false);
             }
 
             conn.on('data', (data) => {
@@ -652,8 +652,8 @@ class NetworkManager {
 
             case 'INPUT':
                 // 60 FPS remote movement stream
-                if (typeof onRemoteInputReceived === 'function') {
-                    onRemoteInputReceived(
+                if (typeof window.onRemoteInputReceived === 'function') {
+                    window.onRemoteInputReceived(
                         playerIndex,
                         data.moveX,
                         data.moveY,
@@ -665,22 +665,22 @@ class NetworkManager {
 
             case 'SELECT_WEAPON':
                 // Starting weapon choice or change (regret choice)
-                if (typeof onRemoteWeaponSelected === 'function') {
-                    onRemoteWeaponSelected(playerIndex, data.weaponId);
+                if (typeof window.onRemoteWeaponSelected === 'function') {
+                    window.onRemoteWeaponSelected(playerIndex, data.weaponId);
                 }
                 break;
 
             case 'SELECT_UPGRADE':
                 // Level-up upgrade pick
-                if (typeof onRemoteUpgradeSelected === 'function') {
-                    onRemoteUpgradeSelected(playerIndex, data.upgradeId);
+                if (typeof window.onRemoteUpgradeSelected === 'function') {
+                    window.onRemoteUpgradeSelected(playerIndex, data.upgradeId);
                 }
                 break;
 
             case 'SET_PLAYER_NAME':
                 // Custom player name change
-                if (typeof onRemotePlayerNameChanged === 'function') {
-                    onRemotePlayerNameChanged(playerIndex, data.name);
+                if (typeof window.onRemotePlayerNameChanged === 'function') {
+                    window.onRemotePlayerNameChanged(playerIndex, data.name);
                 }
                 break;
 
@@ -719,8 +719,8 @@ class NetworkManager {
         ) {
             const buffer = data instanceof ArrayBuffer ? data : data.buffer;
             const snapshot = unpackWorldSnapshotBinary(buffer);
-            if (snapshot && typeof onWorldSnapshotReceived === 'function') {
-                onWorldSnapshotReceived(snapshot);
+            if (snapshot && typeof window.onWorldSnapshotReceived === 'function') {
+                window.onWorldSnapshotReceived(snapshot);
             }
             return;
         }
@@ -742,8 +742,8 @@ class NetworkManager {
                 console.log(
                     `[Net] Successfully joined as Player ${this.localPlayerIndex + 1} (Reconnection: ${!!data.isReconnection})`,
                 );
-                if (typeof onAssignedSlot === 'function') {
-                    onAssignedSlot(
+                if (typeof window.onAssignedSlot === 'function') {
+                    window.onAssignedSlot(
                         this.localPlayerIndex,
                         data.difficulty,
                         data.currentGameState,
@@ -774,27 +774,27 @@ class NetworkManager {
 
             case 'LOBBY_STATE':
                 // Updates connected player list and weapon picks in the lobby
-                if (typeof onLobbyStateUpdated === 'function') {
-                    onLobbyStateUpdated(data.players, data.allReady);
+                if (typeof window.onLobbyStateUpdated === 'function') {
+                    window.onLobbyStateUpdated(data.players, data.allReady);
                 }
                 break;
 
             case 'START_GAME_COUNTDOWN':
                 // Host launched the game
-                if (typeof onOnlineCountdownStarted === 'function') {
-                    onOnlineCountdownStarted(data.isNewGame);
+                if (typeof window.onOnlineCountdownStarted === 'function') {
+                    window.onOnlineCountdownStarted(data.isNewGame);
                 }
                 break;
 
             case 'WORLD_SNAPSHOT':
                 // Authoritative game world state from host
-                if (typeof onWorldSnapshotReceived === 'function') {
+                if (typeof window.onWorldSnapshotReceived === 'function') {
                     if (data.b) {
                         try {
                             const bytes = base64ToUint8(data.b);
                             const snapshot = unpackWorldSnapshotBinary(bytes);
                             if (snapshot) {
-                                onWorldSnapshotReceived(snapshot);
+                                window.onWorldSnapshotReceived(snapshot);
                             }
                         } catch (e) {
                             console.warn(
@@ -803,15 +803,15 @@ class NetworkManager {
                             );
                         }
                     } else {
-                        onWorldSnapshotReceived(data);
+                        window.onWorldSnapshotReceived(data);
                     }
                 }
                 break;
 
             case 'LEVEL_UP_START':
                 // Midgame level up triggered
-                if (typeof onOnlineLevelUpStarted === 'function') {
-                    onOnlineLevelUpStarted(
+                if (typeof window.onOnlineLevelUpStarted === 'function') {
+                    window.onOnlineLevelUpStarted(
                         data.pendingLevels,
                         data.upgradesMap || data.playerUpgrades,
                     );
@@ -819,8 +819,8 @@ class NetworkManager {
                 break;
 
             case 'UPGRADE_CHOSEN_SYNC':
-                if (typeof onUpgradeChosenSync === 'function') {
-                    onUpgradeChosenSync(
+                if (typeof window.onUpgradeChosenSync === 'function') {
+                    window.onUpgradeChosenSync(
                         data.playerIndex,
                         data.upgradeId,
                         data.upgradeName,
@@ -829,20 +829,20 @@ class NetworkManager {
                 break;
 
             case 'PAUSE_SYNC':
-                if (typeof onOnlinePauseSynced === 'function') {
-                    onOnlinePauseSynced(data.paused);
+                if (typeof window.onOnlinePauseSynced === 'function') {
+                    window.onOnlinePauseSynced(data.paused);
                 }
                 break;
 
             case 'GAME_OVER':
-                if (typeof onOnlineGameOver === 'function') {
-                    onOnlineGameOver();
+                if (typeof window.onOnlineGameOver === 'function') {
+                    window.onOnlineGameOver();
                 }
                 break;
 
             case 'GAME_VICTORY':
-                if (typeof onOnlineVictory === 'function') {
-                    onOnlineVictory();
+                if (typeof window.onOnlineVictory === 'function') {
+                    window.onOnlineVictory();
                 }
                 break;
 
@@ -920,8 +920,8 @@ class NetworkManager {
         this.peerPlayerMap.delete(peerId);
         this.playerPeerMap.delete(playerIndex);
         this.peerLastSeenMap.delete(peerId);
-        if (typeof onOnlinePlayerDisconnected === 'function') {
-            onOnlinePlayerDisconnected(playerIndex, peerId);
+        if (typeof window.onOnlinePlayerDisconnected === 'function') {
+            window.onOnlinePlayerDisconnected(playerIndex, peerId);
         }
     }
 
@@ -1870,16 +1870,11 @@ function uint8ToBase64(bytes) {
     for (let i = 0; i < len; i++) {
         binary += String.fromCharCode(bytes[i]);
     }
-    return typeof btoa !== 'undefined'
-        ? btoa(binary)
-        : Buffer.from(binary, 'binary').toString('base64');
+    return btoa(binary);
 }
 
 function base64ToUint8(base64) {
-    const binary =
-        typeof atob !== 'undefined'
-            ? atob(base64)
-            : Buffer.from(base64, 'base64').toString('binary');
+    const binary = atob(base64);
     const len = binary.length;
     const bytes = new Uint8Array(len);
     for (let i = 0; i < len; i++) {
@@ -3674,12 +3669,12 @@ window.onWorldSnapshotReceived = (snapshot) => {
             if (ghp) {
                 if (!(g instanceof HealthPack)) {
                     g = new HealthPack(gx, gy, nowTime);
-                    g.targetX = gx;
-                    g.targetY = gy;
+                    g['targetX'] = gx;
+                    g['targetY'] = gy;
                     GAME_STATE.gems[i] = g;
                 } else {
-                    g.targetX = gx;
-                    g.targetY = gy;
+                    g['targetX'] = gx;
+                    g['targetY'] = gy;
                     g.alive = true;
                     if (
                         g.x === undefined ||
@@ -3692,12 +3687,12 @@ window.onWorldSnapshotReceived = (snapshot) => {
             } else if (gsd) {
                 if (!(g instanceof SupplyDrop) || g.type !== gsd) {
                     g = new SupplyDrop(gx, gy, gsd, nowTime);
-                    g.targetX = gx;
-                    g.targetY = gy;
+                    g['targetX'] = gx;
+                    g['targetY'] = gy;
                     GAME_STATE.gems[i] = g;
                 } else {
-                    g.targetX = gx;
-                    g.targetY = gy;
+                    g['targetX'] = gx;
+                    g['targetY'] = gy;
                     g.alive = true;
                     if (
                         g.x === undefined ||
@@ -3710,12 +3705,12 @@ window.onWorldSnapshotReceived = (snapshot) => {
             } else {
                 if (!g || g instanceof HealthPack || g instanceof SupplyDrop) {
                     g = new XPGem(gx, gy, gv);
-                    g.targetX = gx;
-                    g.targetY = gy;
+                    g['targetX'] = gx;
+                    g['targetY'] = gy;
                     GAME_STATE.gems[i] = g;
                 } else {
-                    g.targetX = gx;
-                    g.targetY = gy;
+                    g['targetX'] = gx;
+                    g['targetY'] = gy;
                     g.value = gv;
                     g.alive = true;
                     if (
@@ -4220,9 +4215,11 @@ function recalculateDynamicDifficulty() {
     }
 }
 
+const netManager = typeof window !== 'undefined' ? new NetworkManager() : null;
+
 if (typeof window !== 'undefined') {
     window.NetworkManager = NetworkManager;
-    window.netManager = new NetworkManager();
+    window.netManager = netManager;
     window.serializeWorldForNetwork = serializeWorldForNetwork;
     window.serializeWorldForNetworkJSON = serializeWorldForNetworkJSON;
     window.packWorldSnapshotBinary = packWorldSnapshotBinary;
@@ -4236,25 +4233,4 @@ if (typeof window !== 'undefined') {
     window.clientEnemyCache = clientEnemyCache;
     window.clientProjectileCache = clientProjectileCache;
     window.clientEnemyProjectileCache = clientEnemyProjectileCache;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        NetworkManager,
-        netManager:
-            typeof window !== 'undefined' && window.netManager
-                ? window.netManager
-                : new NetworkManager(),
-        serializeWorldForNetwork,
-        serializeWorldForNetworkJSON,
-        packWorldSnapshotBinary,
-        unpackWorldSnapshotBinary,
-        despawnPlayerEntities,
-        recalculateDynamicDifficulty,
-        interpolateNetworkWorld,
-        clientSnapshotBuffer,
-        clientEnemyCache,
-        clientProjectileCache,
-        clientEnemyProjectileCache,
-    };
 }

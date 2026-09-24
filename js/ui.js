@@ -61,9 +61,7 @@ function renderLobbyWeaponPanels() {
 
     const lobbyStartBtn = document.getElementById('lobbyStartBtn');
     const inviteBanner = document.getElementById('inviteCodeBanner');
-    const tipEl =
-        document.getElementById('tipText') ||
-        (typeof tip !== 'undefined' ? tip : null);
+    const tipEl = document.getElementById('tipText');
 
     if (isSingle) {
         if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
@@ -500,9 +498,7 @@ function selectStartingWeapon(player, weaponId, weaponLabel, panel) {
     const statusDiv = document.getElementById(`panelStatus_${player.index}`);
     if (statusDiv) statusDiv.textContent = `✓ Ready: ${weaponLabel}`;
 
-    const tipEl =
-        document.getElementById('tipText') ||
-        (typeof tip !== 'undefined' ? tip : null);
+    const tipEl = document.getElementById('tipText');
 
     if (GAME_STATE.gameMode === 'single') {
         const layer = document.getElementById('levelUpLayer');
@@ -1121,7 +1117,7 @@ function startCountdown(isNewGame = false) {
     const el = document.getElementById('countdown');
     let n = 3;
     if (el) {
-        el.textContent = n;
+        el.textContent = String(n);
         el.style.display = 'block';
     }
 
@@ -1147,7 +1143,7 @@ function startCountdown(isNewGame = false) {
     const tick = () => {
         n--;
         if (n >= 1) {
-            if (el) el.textContent = n;
+            if (el) el.textContent = String(n);
             if (typeof GAME_STATE !== 'undefined') {
                 GAME_STATE.countdownTimer = setTimeout(tick, TICK_MS);
             }
@@ -1309,9 +1305,7 @@ function adjustTipTextLayout() {
 
 function startTipRotation() {
     stopTipRotation();
-    const tipEl =
-        document.getElementById('tipText') ||
-        (typeof tip !== 'undefined' ? tip : null);
+    const tipEl = document.getElementById('tipText');
     if (!tipEl) return;
 
     tipEl.textContent = 'Tip: ' + fetchTip();
@@ -1666,9 +1660,7 @@ function showStartMenu() {
               ? window.joystickZone
               : null);
     if (zone) zone.style.display = 'none';
-    const tipEl =
-        document.getElementById('tipText') ||
-        (typeof tip !== 'undefined' ? tip : null);
+    const tipEl = document.getElementById('tipText');
     if (tipEl) tipEl.style.display = 'none';
     stopTipRotation();
     const uiLayer = document.querySelector('.ui-layer');
@@ -2151,45 +2143,4 @@ if (typeof window !== 'undefined') {
     window.updateUI = updateUI;
     window.initUISystem = initUISystem;
     window.createKeyClusterDOM = createKeyClusterDOM;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        WEAPON_LABELS,
-        startWeaponSelectFlow,
-        renderLobbyWeaponPanels,
-        buildPlaceholderPanel,
-        buildStartingWeaponPanel,
-        createKeyClusterDOM,
-        selectStartingWeapon,
-        startLevelUpFlow,
-        beginSelectionRound,
-        showKickButtonsForUnpickedPlayers,
-        kickPlayerByHost,
-        onOnlinePlayerKicked,
-        getPanelPosition,
-        buildPlayerPanel,
-        onPlayerChose,
-        onPlayerChoseVirtual,
-        finishSelectionRound,
-        startCountdown,
-        tips,
-        fetchTip,
-        adjustTipTextLayout,
-        startTipRotation,
-        stopTipRotation,
-        gameOver,
-        showVictory,
-        formatTime,
-        buildStatsHTML,
-        saveGameScore,
-        getBestScore,
-        showStartStep,
-        showStartMenu,
-        joinOnlineRoom,
-        updateFpsToggleBtn,
-        togglePause,
-        updateUI,
-        initUISystem,
-    };
 }

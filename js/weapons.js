@@ -72,10 +72,9 @@ class Weapon {
 
     /**
      * Optional visual rendering pass for weapons with persistent physical appendages.
-     * @param {CanvasRenderingContext2D} ctx
-     * @param {number} now
+     * @param {number} [now]
      */
-    draw(ctx, now) {
+    draw(now = performance.now()) {
         // Optional override by subclasses (e.g. PlayerFlail)
     }
 
@@ -357,7 +356,7 @@ class MeleeSweep extends Weapon {
                     this.player.y - sBox,
                     this.player.y + sBox,
                     (e) => {
-                        if (!isDamageable(e) || e.burrowed) return;
+                        if (!isDamageable(e) || e['burrowed']) return;
                         const dx = e.x - this.player.x;
                         const dy = e.y - this.player.y;
                         if (
@@ -413,7 +412,7 @@ class MeleeSweep extends Weapon {
                     this.player.y - sBox,
                     this.player.y + sBox,
                     (e) => {
-                        if (!isDamageable(e) || e.burrowed) return;
+                        if (!isDamageable(e) || e['burrowed']) return;
                         const dx = e.x - this.player.x;
                         const dy = e.y - this.player.y;
 
@@ -1534,7 +1533,7 @@ function updateLaserFences(dt, now) {
 
         for (let i = 0; i < numEnemies; i++) {
             const e = enemies[i];
-            if (e.hp <= 0 || e.burrowed || e.airborne || e.isBoss()) continue;
+            if (e.hp <= 0 || e['burrowed'] || e.airborne || e.isBoss()) continue;
             if (e.x < minX || e.x > maxX || e.y < minY || e.y > maxY) continue;
 
             let t = ((e.x - x0) * dx + (e.y - y0) * dy) * invLen2;
@@ -1577,19 +1576,4 @@ if (typeof window !== 'undefined') {
     window.PlayerFlail = PlayerFlail;
     window.fireInstantMissile = fireInstantMissile;
     window.updateLaserFences = updateLaserFences;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        Weapon,
-        MagicMissile,
-        MeleeSweep,
-        ProximityMine,
-        TurretWeapon,
-        FireRing,
-        DeflectorShields,
-        PlayerFlail,
-        fireInstantMissile,
-        updateLaserFences,
-    };
 }

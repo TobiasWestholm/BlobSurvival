@@ -31,6 +31,8 @@ class TurretEntity extends Unit {
         // Flamethrower sweep animation state
         this.flameActiveUntil = 0;
         this.flameCenterAngle = 0;
+        this.unitType = 'turret';
+        this.pendingExpansion = null;
 
         if (
             this.player &&

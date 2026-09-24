@@ -27,6 +27,15 @@ class Enemy extends Unit {
         this.turretTarget = null;
         this.inLaserFence = false;
         this.lastLaserFenceParticle = 0;
+        this.lunging = false;
+        this.lungeUntil = 0;
+        this.knockbackStart = 0;
+        this.knockbackDuration = 0;
+        this.knockbackStartX = 0;
+        this.knockbackStartY = 0;
+        this.knockbackTargetX = 0;
+        this.knockbackTargetY = 0;
+        this.eventEnemy = false;
     }
 
     static create(typeOrX, xOrY, typeOrNow, maybeNow) {
@@ -163,10 +172,9 @@ class Enemy extends Unit {
     isTargetable() {
         return (
             this.isAlive() &&
-            !this.burrowed &&
+            !this['burrowed'] &&
             !this.airborne &&
-            !this.invisible &&
-            this.type !== 'warp_anomaly' &&
+            !this['invisible'] &&
             isOnPlayableArea(this)
         );
     }
@@ -231,8 +239,8 @@ class Enemy extends Unit {
             const tdx = t.x - this.x,
                 tdy = t.y - this.y;
             if (tdx * tdx + tdy * tdy < (t.r + this.r) * (t.r + this.r)) {
-                if (typeof this.detonateBaneling === 'function') {
-                    this.detonateBaneling(now);
+                if (typeof this['detonateBaneling'] === 'function') {
+                    this['detonateBaneling'](now);
                     return true;
                 }
                 t.takeDamage(this.damage, now, this);
@@ -461,8 +469,8 @@ class Enemy extends Unit {
         }
         if (this.updateKnockbackAirborne(now)) return;
         if (this.airborne) {
-            if (now >= this.landAt && typeof this.land === 'function')
-                this.land(now);
+            if (now >= (this['landAt'] || 0) && typeof this['land'] === 'function')
+                this['land'](now);
             return;
         }
 

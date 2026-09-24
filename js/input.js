@@ -355,12 +355,12 @@ function initInputSystem() {
                 typeof GAME_STATE !== 'undefined' &&
                 GAME_STATE.current === STATES.START_MENU
             ) {
-                ENABLE_TESTING_LAB = !Boolean(window.ENABLE_TESTING_LAB);
+                const isEnabled = !(typeof window !== 'undefined' && window.ENABLE_TESTING_LAB);
                 if (typeof window !== 'undefined')
-                    window.ENABLE_TESTING_LAB = ENABLE_TESTING_LAB;
+                    window.ENABLE_TESTING_LAB = isEnabled;
                 const tBtn = document.getElementById('testingBtn');
                 if (tBtn)
-                    tBtn.style.display = ENABLE_TESTING_LAB ? 'block' : 'none';
+                    tBtn.style.display = isEnabled ? 'block' : 'none';
             }
             // Audio toggle hotkeys
             if (k === 'm' && typeof SoundEngine !== 'undefined') {
@@ -505,16 +505,4 @@ if (typeof window !== 'undefined') {
     window.JoystickController = JoystickController;
     window.sendClientLocalInput = sendClientLocalInput;
     window.initInputSystem = initInputSystem;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        keys,
-        anyKey,
-        handleDoubleTap,
-        tryStartDash,
-        JoystickController,
-        sendClientLocalInput,
-        initInputSystem,
-    };
 }

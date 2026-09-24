@@ -531,17 +531,3 @@ if (typeof window !== 'undefined') {
     window.resolveEnemyTerrainCollisionsAndPathing =
         resolveEnemyTerrainCollisionsAndPathing;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        Obstacle,
-        ShieldObstacle,
-        ShieldTerrain,
-        WallObstacle,
-        WallDebrisObstacle,
-        resolvePlayerOrientedBoxCollision,
-        resolvePlayerArcWallCollision,
-        resolvePlayerTerrainCollisions,
-        resolveEnemyTerrainCollisionsAndPathing,
-    };
-}

@@ -904,16 +904,3 @@ if (typeof window !== 'undefined') {
     window.InstantMuzzleFlash = InstantMuzzleFlash;
     window.SledgeHitVisual = SledgeHitVisual;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        CombatVFX,
-        ExplosionVFX,
-        MineExplosion,
-        NukeExplosion,
-        FreezeBlastVisual,
-        InstantHitImpact,
-        InstantMuzzleFlash,
-        SledgeHitVisual,
-    };
-}

@@ -1240,17 +1240,3 @@ if (typeof window !== 'undefined') {
     window.showUpgradeDetailModal = showUpgradeDetailModal;
     window.closeUpgradeDetailModal = closeUpgradeDetailModal;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        UPGRADE_POOL,
-        UPGRADE_DEPENDENCIES,
-        UPGRADE_DETAILS,
-        upgradeWeight,
-        weightedPickIndex,
-        pickThreeFor,
-        getUpgradeUnlockInfo,
-        showUpgradeDetailModal,
-        closeUpgradeDetailModal,
-    };
-}

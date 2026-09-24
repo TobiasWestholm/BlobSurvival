@@ -370,7 +370,9 @@ const SoundEngine = {
                         ? shape > 2
                             ? shape > 3
                                 ? shape > 4
-                                    ? ((t / PI2) % 1 < shapeCurve / 2) * 2 - 1
+                                    ? (t / PI2) % 1 < shapeCurve / 2 
+                                        ? 1 
+                                        : -1
                                     : Math.sin(t ** 3)
                                 : Math.max(Math.min(Math.tan(t), 1), -1)
                             : 1 - (((((2 * t) / PI2) % 2) + 2) % 2)
@@ -3570,8 +3572,7 @@ const SoundEngine = {
         if (!this.throttle('player_heal', 100)) return;
         const isMajor =
             volumeMode === 'medium' ||
-            volumeMode === 'high' ||
-            volumeMode >= 0.5;
+            volumeMode === 'high';
         const duration = isMajor ? 0.6 : 0.4;
         const priority = isMajor ? this.PRIORITY.CRITICAL : this.PRIORITY.LOW;
         const v = this.allocateVoice(priority, 'player_heal', duration);

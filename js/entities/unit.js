@@ -133,12 +133,3 @@ if (typeof window !== 'undefined') {
     window.isDamageable = isDamageable;
     window.getStrongestClosestEnemy = getStrongestClosestEnemy;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        Unit,
-        isTargetable,
-        isDamageable,
-        getStrongestClosestEnemy,
-    };
-}

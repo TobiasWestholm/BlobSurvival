@@ -114,6 +114,13 @@ class Player extends Unit {
         this.knockbackTargetY = 0;
         this.knockbackStart = 0;
         this.knockbackDuration = 550;
+        this.rocketEnabled = false;
+        this.turretCooldownCount = 0;
+        this.disconnected = false;
+        this.kicked = false;
+        this.remoteInput = null;
+        this.nitroUntil = 0;
+        this.acidSlowUntil = 0;
     }
 
     unlockWeapon(id) {
@@ -1304,7 +1311,7 @@ class Player extends Unit {
             if (dx * dx + dy * dy <= radius * radius) {
                 e.hp -= dmg;
                 spawnHitParticles(e.x, e.y, '#ff3300');
-                if (e.hp > 0 && this.martyrsPresenceEnabled && !e.burrowed) {
+                if (e.hp > 0 && this.martyrsPresenceEnabled && !e['burrowed']) {
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     const nx =
                         dist > 0.001 ? dx / dist : Math.random() < 0.5 ? -1 : 1;
