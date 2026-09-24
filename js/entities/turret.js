@@ -162,8 +162,17 @@ class TurretEntity extends Unit {
             this.hitCooldown.set(source, now + cooldownMs);
         }
         const reduction = this.player ? this.player.damageReduction : 1.0;
+        const bossMult =
+            source &&
+            typeof source.isBoss === 'function' &&
+            source.isBoss() &&
+            typeof GAME_CONFIG !== 'undefined' &&
+            GAME_CONFIG.TURRET &&
+            GAME_CONFIG.TURRET.BOSS_DAMAGE_MULT !== undefined
+                ? GAME_CONFIG.TURRET.BOSS_DAMAGE_MULT
+                : 1.0;
         const effectiveDmg =
-            amount * GAME_STATE.difficulty.takenMult * reduction;
+            amount * bossMult * GAME_STATE.difficulty.takenMult * reduction;
         this.hp = Math.max(0, this.hp - effectiveDmg);
         this.onTakeDamage(effectiveDmg, now, source);
 

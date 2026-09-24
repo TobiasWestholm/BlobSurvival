@@ -1533,7 +1533,7 @@ function updateLaserFences(dt, now) {
 
         for (let i = 0; i < numEnemies; i++) {
             const e = enemies[i];
-            if (e.hp <= 0 || e['burrowed'] || e.airborne || e.isBoss()) continue;
+            if (e.hp <= 0 || e['burrowed'] || e.airborne) continue;
             if (e.x < minX || e.x > maxX || e.y < minY || e.y > maxY) continue;
 
             let t = ((e.x - x0) * dx + (e.y - y0) * dy) * invLen2;
@@ -1546,7 +1546,9 @@ function updateLaserFences(dt, now) {
             const hitR = e.r + fenceRadius;
 
             if (edx * edx + edy * edy < hitR * hitR) {
-                e.inLaserFence = true;
+                if (!e.isBoss()) {
+                    e.inLaserFence = true;
+                }
                 if (isDamaging && dmgThisFrame > 0) {
                     e.hp -= dmgThisFrame;
                     if (

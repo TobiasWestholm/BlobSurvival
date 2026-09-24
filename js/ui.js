@@ -1565,8 +1565,8 @@ function showStartStep(step) {
     const tBtn = document.getElementById('testingBtn');
     if (tBtn) {
         tBtn.style.display =
-            typeof ENABLE_TESTING_LAB !== 'undefined' &&
-            ENABLE_TESTING_LAB &&
+            typeof window !== 'undefined' &&
+            window.ENABLE_TESTING_LAB &&
             step === 'mode'
                 ? 'block'
                 : 'none';
@@ -1637,7 +1637,7 @@ function showStartMenu() {
     const tBtn = document.getElementById('testingBtn');
     if (tBtn)
         tBtn.style.display =
-            typeof ENABLE_TESTING_LAB !== 'undefined' && ENABLE_TESTING_LAB
+            typeof window !== 'undefined' && window.ENABLE_TESTING_LAB
                 ? 'block'
                 : 'none';
 

@@ -420,8 +420,8 @@ function initInputSystem() {
                         showStartMenu();
                     } else {
                         const tBtn = document.getElementById('testingBtn');
-                        if (tBtn && typeof ENABLE_TESTING_LAB !== 'undefined')
-                            tBtn.style.display = ENABLE_TESTING_LAB
+                        if (tBtn && typeof window !== 'undefined')
+                            tBtn.style.display = window.ENABLE_TESTING_LAB
                                 ? 'block'
                                 : 'none';
                         const sMenu = document.getElementById('startMenu');

@@ -5,7 +5,7 @@
         "typescript": "^7.0.2"
     },
     "scripts": {
-        "lint": "biome lint .",
+        "lint": "biome lint --diagnostic-level=warn .",
         "format": "biome format .",
         "check": "biome check .",
         "fix": "biome check --write .",

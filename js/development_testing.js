@@ -1352,8 +1352,8 @@ function initTestingLabBindings() {
     if (testingBtn) {
         testingBtn.onclick = () => {
             if (
-                typeof ENABLE_TESTING_LAB !== 'undefined' &&
-                !ENABLE_TESTING_LAB
+                typeof window !== 'undefined' &&
+                !window.ENABLE_TESTING_LAB
             )
                 return;
             testingBtn.style.display = 'none';
