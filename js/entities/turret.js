@@ -33,6 +33,9 @@ class TurretEntity extends Unit {
         this.flameCenterAngle = 0;
         this.unitType = 'turret';
         this.pendingExpansion = null;
+        this.laserWallsEnabled = false;
+        this.slowWallsEnabled = false;
+        this.turretSawEnabled = false;
 
         if (
             this.player &&
@@ -917,8 +920,13 @@ class TurretEntity extends Unit {
                     );
                 const isEstablishing = elapsed < animDuration;
 
-                const isLaserWall = this.player?.laserWallsEnabled;
-                const fenceColor = isLaserWall ? '#00ffff' : pColor;
+                const isLaserWall =
+                    this.laserWallsEnabled ||
+                    this.player?.laserWallsEnabled ||
+                    conn.laserWallsEnabled ||
+                    conn.player?.laserWallsEnabled;
+                const fenceColor =
+                    this.player?.color || conn.player?.color || pColor;
 
                 const x0 = fromTurret.x,
                     y0 = fromTurret.y;
@@ -1122,10 +1130,10 @@ class TurretEntity extends Unit {
         }
 
         // 3. Whirling Chitin Cilia / Spore Teeth (Sawblade upgrade - Dark Body with Bright Teeth)
-        if (this.player?.turretSawEnabled) {
+        if (this.turretSawEnabled || this.player?.turretSawEnabled) {
             const sawRadius =
                 50 *
-                (this.player.meleeRangeModifier || 1.0) *
+                (this.player?.meleeRangeModifier || 1.0) *
                 ((GAME_STATE.difficulty
                     ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
                     : 1.0) /

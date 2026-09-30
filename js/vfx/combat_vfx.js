@@ -23,8 +23,9 @@ class CombatVFX {
         this.x = x;
         this.y = y;
         this.duration = Math.max(1, duration);
+        this.remainingTime = this.duration;
         this.spawnTime =
-            typeof now === 'number' && !Number.isNaN(now)
+            typeof now === 'number' && !Number.isNaN(now) && now > 100
                 ? now
                 : typeof gameClock !== 'undefined'
                   ? gameClock
@@ -40,15 +41,21 @@ class CombatVFX {
     getProgress(
         now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
     ) {
+        if (!this.alive) return 1.0;
         const curTime =
-            typeof now === 'number' && !Number.isNaN(now)
+            typeof now === 'number' && !Number.isNaN(now) && now > 100
                 ? now
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
+        const progressFromTime = (curTime - this.spawnTime) / this.duration;
+        const progressFromDt =
+            this.remainingTime !== undefined
+                ? (this.duration - this.remainingTime) / this.duration
+                : 0;
         return Math.min(
             1,
-            Math.max(0, (curTime - this.spawnTime) / this.duration),
+            Math.max(0, Math.max(progressFromTime, progressFromDt)),
         );
     }
 
@@ -58,25 +65,37 @@ class CombatVFX {
      * @returns {number}
      */
     getAlpha(now) {
-        return 1 - this.getProgress(now);
+        if (!this.alive) return 0;
+        return Math.max(0, 1 - this.getProgress(now));
     }
 
     /**
      * Updates lifetime and marks inactive on expiration.
+     * Supports update(dt, dtFactor), update(dt, now), and update(dt, dtFactor, now).
      * @param {number} dt
-     * @param {number} [now]
+     * @param {number} [arg2]
+     * @param {number} [arg3]
      */
-    update(
-        dt,
-        now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
-    ) {
-        const curTime =
-            typeof now === 'number' && !Number.isNaN(now)
-                ? now
-                : typeof gameClock !== 'undefined'
-                  ? gameClock
-                  : performance.now();
-        if (curTime - this.spawnTime > this.duration) {
+    update(dt, arg2, arg3) {
+        if (!this.alive) return;
+        if (typeof dt === 'number' && !Number.isNaN(dt)) {
+            this.remainingTime -= dt;
+            if (this.remainingTime <= 0) {
+                this.alive = false;
+                return;
+            }
+        }
+        let curTime;
+        if (typeof arg3 === 'number' && !Number.isNaN(arg3) && arg3 > 100) {
+            curTime = arg3;
+        } else if (typeof arg2 === 'number' && !Number.isNaN(arg2) && arg2 > 100) {
+            curTime = arg2;
+        } else if (typeof gameClock !== 'undefined') {
+            curTime = gameClock;
+        } else {
+            curTime = performance.now();
+        }
+        if (curTime - this.spawnTime >= this.duration) {
             this.alive = false;
         }
     }
@@ -86,7 +105,7 @@ class CombatVFX {
      * @returns {boolean}
      */
     isAlive() {
-        return this.alive;
+        return this.alive && (this.remainingTime === undefined || this.remainingTime > 0);
     }
 
     /**
@@ -150,6 +169,7 @@ class MineExplosion extends ExplosionVFX {
         r,
         now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
         player = null,
+        fromNetwork = false,
     ) {
         super(x, y, r, 300, now);
         this.player = player;
@@ -159,6 +179,17 @@ class MineExplosion extends ExplosionVFX {
             typeof SoundEngine.mineExplosion === 'function'
         ) {
             SoundEngine.mineExplosion(r / 60);
+        }
+        if (!fromNetwork && typeof queueNetworkCombatVfx === 'function') {
+            const pIndex =
+                player && player.index !== undefined ? player.index : 0;
+            queueNetworkCombatVfx(
+                1,
+                x,
+                y,
+                Math.min(255, Math.round(r / 4)),
+                pIndex,
+            );
         }
     }
 
@@ -172,15 +203,19 @@ class MineExplosion extends ExplosionVFX {
     ) {
         const renderCtx =
             targetContext || (typeof ctx !== 'undefined' ? ctx : null);
-        if (!renderCtx) return;
+        if (!renderCtx || !this.alive) return;
 
         const curTime =
-            typeof now === 'number' && !Number.isNaN(now)
+            typeof now === 'number' && !Number.isNaN(now) && now > 100
                 ? now
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
         const t = this.getProgress(curTime);
+        if (t >= 1.0) {
+            this.alive = false;
+            return;
+        }
         const currentR = this.getCurrentRadius(curTime);
 
         renderCtx.save();
@@ -247,6 +282,7 @@ class NukeExplosion extends ExplosionVFX {
         y,
         r,
         now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        fromNetwork = false,
     ) {
         super(x, y, r, 320, now);
         if (
@@ -255,6 +291,9 @@ class NukeExplosion extends ExplosionVFX {
             typeof SoundEngine.nukeExplosion === 'function'
         ) {
             SoundEngine.nukeExplosion();
+        }
+        if (!fromNetwork && typeof queueNetworkCombatVfx === 'function') {
+            queueNetworkCombatVfx(2, x, y, Math.min(255, Math.round(r / 4)));
         }
     }
 
@@ -268,15 +307,19 @@ class NukeExplosion extends ExplosionVFX {
     ) {
         const renderCtx =
             targetContext || (typeof ctx !== 'undefined' ? ctx : null);
-        if (!renderCtx) return;
+        if (!renderCtx || !this.alive) return;
 
         const curTime =
-            typeof now === 'number' && !Number.isNaN(now)
+            typeof now === 'number' && !Number.isNaN(now) && now > 100
                 ? now
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
         const t = this.getProgress(curTime);
+        if (t >= 1.0) {
+            this.alive = false;
+            return;
+        }
         const currentR = this.getCurrentRadius(curTime);
 
         renderCtx.save();
@@ -338,8 +381,12 @@ class FreezeBlastVisual extends ExplosionVFX {
         y,
         r,
         now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
+        fromNetwork = false,
     ) {
         super(x, y, r, 320, now);
+        if (!fromNetwork && typeof queueNetworkCombatVfx === 'function') {
+            queueNetworkCombatVfx(3, x, y, Math.min(255, Math.round(r / 4)));
+        }
     }
 
     /**
@@ -352,15 +399,19 @@ class FreezeBlastVisual extends ExplosionVFX {
     ) {
         const renderCtx =
             targetContext || (typeof ctx !== 'undefined' ? ctx : null);
-        if (!renderCtx) return;
+        if (!renderCtx || !this.alive) return;
 
         const curTime =
-            typeof now === 'number' && !Number.isNaN(now)
+            typeof now === 'number' && !Number.isNaN(now) && now > 100
                 ? now
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
         const t = this.getProgress(curTime);
+        if (t >= 1.0) {
+            this.alive = false;
+            return;
+        }
         const currentR = this.getCurrentRadius(curTime);
 
         renderCtx.save();
@@ -421,7 +472,9 @@ class InstantHitImpact extends CombatVFX {
      * @param {number} hitAngle - Impact angle pointing inward to target
      * @param {string} color - Laser / strike color
      * @param {number} [now]
-     * @param {number} [monsterR=14] - Target radius
+     * @param {Player|object|number} [playerOrMonsterR=14] - Target radius or player object
+     * @param {number|boolean} [monsterROrFromNetwork=14]
+     * @param {boolean} [fromNetwork=false]
      */
     constructor(
         x,
@@ -429,12 +482,46 @@ class InstantHitImpact extends CombatVFX {
         hitAngle,
         color,
         now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
-        monsterR = 14,
+        playerOrMonsterR = 14,
+        monsterROrFromNetwork = 14,
+        fromNetwork = false,
     ) {
+        /** @type {Player|null} */
+        let player = null;
+        let monsterR = 14;
+        let isNet = false;
+        if (typeof playerOrMonsterR === 'object' && playerOrMonsterR !== null) {
+            player = /** @type {Player} */ (playerOrMonsterR);
+            monsterR =
+                typeof monsterROrFromNetwork === 'number'
+                    ? monsterROrFromNetwork
+                    : 14;
+            isNet = Boolean(fromNetwork);
+        } else {
+            monsterR =
+                typeof playerOrMonsterR === 'number'
+                    ? playerOrMonsterR
+                    : 14;
+            isNet = Boolean(monsterROrFromNetwork);
+        }
         super(x, y, 95, now);
         this.hitAngle = hitAngle;
-        this.color = color || '#00ffff';
+        this.player = player;
+        this.color = player?.color || color || '#00ffff';
         this.monsterR = monsterR;
+        if (!isNet && typeof queueNetworkCombatVfx === 'function') {
+            const pIndex =
+                player && player.index !== undefined ? player.index : 0;
+            queueNetworkCombatVfx(
+                6,
+                x,
+                y,
+                typeof angleToUint8 === 'function'
+                    ? angleToUint8(hitAngle)
+                    : 0,
+                pIndex,
+            );
+        }
     }
 
     /**
@@ -447,16 +534,20 @@ class InstantHitImpact extends CombatVFX {
     ) {
         const renderCtx =
             targetContext || (typeof ctx !== 'undefined' ? ctx : null);
-        if (!renderCtx) return;
+        if (!renderCtx || !this.alive) return;
 
         const curTime =
-            typeof now === 'number' && !Number.isNaN(now)
+            typeof now === 'number' && !Number.isNaN(now) && now > 100
                 ? now
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
         const t = this.getProgress(curTime);
         const alpha = 1 - t;
+        if (alpha <= 0 || t >= 1.0) {
+            this.alive = false;
+            return;
+        }
 
         renderCtx.save();
         renderCtx.translate(this.x, this.y);
@@ -474,7 +565,7 @@ class InstantHitImpact extends CombatVFX {
         renderCtx.moveTo(-3, 0);
         renderCtx.lineTo(pierceLen, 0);
         renderCtx.stroke();
-        renderCtx.globalAlpha = 1;
+        renderCtx.globalAlpha = Math.max(0, Math.min(1, alpha));
         renderCtx.lineWidth = 2.5 * alpha;
         renderCtx.beginPath();
         renderCtx.moveTo(-3, 0);
@@ -491,6 +582,7 @@ class InstantHitImpact extends CombatVFX {
 
         // 3. Narrow piercing barb tip
         renderCtx.fillStyle = this.color;
+        renderCtx.globalAlpha = Math.max(0, Math.min(1, alpha));
         renderCtx.beginPath();
         renderCtx.moveTo(pierceLen, 0);
         renderCtx.lineTo(pierceLen - 5, -2);
@@ -528,7 +620,7 @@ class InstantMuzzleFlash extends CombatVFX {
      * @param {number} shootAngle
      * @param {string} color
      * @param {number} [now]
-     * @param {Unit} [source=null]
+     * @param {Unit|Player|any} [source=null]
      * @param {number} [shooterRadius=14]
      */
     constructor(
@@ -539,12 +631,32 @@ class InstantMuzzleFlash extends CombatVFX {
         now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
         source = null,
         shooterRadius = 14,
+        fromNetwork = false,
     ) {
         super(x, y, 80, now);
         this.shootAngle = shootAngle;
         this.color = color || '#00ffff';
         this.source = source;
         this.shooterRadius = shooterRadius;
+        if (!fromNetwork && typeof queueNetworkCombatVfx === 'function') {
+            const src = /** @type {any} */ (source);
+            const pIndex = src
+                ? src.player && src.player.index !== undefined
+                    ? src.player.index
+                    : src.index !== undefined
+                      ? src.index
+                      : 0
+                : 0;
+            queueNetworkCombatVfx(
+                5,
+                x,
+                y,
+                typeof angleToUint8 === 'function'
+                    ? angleToUint8(shootAngle)
+                    : 0,
+                pIndex,
+            );
+        }
     }
 
     /**
@@ -557,16 +669,20 @@ class InstantMuzzleFlash extends CombatVFX {
     ) {
         const renderCtx =
             targetContext || (typeof ctx !== 'undefined' ? ctx : null);
-        if (!renderCtx) return;
+        if (!renderCtx || !this.alive) return;
 
         const curTime =
-            typeof now === 'number' && !Number.isNaN(now)
+            typeof now === 'number' && !Number.isNaN(now) && now > 100
                 ? now
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
         const t = this.getProgress(curTime);
         const alpha = 1 - t;
+        if (alpha <= 0 || t >= 1.0) {
+            this.alive = false;
+            return;
+        }
 
         // Anchor dynamically to the moving player / shooter
         let drawX = this.x;
@@ -592,7 +708,7 @@ class InstantMuzzleFlash extends CombatVFX {
         renderCtx.moveTo(0, 0);
         renderCtx.lineTo(beamLen, 0);
         renderCtx.stroke();
-        renderCtx.globalAlpha = 1;
+        renderCtx.globalAlpha = Math.max(0, Math.min(1, alpha));
         renderCtx.lineWidth = 2.5 * alpha;
         renderCtx.beginPath();
         renderCtx.moveTo(0, 0);
@@ -657,12 +773,26 @@ class SledgeHitVisual extends CombatVFX {
         angle,
         now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
         player = null,
+        fromNetwork = false,
     ) {
         super(x, y, 240, now);
         this.r = r;
         this.coneAngle = coneAngle;
         this.angle = angle;
         this.player = player;
+        if (!fromNetwork && typeof queueNetworkCombatVfx === 'function') {
+            const pIndex =
+                player && player.index !== undefined ? player.index : 0;
+            queueNetworkCombatVfx(
+                4,
+                x,
+                y,
+                typeof angleToUint8 === 'function'
+                    ? angleToUint8(angle)
+                    : 0,
+                pIndex,
+            );
+        }
     }
 
     /**
@@ -675,15 +805,19 @@ class SledgeHitVisual extends CombatVFX {
     ) {
         const renderCtx =
             targetContext || (typeof ctx !== 'undefined' ? ctx : null);
-        if (!renderCtx) return;
+        if (!renderCtx || !this.alive) return;
 
         const curTime =
-            typeof now === 'number' && !Number.isNaN(now)
+            typeof now === 'number' && !Number.isNaN(now) && now > 100
                 ? now
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
         const t = this.getProgress(curTime);
+        if (t >= 1.0) {
+            this.alive = false;
+            return;
+        }
         const pColor = this.player ? this.player.color : '#00ffff';
         const ringColor = this.player ? this.player.ring : '#112222';
         const modifier = this.player ? this.player.meleeRangeModifier : 1.0;

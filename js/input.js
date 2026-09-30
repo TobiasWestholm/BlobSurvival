@@ -128,6 +128,9 @@ function tryStartDash(p) {
     if (typeof SoundEngine !== 'undefined' && SoundEngine.phaseDash) {
         SoundEngine.phaseDash();
     }
+    if (typeof queueNetworkBlobDeform === 'function') {
+        queueNetworkBlobDeform(p.index, 5, Math.atan2(dy, dx));
+    }
 }
 
 // ---------------- 2. Virtual Touch Joystick Controller ----------------

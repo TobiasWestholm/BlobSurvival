@@ -292,6 +292,14 @@ function spawnHitParticles(x, y, color, count = 2) {
             new Particle(x, y, Math.cos(a) * s, Math.sin(a) * s, color, 250),
         );
     }
+    if (
+        typeof netManager !== 'undefined' &&
+        netManager?.isHost &&
+        netManager?.connections?.size > 0 &&
+        typeof queueNetworkHitEvent === 'function'
+    ) {
+        queueNetworkHitEvent(x, y, color);
+    }
 }
 
 /**

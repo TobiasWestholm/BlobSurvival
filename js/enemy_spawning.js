@@ -294,6 +294,15 @@ const BOSS_CONFIGS = {
             if (typeof triggerFullBoardMineExplosion === 'function') {
                 triggerFullBoardMineExplosion(now);
             }
+            if (
+                typeof queueNetworkEnemyDeath === 'function' &&
+                Array.isArray(GAME_STATE.enemies)
+            ) {
+                for (let i = 0; i < GAME_STATE.enemies.length; i++) {
+                    const e = GAME_STATE.enemies[i];
+                    if (e?._nid) queueNetworkEnemyDeath(e._nid);
+                }
+            }
             GAME_STATE.enemies = [];
             GAME_STATE.activeSentries = [];
             GAME_STATE.shieldBearers = [];
@@ -364,6 +373,15 @@ const BOSS_CONFIGS = {
             dropBossHealthPacks(dropX, dropY);
             if (typeof triggerFullBoardMineExplosion === 'function') {
                 triggerFullBoardMineExplosion(now);
+            }
+            if (
+                typeof queueNetworkEnemyDeath === 'function' &&
+                Array.isArray(GAME_STATE.enemies)
+            ) {
+                for (let i = 0; i < GAME_STATE.enemies.length; i++) {
+                    const e = GAME_STATE.enemies[i];
+                    if (e?._nid) queueNetworkEnemyDeath(e._nid);
+                }
             }
             GAME_STATE.enemies = [];
             GAME_STATE.activeSentries = [];

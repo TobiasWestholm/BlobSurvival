@@ -4,6 +4,8 @@ class Entity {
         this.y = y;
         this.r = r;
         this.alive = true;
+        /** @type {number|undefined} */
+        this._nid = undefined;
     }
 
     isAlive() {

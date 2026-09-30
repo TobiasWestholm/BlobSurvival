@@ -354,6 +354,10 @@ function update(dt, dtFactor, now) {
     for (let i = 0; i < GAME_STATE.enemies.length; i++) {
         const e = GAME_STATE.enemies[i];
         if (e.hp <= 0) {
+            e.alive = false;
+            if (e._nid && typeof queueNetworkEnemyDeath === 'function') {
+                queueNetworkEnemyDeath(e._nid);
+            }
             anyEnemyDied = true;
             XPGem.createXPGems(e.x, e.y, e.xpValue);
             if (hasHealPackUpgrade && Math.random() < healPackChance) {
@@ -540,7 +544,15 @@ function loop(now) {
 
             // 3. Smoothly interpolate remote entities (enemies, remote players, turrets) from snapshot buffer
             if (typeof interpolateNetworkWorld === 'function') {
-                interpolateNetworkWorld(performance.now() - 66, dtFactor);
+                const interpDelay =
+                    typeof netManager !== 'undefined' &&
+                    netManager?.getAdaptiveInterpolationDelay
+                        ? netManager.getAdaptiveInterpolationDelay()
+                        : 66;
+                interpolateNetworkWorld(
+                    performance.now() - interpDelay,
+                    dtFactor,
+                );
             }
 
             // 4. Smoothly advance projectiles & enemy projectiles at 60 FPS between snapshots
@@ -571,7 +583,12 @@ function loop(now) {
                             p.targetAngle = p.angle;
                         }
 
-                        const radius = p.type === 'fire_ring' ? 70 : 40;
+                        const radius =
+                            p.type === 'fire_ring'
+                                ? 70
+                                : owner.r
+                                  ? owner.r + 16
+                                  : 32;
                         p.x = owner.x + Math.cos(p.angle) * radius;
                         p.y = owner.y + Math.sin(p.angle) * radius;
                     }
@@ -603,17 +620,40 @@ function loop(now) {
                 }
             }
 
-            // 5. Smoothly advance collectibles (XP gems, health packs, supply drops) toward host targets at 60 FPS
-            for (const g of GAME_STATE.gems) {
-                if (
-                    g &&
-                    g['targetX'] !== undefined &&
-                    g['targetY'] !== undefined
-                ) {
-                    g.x += (g['targetX'] - g.x) * 0.4 * dtFactor;
-                    g.y += (g['targetY'] - g.y) * 0.4 * dtFactor;
+            // 5. Predictively advance and pull collectibles at 60 FPS with local audio
+            for (let i = GAME_STATE.gems.length - 1; i >= 0; i--) {
+                const g = GAME_STATE.gems[i];
+                if (!g || g.alive === false) continue;
+
+                // Predict magnetic pull towards closest active player
+                const collectedPlayer = g.pullTowardsPlayer(dtFactor);
+                if (collectedPlayer) {
+                    g.despawn();
+                    if (
+                        g._nid &&
+                        typeof clientCollectedGems !== 'undefined'
+                    ) {
+                        clientCollectedGems.add(g._nid);
+                    }
+                    if (collectedPlayer.index === netManager.localPlayerIndex) {
+                        if (
+                            typeof SoundEngine !== 'undefined' &&
+                            SoundEngine.gemPickup
+                        ) {
+                            SoundEngine.gemPickup();
+                        }
+                    }
+                } else if (!g.attracted) {
+                    if (
+                        g.targetX !== undefined &&
+                        g.targetY !== undefined
+                    ) {
+                        g.x += (g.targetX - g.x) * 0.25 * dtFactor;
+                        g.y += (g.targetY - g.y) * 0.25 * dtFactor;
+                    }
                 }
             }
+            compactAlive(GAME_STATE.gems, (g) => g.alive !== false);
 
             // 6. Smoothly advance remote players' flail and facing angle at 60 FPS
             for (const rp of GAME_STATE.players) {
@@ -631,13 +671,25 @@ function loop(now) {
                     if (
                         flail &&
                         flail.targetX !== undefined &&
-                        flail.targetY !== undefined
+                        flail.targetY !== undefined &&
+                        (typeof clientSnapshotBuffer === 'undefined' ||
+                            clientSnapshotBuffer.length < 2)
                     ) {
+                        const oldX =
+                            flail.x !== undefined ? flail.x : flail.targetX;
+                        const oldY =
+                            flail.y !== undefined ? flail.y : flail.targetY;
                         flail.x += (flail.targetX - flail.x) * 0.4 * dtFactor;
                         flail.y += (flail.targetY - flail.y) * 0.4 * dtFactor;
+                        flail.vx = flail.x - oldX;
+                        flail.vy = flail.y - oldY;
                     }
                 }
-                if (rp.targetFacingAngle !== undefined) {
+                if (
+                    rp.targetFacingAngle !== undefined &&
+                    (typeof clientSnapshotBuffer === 'undefined' ||
+                        clientSnapshotBuffer.length < 2)
+                ) {
                     let angleDiff = rp.targetFacingAngle - rp.facingAngle;
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -646,7 +698,13 @@ function loop(now) {
             }
 
             // 7. Update local client particles
-            for (const pa of GAME_STATE.particles) pa.update(dt, dtFactor);
+            for (const pa of GAME_STATE.particles) {
+                pa.update(dt, dtFactor, gameClock);
+            }
+            compactAlive(GAME_STATE.particles, (p) => p.alive);
+            if (GAME_STATE.particles.length > 450) {
+                GAME_STATE.particles = GAME_STATE.particles.slice(-450);
+            }
 
             // 8. Render authoritative world snapshot from host
             if (!isHidden) {
@@ -729,7 +787,15 @@ function updateLobbyPlayers(dt, dtFactor, now) {
             myPlayer.update(dt, dtFactor, now);
         }
         if (typeof interpolateNetworkWorld === 'function') {
-            interpolateNetworkWorld(performance.now() - 66, dtFactor);
+            const interpDelay =
+                typeof netManager !== 'undefined' &&
+                netManager?.getAdaptiveInterpolationDelay
+                    ? netManager.getAdaptiveInterpolationDelay()
+                    : 66;
+            interpolateNetworkWorld(
+                performance.now() - interpDelay,
+                dtFactor,
+            );
         }
     } else {
         // Host & Local players

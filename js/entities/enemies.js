@@ -198,29 +198,27 @@ class Enemy extends Unit {
 
     drawCryoOverlay(now) {
         if (this.isBoss() || now >= this.frozenUntil) return;
-        const fadeIn = this.frozenStart
-            ? Math.min(1, (now - this.frozenStart) / 100)
-            : 1;
-        const fadeOut = Math.min(1, (this.frozenUntil - now) / 150);
-        const intensity = Math.min(fadeIn, fadeOut);
+        const remaining = this.frozenUntil - now;
+        if (remaining <= 0) return;
+        const intensity = Math.min(1, remaining / 100);
         if (intensity <= 0) return;
 
         ctx.save();
         ctx.fillStyle = '#00f0ff';
-        ctx.globalAlpha = 0.18 * intensity;
+        ctx.globalAlpha = 0.25 * intensity;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.r + 5, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = '#99e6ff';
-        ctx.globalAlpha = 0.32 * intensity;
+        ctx.globalAlpha = 0.4 * intensity;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.8;
-        ctx.globalAlpha = 0.6 * intensity;
+        ctx.lineWidth = 2.0;
+        ctx.globalAlpha = 0.75 * intensity;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
         ctx.stroke();
@@ -3700,6 +3698,10 @@ class OctopusBoss extends BossEnemy {
         for (const e of GAME_STATE.enemies) {
             if (e !== this) {
                 e.hp = 0;
+                e.alive = false;
+                if (e._nid && typeof queueNetworkEnemyDeath === 'function') {
+                    queueNetworkEnemyDeath(e._nid);
+                }
                 if (typeof spawnHitParticles === 'function') {
                     spawnHitParticles(e.x, e.y, '#9b5de5');
                 }
@@ -3791,6 +3793,19 @@ class OctopusBoss extends BossEnemy {
                     dmgApplied: false,
                     lashStartTime: 0,
                 });
+                if (typeof queueNetworkCombatVfx === 'function') {
+                    const angByte =
+                        typeof angleToUint8 === 'function'
+                            ? angleToUint8(angle)
+                            : 0;
+                    queueNetworkCombatVfx(
+                        10,
+                        Math.round(this.x),
+                        Math.round(this.y),
+                        angByte,
+                        0,
+                    );
+                }
             }
             // Cooldown: uneven timings (0.5s to 1.8s)
             this.nextTentacleTime = now + 600 + Math.random() * 1300;
@@ -4038,6 +4053,45 @@ class OctopusBoss extends BossEnemy {
             ctx.fill();
             ctx.stroke();
             ctx.restore();
+
+            // On multiplayer client, advance tentacle states since updateOctopus does not run
+            const isClient =
+                typeof window !== 'undefined' &&
+                ((typeof window.isMultiplayerClient === 'function' &&
+                    window.isMultiplayerClient()) ||
+                    (window.netManager && !window.netManager.isHost));
+            if (isClient && this.tentacles) {
+                for (const t of this.tentacles) {
+                    t.startX = this.x;
+                    t.startY = this.y;
+                    t.endX = this.x + Math.cos(t.angle) * t.length;
+                    t.endY = this.y + Math.sin(t.angle) * t.length;
+                    if (t.state === 'telegraph') {
+                        if (now >= t.timer) {
+                            t.state = 'lashing';
+                            t.timer = now + 350;
+                            t.lashStartTime = now;
+                            if (
+                                typeof SoundEngine !== 'undefined' &&
+                                SoundEngine.tentacleLash
+                            ) {
+                                SoundEngine.tentacleLash();
+                            }
+                        }
+                    } else if (t.state === 'lashing') {
+                        if (now >= t.timer) {
+                            t.state = 'done';
+                            if (
+                                typeof SoundEngine !== 'undefined' &&
+                                SoundEngine.flailHit
+                            ) {
+                                SoundEngine.flailHit(2);
+                            }
+                        }
+                    }
+                }
+                this.tentacles = this.tentacles.filter((t) => t.state !== 'done');
+            }
 
             // Draw tentacle states
             for (const t of this.tentacles) {
@@ -4293,11 +4347,14 @@ class FelhoundBoss extends BossEnemy {
 
             // Wave progress for visual escalation
             const WAVE_DURATION = 120000;
-            const waveFrac = GAME_STATE.bossLvl3Start
+            const bossStart =
+                GAME_STATE.activeBossStartTime ||
+                GAME_STATE.bossLvl3Start ||
+                0;
+            const waveFrac = bossStart
                 ? Math.min(
                       1,
-                      Math.max(0, now - GAME_STATE.bossLvl3Start) /
-                          WAVE_DURATION,
+                      Math.max(0, now - bossStart) / WAVE_DURATION,
                   )
                 : 0;
 
@@ -4835,6 +4892,10 @@ class BehemothBoss extends BossEnemy {
                 for (const e of GAME_STATE.enemies) {
                     if (e !== this) {
                         e.hp = 0;
+                        e.alive = false;
+                        if (e._nid && typeof queueNetworkEnemyDeath === 'function') {
+                            queueNetworkEnemyDeath(e._nid);
+                        }
                         spawnHitParticles(e.x, e.y, '#76ff03');
                     }
                 }
@@ -5901,8 +5962,9 @@ class BehemothBoss extends BossEnemy {
 
         // --- 2. Burrowing Down Animation ---
         if (this.behemothState === 'burrowing') {
-            const elapsed = 650 - (this.stateTimer - now);
-            const sinkFrac = Math.max(0, Math.min(1, elapsed / 650));
+            const windup = this.burrowWindupDuration || 650;
+            const elapsed = windup - (this.stateTimer - now);
+            const sinkFrac = Math.max(0, Math.min(1, elapsed / windup));
             ctx.save();
 
             // Expanding churning dirt mound & seismic fissure ring
@@ -6145,9 +6207,10 @@ class BehemothBoss extends BossEnemy {
         let flex = this.tuskFlex || 0;
         let tuskThrust = 0;
         if (this.behemothState === 'cleave_windup') {
+            const windup = this.cleaveWindupDuration || 650;
             const windupFrac = Math.max(
                 0,
-                Math.min(1, (650 - (this.stateTimer - now)) / 650),
+                Math.min(1, (windup - (this.stateTimer - now)) / windup),
             );
             flex = -0.55 * windupFrac;
         } else if (this.lastCleaveTime && now - this.lastCleaveTime < 450) {
@@ -6397,8 +6460,9 @@ class BehemothBoss extends BossEnemy {
             ctx.restore();
 
             if (this.behemothState === 'tongue_windup') {
-                const elapsed = 500 - (this.stateTimer - now);
-                const frac = Math.max(0, Math.min(1, elapsed / 500));
+                const windup = this.tongueWindupDuration || 500;
+                const elapsed = windup - (this.stateTimer - now);
+                const frac = Math.max(0, Math.min(1, elapsed / windup));
                 const mx = this.x + Math.cos(this.facingAngle) * (this.r * 0.6);
                 const my = this.y + Math.sin(this.facingAngle) * (this.r * 0.6);
 

@@ -174,6 +174,12 @@ class MagicMissile extends Weapon {
                         startTime: now,
                         duration: 650,
                     };
+                    if (
+                        typeof queueNetworkBlobDeform === 'function' &&
+                        this.player
+                    ) {
+                        queueNetworkBlobDeform(this.player.index, 1, rAngle);
+                    }
                 }
 
                 // Sniper Shot Interval Check
@@ -207,6 +213,12 @@ class MagicMissile extends Weapon {
                             unitType: this.player.unitType,
                             fired: false,
                         };
+                        if (
+                            typeof queueNetworkBlobDeform === 'function' &&
+                            this.player
+                        ) {
+                            queueNetworkBlobDeform(this.player.index, 4, angle);
+                        }
                     }
                 }
             }
@@ -303,6 +315,12 @@ class MagicMissile extends Weapon {
             // Record budding membrane ripple on player
             this.player.mitosisBuds = this.player.mitosisBuds || [];
             this.player.mitosisBuds.push({ angle, time: now, duration: 150 });
+            if (
+                typeof queueNetworkBlobDeform === 'function' &&
+                this.player
+            ) {
+                queueNetworkBlobDeform(this.player.index, 6, angle);
+            }
         }
     }
 }
@@ -515,6 +533,12 @@ class ProximityMine extends Weapon {
                     stacks: this.player.mineAoeCount || 0,
                     mine,
                 };
+                if (
+                    typeof queueNetworkBlobDeform === 'function' &&
+                    this.player
+                ) {
+                    queueNetworkBlobDeform(this.player.index, 2, dropAngle);
+                }
             }
 
             // Forward Throwing Mine Launcher
@@ -543,6 +567,12 @@ class ProximityMine extends Weapon {
                     startTime: now,
                     duration: 260,
                 };
+                if (
+                    typeof queueNetworkBlobDeform === 'function' &&
+                    this.player
+                ) {
+                    queueNetworkBlobDeform(this.player.index, 2, angle);
+                }
             }
 
             // Scatter Charges upgrade
@@ -617,6 +647,12 @@ class TurretWeapon extends Weapon {
                 duration: hatchDuration,
                 angle: spawnAngle,
             };
+            if (
+                typeof queueNetworkBlobDeform === 'function' &&
+                this.player
+            ) {
+                queueNetworkBlobDeform(this.player.index, 3, spawnAngle);
+            }
             if (this.player.mitosisBuds) {
                 this.player.mitosisBuds.push({
                     angle: spawnAngle,
@@ -772,6 +808,17 @@ class PlayerFlail extends Weapon {
         return 90 * (diffMult / 2 + 0.5);
     }
 
+    get r() {
+        return (
+            this.baseR *
+            (this.player && this.player.meleeRangeModifier > 1.0 ? 1.5 : 1.0)
+        );
+    }
+
+    set r(val) {
+        this._r = val;
+    }
+
     update(now) {
         if (!this.lastUpdate) this.lastUpdate = now;
         const dt = now - this.lastUpdate;
@@ -834,6 +881,7 @@ class PlayerFlail extends Weapon {
         this.vy = this.y - oldY;
 
         if (
+            (!GAME_STATE.isOnline || GAME_STATE.isHost) &&
             this.player.flailLaserEnabled &&
             (oldX !== this.x || oldY !== this.y)
         ) {
@@ -851,109 +899,111 @@ class PlayerFlail extends Weapon {
 
         const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
 
-        // 7. Collision logic: speed scales damage and decreases hit cooldowns
-        const speedMultiplier = 1.0 + speed * 2.5;
-        const dmg = this.getDamage() * speedMultiplier;
-        const chainDmg = dmg * 0.2; // Chain deals 20% of ball damage
+        // 7. Collision logic: speed scales damage and decreases hit cooldowns (authoritative host only in online mode)
+        if (!GAME_STATE.isOnline || GAME_STATE.isHost) {
+            const speedMultiplier = 1.0 + speed * 2.5;
+            const dmg = this.getDamage() * speedMultiplier;
+            const chainDmg = dmg * 0.2; // Chain deals 20% of ball damage
 
-        // Clean up dead enemies from cooldown maps to prevent leaks
-        for (const e of this.hitCooldown.keys()) {
-            if (e.hp <= 0) this.hitCooldown.delete(e);
-        }
-        for (const e of this.chainHitCooldown.keys()) {
-            if (e.hp <= 0) this.chainHitCooldown.delete(e);
-        }
+            // Clean up dead enemies from cooldown maps to prevent leaks
+            for (const e of this.hitCooldown.keys()) {
+                if (e.hp <= 0) this.hitCooldown.delete(e);
+            }
+            for (const e of this.chainHitCooldown.keys()) {
+                if (e.hp <= 0) this.chainHitCooldown.delete(e);
+            }
 
-        const flailMinX = Math.min(this.player.x, this.x) - this.r - 35;
-        const flailMaxX = Math.max(this.player.x, this.x) + this.r + 35;
-        const flailMinY = Math.min(this.player.y, this.y) - this.r - 35;
-        const flailMaxY = Math.max(this.player.y, this.y) + this.r + 35;
+            const flailMinX = Math.min(this.player.x, this.x) - this.r - 35;
+            const flailMaxX = Math.max(this.player.x, this.x) + this.r + 35;
+            const flailMinY = Math.min(this.player.y, this.y) - this.r - 35;
+            const flailMaxY = Math.max(this.player.y, this.y) + this.r + 35;
 
-        for (const e of GAME_STATE.enemies) {
-            if (!isDamageable(e)) continue;
-            if (
-                e.x < flailMinX ||
-                e.x > flailMaxX ||
-                e.y < flailMinY ||
-                e.y > flailMaxY
-            )
-                continue;
+            for (const e of GAME_STATE.enemies) {
+                if (!isDamageable(e)) continue;
+                if (
+                    e.x < flailMinX ||
+                    e.x > flailMaxX ||
+                    e.y < flailMinY ||
+                    e.y > flailMaxY
+                )
+                    continue;
 
-            // A. Check ball collision
-            const edx = e.x - this.x;
-            const edy = e.y - this.y;
-            const touchBall = this.r + e.r;
-            if (edx * edx + edy * edy < touchBall * touchBall) {
-                const nextHit = this.hitCooldown.get(e) || 0;
-                if (now >= nextHit) {
-                    e.hp -= dmg;
-                    const cd = Math.max(75, 240 - speed * 12);
-                    this.hitCooldown.set(e, now + cd);
-                    if (typeof spawnHitParticles === 'function') {
-                        spawnHitParticles(e.x, e.y, this.player.color);
+                // A. Check ball collision
+                const edx = e.x - this.x;
+                const edy = e.y - this.y;
+                const touchBall = this.r + e.r;
+                if (edx * edx + edy * edy < touchBall * touchBall) {
+                    const nextHit = this.hitCooldown.get(e) || 0;
+                    if (now >= nextHit) {
+                        e.hp -= dmg;
+                        const cd = Math.max(75, 240 - speed * 12);
+                        this.hitCooldown.set(e, now + cd);
+                        if (typeof spawnHitParticles === 'function') {
+                            spawnHitParticles(e.x, e.y, this.player.color);
+                        }
+                        if (
+                            typeof SoundEngine !== 'undefined' &&
+                            SoundEngine &&
+                            SoundEngine.flailHit
+                        ) {
+                            SoundEngine.flailHit(speed);
+                        }
+
+                        if (
+                            this.player.freezeEnabled &&
+                            speed >= 5.0 &&
+                            !e.isBoss()
+                        ) {
+                            const baseDur = this.player.cryoMineBuffed ? 500 : 250;
+                            const speedScale = this.player.cryoMineBuffed
+                                ? 200
+                                : 100;
+                            const dur = baseDur + (speed - 5.0) * speedScale;
+                            e.freeze(dur, now);
+                        }
                     }
-                    if (
-                        typeof SoundEngine !== 'undefined' &&
-                        SoundEngine &&
-                        SoundEngine.flailHit
-                    ) {
-                        SoundEngine.flailHit(speed);
-                    }
-
-                    if (
-                        this.player.freezeEnabled &&
-                        speed >= 5.0 &&
-                        !e.isBoss()
-                    ) {
-                        const baseDur = this.player.cryoMineBuffed ? 500 : 250;
-                        const speedScale = this.player.cryoMineBuffed
-                            ? 200
-                            : 100;
-                        const dur = baseDur + (speed - 5.0) * speedScale;
-                        e.freeze(dur, now);
-                    }
+                    continue; // Skip chain collision check if ball hit registered
                 }
-                continue; // Skip chain collision check if ball hit registered
-            }
 
-            // B. Check chain segment collision
-            const ax = this.player.x;
-            const ay = this.player.y;
-            const bx = this.x;
-            const by = this.y;
-            const cx = e.x;
-            const cy = e.y;
+                // B. Check chain segment collision
+                const ax = this.player.x;
+                const ay = this.player.y;
+                const bx = this.x;
+                const by = this.y;
+                const cx = e.x;
+                const cy = e.y;
 
-            const abx = bx - ax;
-            const aby = by - ay;
-            const acx = cx - ax;
-            const acy = cy - ay;
+                const abx = bx - ax;
+                const aby = by - ay;
+                const acx = cx - ax;
+                const acy = cy - ay;
 
-            const abLen2 = abx * abx + aby * aby;
-            let t = 0;
-            if (abLen2 > 0.01) {
-                t = (acx * abx + acy * aby) / abLen2;
-                t = Math.max(0, Math.min(1, t));
-            }
+                const abLen2 = abx * abx + aby * aby;
+                let t = 0;
+                if (abLen2 > 0.01) {
+                    t = (acx * abx + acy * aby) / abLen2;
+                    t = Math.max(0, Math.min(1, t));
+                }
 
-            const closestX = ax + t * abx;
-            const closestY = ay + t * aby;
-            const cdx = cx - closestX;
-            const cdy = cy - closestY;
-            const dist2 = cdx * cdx + cdy * cdy;
-            const touchChain = e.r + 4; // chain link radius is 4
+                const closestX = ax + t * abx;
+                const closestY = ay + t * aby;
+                const cdx = cx - closestX;
+                const cdy = cy - closestY;
+                const dist2 = cdx * cdx + cdy * cdy;
+                const touchChain = e.r + 4; // chain link radius is 4
 
-            if (dist2 < touchChain * touchChain) {
-                const nextChainHit = this.chainHitCooldown.get(e) || 0;
-                if (now >= nextChainHit) {
-                    e.hp -= chainDmg;
-                    const cd = Math.max(75, 240 - speed * 12);
-                    this.chainHitCooldown.set(e, now + cd);
-                    if (
-                        Math.random() < 0.3 &&
-                        typeof spawnHitParticles === 'function'
-                    ) {
-                        spawnHitParticles(closestX, closestY, '#b0b5bc');
+                if (dist2 < touchChain * touchChain) {
+                    const nextChainHit = this.chainHitCooldown.get(e) || 0;
+                    if (now >= nextChainHit) {
+                        e.hp -= chainDmg;
+                        const cd = Math.max(75, 240 - speed * 12);
+                        this.chainHitCooldown.set(e, now + cd);
+                        if (
+                            Math.random() < 0.3 &&
+                            typeof spawnHitParticles === 'function'
+                        ) {
+                            spawnHitParticles(closestX, closestY, '#b0b5bc');
+                        }
                     }
                 }
             }
@@ -1280,6 +1330,9 @@ function fireInstantMissile(
             time: now,
             duration: 150,
         });
+        if (typeof queueNetworkBlobDeform === 'function') {
+            queueNetworkBlobDeform(player.index, 6, shootAngle);
+        }
     }
 
     // Line-of-fire check against Shield Bearer arc
@@ -1328,6 +1381,7 @@ function fireInstantMissile(
             hitAngle,
             pColor,
             now,
+            player,
             targetEnemy.r,
         ),
     );

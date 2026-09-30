@@ -190,7 +190,7 @@ class Player extends Unit {
             for (const w of this.weapons) w.update(now);
         } else {
             const flail = this.weapons.find((w) => w.id === 'player_flail');
-            if (flail) flail.update(dt, dtFactor, now);
+            if (flail) flail.update(now);
         }
     }
     update(dt, dtFactor, now) {
@@ -447,9 +447,23 @@ class Player extends Unit {
             } else {
                 // Remote peer in online mode (Host simulation reads client input; Client ignores remote local keyboard)
                 if (this.remoteInput) {
-                    moveX = this.remoteInput.moveX || 0;
-                    moveY = this.remoteInput.moveY || 0;
-                    if (this.remoteInput.angle !== undefined) {
+                    let rx = Number.isFinite(this.remoteInput.moveX)
+                        ? this.remoteInput.moveX
+                        : 0;
+                    let ry = Number.isFinite(this.remoteInput.moveY)
+                        ? this.remoteInput.moveY
+                        : 0;
+                    const mag = Math.hypot(rx, ry);
+                    if (mag > 1.0) {
+                        rx /= mag;
+                        ry /= mag;
+                    }
+                    moveX = rx;
+                    moveY = ry;
+                    if (
+                        this.remoteInput.angle !== undefined &&
+                        Number.isFinite(this.remoteInput.angle)
+                    ) {
                         const targetAngle = this.remoteInput.angle;
                         let angleDiff = targetAngle - this.facingAngle;
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -1774,12 +1788,16 @@ class Player extends Unit {
             const rcCount = this.turretCooldownCount || 0;
             if (turretWeapon && rcCount > 0) {
                 const cd =
-                    turretWeapon.basePlacementCooldown *
-                    (this.buildingCooldownModifier || 1.0);
-                const prog = Math.min(
-                    1,
-                    Math.max(0, (now - turretWeapon.lastPlacement) / cd),
-                );
+                    (turretWeapon.basePlacementCooldown ||
+                        turretWeapon.baseCooldown ||
+                        10000) * (this.buildingCooldownModifier || 1.0);
+                const lastP =
+                    turretWeapon.lastPlacement !== undefined
+                        ? turretWeapon.lastPlacement
+                        : turretWeapon.lastFire !== undefined
+                          ? turretWeapon.lastFire
+                          : -99999;
+                const prog = Math.min(1, Math.max(0, (now - lastP) / cd));
                 const rR = beaconR + 2.5;
                 const span = Math.PI * 2;
                 const startA = (this.facingAngle || 0) - Math.PI;
@@ -1923,12 +1941,30 @@ class Player extends Unit {
                 (w) => w.id === 'projectile_shield',
             );
             const deflectorRoots = [];
-            if (deflectorWeapon?.orbiters) {
+            if (deflectorWeapon?.orbiters && deflectorWeapon.orbiters.length > 0) {
                 for (const orb of deflectorWeapon.orbiters) {
                     if (orb.growth && orb.growth > 0.01) {
                         deflectorRoots.push({
                             angle: orb.angle,
                             growth: orb.growth,
+                        });
+                    }
+                }
+            } else if (typeof GAME_STATE !== 'undefined' && GAME_STATE.projectiles) {
+                for (const proj of GAME_STATE.projectiles) {
+                    if (
+                        proj.alive &&
+                        proj.type === 'deflector_shield' &&
+                        proj.playerIndex === this.index
+                    ) {
+                        deflectorRoots.push({
+                            angle: proj.angle || 0,
+                            growth:
+                                proj.growth !== undefined
+                                    ? proj.growth
+                                    : proj.mineRing !== 0
+                                      ? 1.0
+                                      : 0.0,
                         });
                     }
                 }
@@ -1938,22 +1974,44 @@ class Player extends Unit {
             let sniperDeform = null;
             if (this.sniperCharge) {
                 const elapsed = now - this.sniperCharge.startTime;
-                let intensity = 0;
-                if (elapsed < this.sniperCharge.preFireDuration) {
-                    const t = elapsed / this.sniperCharge.preFireDuration;
-                    intensity = Math.pow(t, 1.5); // Rapid exponential surge
+                if (elapsed >= this.sniperCharge.totalDuration) {
+                    this.sniperCharge = null;
                 } else {
-                    const t =
-                        (elapsed - this.sniperCharge.preFireDuration) /
-                        (this.sniperCharge.totalDuration -
-                            this.sniperCharge.preFireDuration);
-                    intensity = (1 - t) * Math.cos(t * Math.PI * 3.0);
-                }
-                if (Math.abs(intensity) > 0.001) {
-                    sniperDeform = {
-                        angle: this.sniperCharge.angle,
-                        intensity: intensity,
-                    };
+                    let intensity = 0;
+                    if (elapsed < this.sniperCharge.preFireDuration) {
+                        const t = Math.max(
+                            0,
+                            Math.min(
+                                1.0,
+                                elapsed / this.sniperCharge.preFireDuration,
+                            ),
+                        );
+                        intensity = Math.pow(t, 1.5); // Rapid exponential surge
+                    } else {
+                        const postDuration =
+                            this.sniperCharge.totalDuration -
+                            this.sniperCharge.preFireDuration;
+                        const t =
+                            postDuration > 0
+                                ? Math.max(
+                                      0,
+                                      Math.min(
+                                          1.0,
+                                          (elapsed -
+                                              this.sniperCharge
+                                                  .preFireDuration) /
+                                              postDuration,
+                                      ),
+                                  )
+                                : 1.0;
+                        intensity = (1 - t) * Math.cos(t * Math.PI * 3.0);
+                    }
+                    if (Math.abs(intensity) > 0.001) {
+                        sniperDeform = {
+                            angle: this.sniperCharge.angle,
+                            intensity: intensity,
+                        };
+                    }
                 }
             }
 
@@ -2221,6 +2279,10 @@ class Player extends Unit {
                 } else {
                     this.dashLaunchEffect = null;
                 }
+            }
+
+            if (this.dashing && now >= (this.dashUntil || 0)) {
+                this.dashing = false;
             }
 
             const isMoving = !!(this.isMoving || this.dashing);

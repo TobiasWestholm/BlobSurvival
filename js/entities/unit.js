@@ -44,6 +44,9 @@ class Unit extends Entity {
     despawn(now, source) {
         if (!this.alive) return;
         this.alive = false;
+        if (this._nid && typeof queueNetworkEnemyDeath === 'function') {
+            queueNetworkEnemyDeath(this._nid);
+        }
         this.onDeath(now, source);
     }
 

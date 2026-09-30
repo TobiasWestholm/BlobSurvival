@@ -394,14 +394,21 @@ function drawGems(
     }
 }
 
-function drawParticles() {
+function drawParticles(now) {
     const particles = GAME_STATE.particles;
     const len = particles.length;
     if (len === 0) return;
+    const curNow =
+        typeof now === 'number'
+            ? now
+            : typeof gameClock !== 'undefined'
+              ? gameClock
+              : performance.now();
     for (let i = 0; i < len; i++) {
         const p = particles[i];
+        if (!p || p.alive === false) continue;
         if (typeof p.draw === 'function' && !(p instanceof Particle)) {
-            p.draw(); // Custom complex particles (e.g. GoldenPillarParticle, LifestealWisp)
+            p.draw(curNow); // Custom complex particles (e.g. GoldenPillarParticle, LifestealWisp, CombatVFX)
         } else {
             ctx.globalAlpha =
                 typeof p.getLifetimePercent === 'function'
@@ -491,7 +498,9 @@ function draw(now) {
         for (const t of GAME_STATE.terrains) t.draw(now);
     }
     for (const t of GAME_STATE.turrets) t.draw(now);
-    for (const hz of GAME_STATE.hazards) hz.draw(now);
+    for (const hz of GAME_STATE.hazards) {
+        if (hz && hz.alive !== false) hz.draw(now);
+    }
     drawGems(now);
 
     // XP Tutorial arrow: point at the very first gem until it is picked up
@@ -560,7 +569,7 @@ function draw(now) {
         GAME_STATE.firstXpGem = null;
         GAME_STATE.xpArrowDone = true; // Never show the arrow again this game
     }
-    drawParticles();
+    drawParticles(now);
     for (const e of GAME_STATE.enemies) {
         if (e?.alive && e.hp > 0) e.draw(now);
     }

@@ -558,6 +558,9 @@ function startLevelUpFlow() {
     )
         return;
     GAME_STATE.current = STATES.LEVEL_UP;
+    if (typeof netSoundEvents !== 'undefined') {
+        netSoundEvents.length = 0;
+    }
     if (typeof SoundEngine !== 'undefined' && SoundEngine.setMuffled) {
         SoundEngine.setMuffled(true, 0.5);
     }
@@ -1003,6 +1006,9 @@ function finishSelectionRound() {
     if (GAME_STATE.pendingLevels > 0) {
         for (const pl of GAME_STATE.players || []) {
             if (pl) pl.currentLevelUpgradeName = null;
+        }
+        if (typeof SoundEngine !== 'undefined' && SoundEngine.levelUp) {
+            SoundEngine.levelUp();
         }
         if (
             GAME_STATE.gameMode === 'online' &&
@@ -1911,7 +1917,41 @@ function updateUI() {
             const enemyCount = GAME_STATE.enemies
                 ? GAME_STATE.enemies.length
                 : 0;
-            fpsCounterEl.innerHTML = `${GAME_STATE.currentFps || 60} FPS<br>Enemies: ${enemyCount}`;
+            let text = `${GAME_STATE.currentFps || 60} FPS<br>Enemies: ${enemyCount}`;
+
+            if (
+                typeof netManager !== 'undefined' &&
+                netManager &&
+                netManager.isOnline
+            ) {
+                if (netManager.isHost) {
+                    const pings = [];
+                    for (let i = 1; i <= 3; i++) {
+                        const peerId = netManager.playerPeerMap?.get(i);
+                        if (peerId) {
+                            const ping = netManager.playerPingMap?.get(i);
+                            const pingStr =
+                                ping !== undefined ? `${ping}ms` : '...';
+                            const p = GAME_STATE.players?.[i];
+                            const pName = p?.name
+                                ? p.name.slice(0, 10)
+                                : `P${i + 1}`;
+                            pings.push(`${pName}: ${pingStr}`);
+                        }
+                    }
+                    if (pings.length > 0) {
+                        text += `<br>Ping: ${pings.join(' | ')}`;
+                    } else {
+                        text += '<br>Ping: Host (Solo)';
+                    }
+                } else if (netManager.isClient) {
+                    const ping = netManager.currentPing;
+                    const pingStr = ping !== null ? `${ping}ms` : '...';
+                    text += `<br>Ping: ${pingStr}`;
+                }
+            }
+
+            fpsCounterEl.innerHTML = text;
         } else {
             fpsCounterEl.style.display = 'none';
         }
@@ -2078,7 +2118,7 @@ function initUISystem() {
                     }
                     if (typeof startGame === 'function') startGame(1, diffKey);
                 } catch (err) {
-                    alert('Could not initialize P2P host: ' + err.message);
+                    showToast('Could not initialize P2P host: ' + err.message, 5000, true);
                 }
             } else {
                 if (typeof startGame === 'function')
@@ -2201,8 +2241,26 @@ if (typeof document !== 'undefined') {
     }
 }
 
+function showToast(message, duration = 3500, isError = false) {
+    if (typeof document === 'undefined') return;
+    let toast = document.getElementById('netToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'netToast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.className = isError ? 'show error' : 'show';
+    const anyToast = /** @type {any} */ (toast);
+    if (anyToast._timer) clearTimeout(anyToast._timer);
+    anyToast._timer = setTimeout(() => {
+        toast.className = '';
+    }, duration);
+}
+
 // ---------------- Global Window / Module Exports ----------------
 if (typeof window !== 'undefined') {
+    window.showToast = showToast;
     window.WEAPON_LABELS = WEAPON_LABELS;
     window.startWeaponSelectFlow = startWeaponSelectFlow;
     window.renderLobbyWeaponPanels = renderLobbyWeaponPanels;

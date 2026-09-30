@@ -85,6 +85,7 @@ class RocketProjectile extends Projectile {
         const vy = Math.sin(angle) * speed;
         super(x, y, vx, vy, damage, 13, player, null, 4000, now);
         this.angle = angle;
+        this.type = 'rocket';
         this.isRocket = true;
         this.rocketStage = 0; // 0 = outward random, 1 = homing
         this.homingRadius = 250;
@@ -426,6 +427,7 @@ class SniperProjectile extends Projectile {
         const vy = Math.sin(angle) * speed;
         super(x, y, vx, vy, damage, 8, player, null, 2000, now);
         this.angle = angle;
+        this.type = 'sniper';
         this.hitEnemies = new Set();
         this.sourceUnitType = sourceUnitType;
     }
@@ -1475,147 +1477,172 @@ class DeflectorOrbiter extends Projectile {
         }
     }
     draw(now = performance.now()) {
-        if (this.growth <= 0.01) return;
+        const isRecentBlock = now - this.lastBlockTime < 350;
+        drawDeflectorOrbiterPlate(
+            ctx,
+            this.x,
+            this.y,
+            this.angle,
+            this.player,
+            this.growth,
+            now,
+            isRecentBlock,
+        );
+    }
+}
 
-        ctx.save();
+function drawDeflectorOrbiterPlate(
+    renderCtx,
+    x,
+    y,
+    angle,
+    player,
+    growth = 1.0,
+    now = performance.now(),
+    isRecentBlock = false,
+) {
+    if (growth <= 0.01) return;
 
-        const rootX = this.player.x + Math.cos(this.angle) * this.player.r;
-        const rootY = this.player.y + Math.sin(this.angle) * this.player.r;
-        const normX = -Math.sin(this.angle);
-        const normY = Math.cos(this.angle);
+    renderCtx.save();
+
+    if (player) {
+        const rootX = player.x + Math.cos(angle) * player.r;
+        const rootY = player.y + Math.sin(angle) * player.r;
+        const normX = -Math.sin(angle);
+        const normY = Math.cos(angle);
 
         // 1. Organic Pedicle Arm connecting root on blob to the plate
-        if (this.growth > 0.05) {
-            const armRootW = Math.max(1.5, 2.8 * this.growth);
-            const armTipW = Math.max(1.0, 1.5 * this.growth);
+        if (growth > 0.05) {
+            const armRootW = Math.max(1.5, 2.8 * growth);
+            const armTipW = Math.max(1.0, 1.5 * growth);
 
             const rLx = rootX + normX * armRootW;
             const rLy = rootY + normY * armRootW;
             const rRx = rootX - normX * armRootW;
             const rRy = rootY - normY * armRootW;
 
-            const tLx = this.x + normX * armTipW;
-            const tLy = this.y + normY * armTipW;
-            const tRx = this.x - normX * armTipW;
-            const tRy = this.y - normY * armTipW;
+            const tLx = x + normX * armTipW;
+            const tLy = y + normY * armTipW;
+            const tRx = x - normX * armTipW;
+            const tRy = y - normY * armTipW;
 
             // Draw tapering muscular arm
-            ctx.beginPath();
-            ctx.moveTo(rLx, rLy);
-            ctx.lineTo(tLx, tLy);
-            ctx.lineTo(tRx, tRy);
-            ctx.lineTo(rRx, rRy);
-            ctx.closePath();
+            renderCtx.beginPath();
+            renderCtx.moveTo(rLx, rLy);
+            renderCtx.lineTo(tLx, tLy);
+            renderCtx.lineTo(tRx, tRy);
+            renderCtx.lineTo(rRx, rRy);
+            renderCtx.closePath();
 
-            ctx.fillStyle = this.player.color;
-            ctx.globalAlpha = 0.85 * this.growth;
-            ctx.fill();
-            ctx.strokeStyle = this.player.ring || '#000000';
-            ctx.lineWidth = 1.0;
-            ctx.stroke();
+            renderCtx.fillStyle = player.color;
+            renderCtx.globalAlpha = 0.85 * growth;
+            renderCtx.fill();
+            renderCtx.strokeStyle = player.ring || '#000000';
+            renderCtx.lineWidth = 1.0;
+            renderCtx.stroke();
 
             // Chitin joint node on the arm
-            const midArmX = (rootX + this.x) * 0.5;
-            const midArmY = (rootY + this.y) * 0.5;
-            ctx.fillStyle = this.player.ring || '#222222';
-            ctx.beginPath();
-            ctx.arc(
+            const midArmX = (rootX + x) * 0.5;
+            const midArmY = (rootY + y) * 0.5;
+            renderCtx.fillStyle = player.ring || '#222222';
+            renderCtx.beginPath();
+            renderCtx.arc(
                 midArmX,
                 midArmY,
-                Math.max(1.0, 1.8 * this.growth),
+                Math.max(1.0, 1.8 * growth),
                 0,
                 Math.PI * 2,
             );
-            ctx.fill();
+            renderCtx.fill();
         }
-
-        // 2. Clear Chitin Carapace Plating mounted furthest out on the arm
-        ctx.translate(this.x, this.y);
-        // Flipped along radial axis so the convex arch points forward in the spin direction
-        ctx.rotate(this.angle - Math.PI / 2);
-        ctx.scale(this.growth, this.growth);
-
-        const isRecentBlock = now - this.lastBlockTime < 350;
-        if (isRecentBlock) {
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 4.5;
-            ctx.globalAlpha = 0.45;
-            ctx.stroke();
-        }
-
-        const plateH = 4.8;
-        const curveR = 11.5;
-
-        // Clear plating contour
-        ctx.beginPath();
-        ctx.arc(0, 0, curveR + plateH * 0.5, -Math.PI * 0.36, Math.PI * 0.36);
-        ctx.arc(
-            Math.cos(Math.PI * 0.36) * curveR,
-            Math.sin(Math.PI * 0.36) * curveR,
-            plateH * 0.5,
-            Math.PI * 0.36,
-            Math.PI * 0.36 + Math.PI,
-        );
-        ctx.arc(
-            0,
-            0,
-            Math.max(2, curveR - plateH * 0.5),
-            Math.PI * 0.36,
-            -Math.PI * 0.36,
-            true,
-        );
-        ctx.arc(
-            Math.cos(-Math.PI * 0.36) * curveR,
-            Math.sin(-Math.PI * 0.36) * curveR,
-            plateH * 0.5,
-            -Math.PI * 0.36 + Math.PI,
-            -Math.PI * 0.36,
-        );
-        ctx.closePath();
-
-        // Hardened chitin carapace plate fill
-        ctx.fillStyle = this.player ? this.player.color : '#33ccff';
-        ctx.globalAlpha = 0.95;
-        ctx.fill();
-
-        // Thickened membrane border
-        ctx.strokeStyle = this.player ? this.player.ring : '#111111';
-        ctx.lineWidth = 1.4;
-        ctx.stroke();
-
-        // Bioluminescent Structural Ribs (3 transverse luminous ridges)
-        const bioGlowPulse = 0.5 + 0.5 * Math.sin(now * 0.006 + this.angle);
-        ctx.strokeStyle = isRecentBlock
-            ? '#ffffff'
-            : this.player
-              ? this.player.color
-              : '#ffffff';
-        ctx.lineWidth = 1.1;
-        ctx.globalAlpha = 0.7 + 0.3 * bioGlowPulse;
-
-        for (let i = -1; i <= 1; i++) {
-            const ribAngle = i * (Math.PI * 0.22);
-            const inX = Math.cos(ribAngle) * (curveR - plateH * 0.4);
-            const inY = Math.sin(ribAngle) * (curveR - plateH * 0.4);
-            const outX = Math.cos(ribAngle) * (curveR + plateH * 0.4);
-            const outY = Math.sin(ribAngle) * (curveR + plateH * 0.4);
-            ctx.beginPath();
-            ctx.moveTo(inX, inY);
-            ctx.lineTo(outX, outY);
-            ctx.stroke();
-        }
-
-        // Hardened outer shield crest (protective gleam)
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.3;
-        ctx.globalAlpha = 0.9;
-        ctx.beginPath();
-        ctx.arc(0, 0, curveR + plateH * 0.5, -Math.PI * 0.25, Math.PI * 0.25);
-        ctx.stroke();
-
-        ctx.restore();
     }
+
+    // 2. Clear Chitin Carapace Plating mounted furthest out on the arm
+    renderCtx.translate(x, y);
+    // Flipped along radial axis so the convex arch points forward in the spin direction
+    renderCtx.rotate(angle - Math.PI / 2);
+    renderCtx.scale(growth, growth);
+
+    if (isRecentBlock) {
+        renderCtx.strokeStyle = '#ffffff';
+        renderCtx.lineWidth = 4.5;
+        renderCtx.globalAlpha = 0.45;
+        renderCtx.stroke();
+    }
+
+    const plateH = 4.8;
+    const curveR = 11.5;
+
+    // Clear plating contour
+    renderCtx.beginPath();
+    renderCtx.arc(0, 0, curveR + plateH * 0.5, -Math.PI * 0.36, Math.PI * 0.36);
+    renderCtx.arc(
+        Math.cos(Math.PI * 0.36) * curveR,
+        Math.sin(Math.PI * 0.36) * curveR,
+        plateH * 0.5,
+        Math.PI * 0.36,
+        Math.PI * 0.36 + Math.PI,
+    );
+    renderCtx.arc(
+        0,
+        0,
+        Math.max(2, curveR - plateH * 0.5),
+        Math.PI * 0.36,
+        -Math.PI * 0.36,
+        true,
+    );
+    renderCtx.arc(
+        Math.cos(-Math.PI * 0.36) * curveR,
+        Math.sin(-Math.PI * 0.36) * curveR,
+        plateH * 0.5,
+        -Math.PI * 0.36 + Math.PI,
+        -Math.PI * 0.36,
+    );
+    renderCtx.closePath();
+
+    // Hardened chitin carapace plate fill
+    renderCtx.fillStyle = player ? player.color : '#33ccff';
+    renderCtx.globalAlpha = 0.95;
+    renderCtx.fill();
+
+    // Thickened membrane border
+    renderCtx.strokeStyle = player ? player.ring : '#111111';
+    renderCtx.lineWidth = 1.4;
+    renderCtx.stroke();
+
+    // Bioluminescent Structural Ribs (3 transverse luminous ridges)
+    const bioGlowPulse = 0.5 + 0.5 * Math.sin(now * 0.006 + angle);
+    renderCtx.strokeStyle = isRecentBlock
+        ? '#ffffff'
+        : player
+          ? player.color
+          : '#ffffff';
+    renderCtx.lineWidth = 1.1;
+    renderCtx.globalAlpha = 0.7 + 0.3 * bioGlowPulse;
+
+    for (let i = -1; i <= 1; i++) {
+        const ribAngle = i * (Math.PI * 0.22);
+        const inX = Math.cos(ribAngle) * (curveR - plateH * 0.4);
+        const inY = Math.sin(ribAngle) * (curveR - plateH * 0.4);
+        const outX = Math.cos(ribAngle) * (curveR + plateH * 0.4);
+        const outY = Math.sin(ribAngle) * (curveR + plateH * 0.4);
+        renderCtx.beginPath();
+        renderCtx.moveTo(inX, inY);
+        renderCtx.lineTo(outX, outY);
+        renderCtx.stroke();
+    }
+
+    // Hardened outer shield crest (protective gleam)
+    renderCtx.strokeStyle = '#ffffff';
+    renderCtx.lineWidth = 1.3;
+    renderCtx.globalAlpha = 0.9;
+    renderCtx.beginPath();
+    renderCtx.arc(0, 0, curveR + plateH * 0.5, -Math.PI * 0.25, Math.PI * 0.25);
+    renderCtx.stroke();
+
+    renderCtx.restore();
 }
+window.drawDeflectorOrbiterPlate = drawDeflectorOrbiterPlate;
 
 class ShrapnelProjectile extends Projectile {
     constructor(
@@ -2076,6 +2103,7 @@ class MagicMissileProjectile extends Projectile {
         const radius = 1.8;
         super(x, y, vx, vy, damage, radius, player, ignoreEnemy, 2000, now);
         this.kind = kind; // "missile" or "laser"
+        this.type = this.kind === 'laser' ? 'laser' : 'magic_missile';
         this.sourceUnitType = sourceUnitType;
         this.isExplosive = false;
         this.aoeRadius = 0;
@@ -2602,132 +2630,159 @@ class MagicMissileProjectile extends Projectile {
             ctx.lineCap = 'butt';
         } else {
             // Magic Missile: Lava Lamp Bubble Separation & Micro-Droplet
-            const curTime = now || performance.now();
-            ctx.save();
-
-            if (this.player?.isActive() && this.spawnTime) {
-                const pdx = this.x - this.player.x;
-                const pdy = this.y - this.player.y;
-                const pdist = Math.hypot(pdx, pdy);
-                const r1 = this.player.r;
-                const r2 = this.r + 1.2;
-                const maxBridge = r1 + r2 + 28;
-
-                if (
-                    pdist > 0.001 &&
-                    pdist < maxBridge &&
-                    curTime - this.spawnTime < 190
-                ) {
-                    const u = Math.max(
-                        0,
-                        Math.min(1, (pdist - (r1 + r2 * 0.5)) / 28),
-                    );
-                    const gamma = Math.atan2(pdy, pdx);
-
-                    const spread1 = Math.PI * 0.48 * (1 - u * 0.65);
-                    const spread2 = Math.PI * 0.48 * (1 - u * 0.65);
-
-                    const ax1 = this.player.x + Math.cos(gamma + spread1) * r1;
-                    const ay1 = this.player.y + Math.sin(gamma + spread1) * r1;
-                    const bx1 = this.player.x + Math.cos(gamma - spread1) * r1;
-                    const by1 = this.player.y + Math.sin(gamma - spread1) * r1;
-
-                    const ax2 =
-                        this.x + Math.cos(gamma + Math.PI - spread2) * r2;
-                    const ay2 =
-                        this.y + Math.sin(gamma + Math.PI - spread2) * r2;
-                    const bx2 =
-                        this.x + Math.cos(gamma - Math.PI + spread2) * r2;
-                    const by2 =
-                        this.y + Math.sin(gamma - Math.PI + spread2) * r2;
-
-                    const midX = (this.player.x + this.x) / 2;
-                    const midY = (this.player.y + this.y) / 2;
-                    const nx = -Math.sin(gamma);
-                    const ny = Math.cos(gamma);
-
-                    const waist = Math.max(0.3, (1 - u) * ((r1 + r2) * 0.35));
-
-                    const cax = midX + nx * waist;
-                    const cay = midY + ny * waist;
-                    const cbx = midX - nx * waist;
-                    const cby = midY - ny * waist;
-
-                    ctx.fillStyle = this.player.color;
-                    ctx.beginPath();
-                    ctx.moveTo(ax1, ay1);
-                    ctx.quadraticCurveTo(cax, cay, ax2, ay2);
-                    ctx.lineTo(bx2, by2);
-                    ctx.quadraticCurveTo(cbx, cby, bx1, by1);
-                    ctx.closePath();
-                    ctx.fill();
-
-                    ctx.strokeStyle = this.player.ring || '#003322';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(ax1, ay1);
-                    ctx.quadraticCurveTo(cax, cay, ax2, ay2);
-                    ctx.stroke();
-
-                    ctx.beginPath();
-                    ctx.moveTo(bx2, by2);
-                    ctx.quadraticCurveTo(cbx, cby, bx1, by1);
-                    ctx.stroke();
-                }
-            }
-
             const heading = Math.atan2(this.vy, this.vx);
-            const playerCol = this.player?.color
-                ? this.player.color
-                : '#00ffcc';
-            const playerRing = this.player?.ring ? this.player.ring : '#003322';
-
-            ctx.translate(this.x, this.y);
-            ctx.rotate(heading);
-
-            const age = this.spawnTime ? curTime - this.spawnTime : 0;
-            const wobble = Math.sin(age * 0.035) * 0.18;
-            const radX = (this.r + 1.0) * (1.3 + wobble);
-            const radY = (this.r + 1.0) * (0.88 - wobble * 0.5);
-
-            ctx.fillStyle = playerCol;
-            ctx.beginPath();
-            ctx.ellipse(0, 0, radX, radY, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.strokeStyle = playerRing;
-            ctx.lineWidth = 1.2;
-            ctx.stroke();
-
-            ctx.fillStyle = '#ffffff';
-            ctx.globalAlpha = 0.7;
-            ctx.beginPath();
-            ctx.ellipse(
-                -radX * 0.15,
-                0,
-                Math.max(0.5, radX * 0.35),
-                Math.max(0.5, radY * 0.45),
-                0,
-                0,
-                Math.PI * 2,
+            drawMagicMissileVisual(
+                ctx,
+                this.x,
+                this.y,
+                heading,
+                this.r,
+                this.player,
+                now,
+                this.spawnTime,
             );
-            ctx.fill();
-
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.arc(
-                -radX * 0.25,
-                -radY * 0.25,
-                Math.max(0.4, radY * 0.25),
-                0,
-                Math.PI * 2,
-            );
-            ctx.fill();
-
-            ctx.restore();
         }
     }
+}
+
+function drawMagicMissileVisual(
+    renderCtx,
+    x,
+    y,
+    heading,
+    r,
+    player = null,
+    now = performance.now(),
+    spawnTime = null,
+) {
+    if (!renderCtx) return;
+    const curTime = now || performance.now();
+    renderCtx.save();
+
+    const isPlayerActive =
+        player &&
+        (typeof player.isActive === 'function'
+            ? player.isActive()
+            : !player.dead);
+
+    if (isPlayerActive && spawnTime && typeof player.x === 'number') {
+        const pdx = x - player.x;
+        const pdy = y - player.y;
+        const pdist = Math.hypot(pdx, pdy);
+        const r1 = player.r || 16;
+        const r2 = r + 1.2;
+        const maxBridge = r1 + r2 + 28;
+
+        if (
+            pdist > 0.001 &&
+            pdist < maxBridge &&
+            curTime - spawnTime < 190
+        ) {
+            const u = Math.max(
+                0,
+                Math.min(1, (pdist - (r1 + r2 * 0.5)) / 28),
+            );
+            const gamma = Math.atan2(pdy, pdx);
+
+            const spread1 = Math.PI * 0.48 * (1 - u * 0.65);
+            const spread2 = Math.PI * 0.48 * (1 - u * 0.65);
+
+            const ax1 = player.x + Math.cos(gamma + spread1) * r1;
+            const ay1 = player.y + Math.sin(gamma + spread1) * r1;
+            const bx1 = player.x + Math.cos(gamma - spread1) * r1;
+            const by1 = player.y + Math.sin(gamma - spread1) * r1;
+
+            const ax2 =
+                x + Math.cos(gamma + Math.PI - spread2) * r2;
+            const ay2 =
+                y + Math.sin(gamma + Math.PI - spread2) * r2;
+            const bx2 =
+                x + Math.cos(gamma - Math.PI + spread2) * r2;
+            const by2 =
+                y + Math.sin(gamma - Math.PI + spread2) * r2;
+
+            const midX = (player.x + x) / 2;
+            const midY = (player.y + y) / 2;
+            const nx = -Math.sin(gamma);
+            const ny = Math.cos(gamma);
+
+            const waist = Math.max(0.3, (1 - u) * ((r1 + r2) * 0.35));
+
+            const cax = midX + nx * waist;
+            const cay = midY + ny * waist;
+            const cbx = midX - nx * waist;
+            const cby = midY - ny * waist;
+
+            renderCtx.fillStyle = player.color || '#00ffcc';
+            renderCtx.beginPath();
+            renderCtx.moveTo(ax1, ay1);
+            renderCtx.quadraticCurveTo(cax, cay, ax2, ay2);
+            renderCtx.lineTo(bx2, by2);
+            renderCtx.quadraticCurveTo(cbx, cby, bx1, by1);
+            renderCtx.closePath();
+            renderCtx.fill();
+
+            renderCtx.strokeStyle = player.ring || '#003322';
+            renderCtx.lineWidth = 2;
+            renderCtx.beginPath();
+            renderCtx.moveTo(ax1, ay1);
+            renderCtx.quadraticCurveTo(cax, cay, ax2, ay2);
+            renderCtx.stroke();
+
+            renderCtx.beginPath();
+            renderCtx.moveTo(bx2, by2);
+            renderCtx.quadraticCurveTo(cbx, cby, bx1, by1);
+            renderCtx.stroke();
+        }
+    }
+
+    const playerCol = player?.color ? player.color : '#00ffcc';
+    const playerRing = player?.ring ? player.ring : '#003322';
+
+    renderCtx.translate(x, y);
+    renderCtx.rotate(heading);
+
+    const age = spawnTime ? curTime - spawnTime : 0;
+    const wobble = Math.sin(age * 0.035) * 0.18;
+    const radX = (r + 1.0) * (1.3 + wobble);
+    const radY = (r + 1.0) * (0.88 - wobble * 0.5);
+
+    renderCtx.fillStyle = playerCol;
+    renderCtx.beginPath();
+    renderCtx.ellipse(0, 0, radX, radY, 0, 0, Math.PI * 2);
+    renderCtx.fill();
+
+    renderCtx.strokeStyle = playerRing;
+    renderCtx.lineWidth = 1.2;
+    renderCtx.stroke();
+
+    renderCtx.fillStyle = '#ffffff';
+    renderCtx.globalAlpha = 0.7;
+    renderCtx.beginPath();
+    renderCtx.ellipse(
+        -radX * 0.15,
+        0,
+        Math.max(0.5, radX * 0.35),
+        Math.max(0.5, radY * 0.45),
+        0,
+        0,
+        Math.PI * 2,
+    );
+    renderCtx.fill();
+
+    renderCtx.globalAlpha = 0.85;
+    renderCtx.fillStyle = '#ffffff';
+    renderCtx.beginPath();
+    renderCtx.arc(
+        -radX * 0.25,
+        -radY * 0.25,
+        Math.max(0.4, radY * 0.25),
+        0,
+        Math.PI * 2,
+    );
+    renderCtx.fill();
+
+    renderCtx.restore();
 }
 
 window.Projectile = Projectile;
@@ -2741,3 +2796,4 @@ window.EnemyProjectile = ShooterProjectile; // Legacy compatibility alias
 window.SpikyProjectile = SpikyProjectile;
 window.OrbitProjectile = OrbitProjectile;
 window.DeflectorOrbiter = DeflectorOrbiter;
+window.drawMagicMissileVisual = drawMagicMissileVisual;
