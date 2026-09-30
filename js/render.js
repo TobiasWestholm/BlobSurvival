@@ -506,14 +506,26 @@ function draw(now) {
     // XP Tutorial arrow: point at the very first gem until it is picked up
     if (GAME_STATE.firstXpGem?.alive) {
         const gem = GAME_STATE.firstXpGem;
-        // Find closest living player to base the arrow origin on
+        // Base arrow origin on local player (or closest living player if local is dead)
         let playerX = W / 2,
             playerY = H / 2;
-        for (const p of GAME_STATE.players) {
-            if (p?.alive && !p.disconnected) {
-                playerX = p.x;
-                playerY = p.y;
-                break;
+        const localIdx =
+            typeof netManager !== 'undefined' &&
+            netManager &&
+            netManager.localPlayerIndex !== undefined
+                ? netManager.localPlayerIndex
+                : 0;
+        const localPlayer = GAME_STATE.players[localIdx];
+        if (localPlayer?.alive && !localPlayer.disconnected) {
+            playerX = localPlayer.x;
+            playerY = localPlayer.y;
+        } else {
+            for (const p of GAME_STATE.players) {
+                if (p?.alive && !p.disconnected) {
+                    playerX = p.x;
+                    playerY = p.y;
+                    break;
+                }
             }
         }
         const adx = gem.x - playerX;

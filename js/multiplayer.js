@@ -5827,6 +5827,9 @@ window.onWorldSnapshotReceived = (snapshot) => {
                     g = new SupplyDrop(gx, gy, gsd, nowTime);
                 } else {
                     g = new XPGem(gx, gy, gv);
+                    if (!GAME_STATE.xpArrowDone && !GAME_STATE.firstXpGem) {
+                        GAME_STATE.firstXpGem = g;
+                    }
                 }
                 g._nid = id;
                 g.x = gx;
