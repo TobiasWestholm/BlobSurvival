@@ -582,6 +582,7 @@ class NetworkManager {
                 );
                 this.streamConnections.set(conn.peer, conn);
                 this.peerLastSeenMap.set(conn.peer, Date.now());
+                requestNetFullSync();
 
                 conn.on('data', (data) => {
                     this.peerLastSeenMap.set(conn.peer, Date.now());
@@ -611,6 +612,7 @@ class NetworkManager {
 
             console.log('[Net] Peer connecting (reliable RPC):', conn.peer);
             this.peerLastSeenMap.set(conn.peer, Date.now());
+            requestNetFullSync();
             const isGameStarted =
                 typeof GAME_STATE !== 'undefined' &&
                 typeof STATES !== 'undefined' &&
@@ -2249,6 +2251,8 @@ window.onOnlineCountdownStarted = (isNewGame) => {
             clientSnapshotBuffer.length = 0;
         lastReceivedSnapshotSeq = 0;
         snapshotSeq = 0;
+        netLastTerrainBytes = null;
+        netTerrainChangedSeq = -Infinity;
         if (typeof SPATIAL_GRID !== 'undefined' && SPATIAL_GRID.clear)
             SPATIAL_GRID.clear();
         if (typeof resizeCanvas === 'function') resizeCanvas();
@@ -2265,8 +2269,32 @@ window.onOnlineCountdownStarted = (isNewGame) => {
 };
 
 let netEntityCounter = 1;
+let netHazardCounter = 0;
 let netGemSyncTick = 0;
 let snapshotSeq = 0;
+
+// Hazards & terrains are mostly static, so full records are only resent around spawn/change,
+// on a staggered periodic refresh, or during a forced resync after a client (re)connects.
+const HAZARD_FULL_REPEATS = 3;
+const HAZARD_UPDATE_REPEATS = 4;
+const STATIC_SYNC_REFRESH_TICKS = 60;
+const TERRAIN_CHANGE_REPEATS = 4;
+let netForceFullSyncTicks = 0;
+let netLastTerrainBytes = null;
+let netTerrainChangedSeq = -Infinity;
+
+function requestNetFullSync(ticks = 6) {
+    netForceFullSyncTicks = Math.max(netForceFullSyncTicks, ticks);
+}
+
+// Dedicated counter keeps hazard ids contiguous so the alive-id list compresses into few ranges
+function assignHazardNid(h) {
+    if (!h._nid) {
+        netHazardCounter = (netHazardCounter % 65535) + 1;
+        h._nid = netHazardCounter;
+    }
+    return h._nid;
+}
 let lastReceivedSnapshotSeq = 0;
 const clientEnemyCache = new Map(); // id -> Enemy instance
 const clientTurretCache = new Map(); // id -> TurretEntity instance
@@ -3033,7 +3061,7 @@ window.spawnNetworkCombatVfx = spawnNetworkCombatVfx;
 // =========================================================================
 
 const BINARY_MAGIC = 0xbf; // 'Blob Format' identifier
-const BINARY_VERSION = 1;
+const BINARY_VERSION = 2;
 
 let sharedBinaryBuffer = new ArrayBuffer(131072); // Pre-allocated 128 KB buffer
 let sharedDataView = new DataView(sharedBinaryBuffer);
@@ -3311,6 +3339,7 @@ function packWorldSnapshotBinary() {
     if (netVfxEvents.length > 0) flags |= 1 << 3;
     if (netBlobDeforms.length > 0) flags |= 1 << 4;
     if (deadEnemyIds.length > 0) flags |= 1 << 5;
+    const flagsOffset = offset;
     view.setUint8(offset, flags);
     offset += 1;
 
@@ -3786,6 +3815,7 @@ function packWorldSnapshotBinary() {
     }
 
     // 7. Hazards (excluding transient CombatVFX which stream via 1-shot netVfxEvents)
+    //    7a. full records, 7b. position/trigger updates, 7c. alive id ranges
     const allHazards =
         typeof GAME_STATE !== 'undefined' && GAME_STATE.hazards
             ? GAME_STATE.hazards
@@ -3793,11 +3823,43 @@ function packWorldSnapshotBinary() {
     const hazards = allHazards.filter(
         (h) => !(typeof CombatVFX !== 'undefined' && h instanceof CombatVFX),
     );
-    view.setUint16(offset, hazards.length, true);
+    const forceFullSync = netForceFullSyncTicks > 0;
+    const hazardUpdates = [];
+    const fullCountOffset = offset;
+    let fullHazardCount = 0;
     offset += 2;
     for (let i = 0; i < hazards.length; i++) {
         const h = hazards[i];
-        if (!h._nid) h._nid = ++netEntityCounter;
+        assignHazardNid(h);
+
+        const hx = Math.round(h.x !== undefined ? h.x : h.x1 || 0);
+        const hy = Math.round(h.y !== undefined ? h.y : h.y1 || 0);
+        const htr = h.triggeredTime ? 1 : 0;
+        if (h._netFullSends === undefined) {
+            h._netFullSends = 0;
+            h._netX = hx;
+            h._netY = hy;
+            h._netTr = htr;
+            h._netChangedSeq = -Infinity;
+        } else if (hx !== h._netX || hy !== h._netY || htr !== h._netTr) {
+            h._netX = hx;
+            h._netY = hy;
+            h._netTr = htr;
+            h._netChangedSeq = snapshotSeq;
+        }
+
+        const sendFull =
+            forceFullSync ||
+            h._netFullSends < HAZARD_FULL_REPEATS ||
+            (snapshotSeq + h._nid) % STATIC_SYNC_REFRESH_TICKS === 0;
+        if (!sendFull) {
+            if (snapshotSeq - h._netChangedSeq < HAZARD_UPDATE_REPEATS) {
+                hazardUpdates.push(h);
+            }
+            continue;
+        }
+        h._netFullSends++;
+        fullHazardCount++;
 
         let type = 'hazard';
         if (h instanceof PlayerMine) type = 'mine';
@@ -3823,8 +3885,6 @@ function packWorldSnapshotBinary() {
         view.setUint8(offset, typeId);
         offset += 1;
 
-        const hx = Math.round(h.x !== undefined ? h.x : h.x1 || 0);
-        const hy = Math.round(h.y !== undefined ? h.y : h.y1 || 0);
         view.setInt16(offset, hx, true);
         offset += 2;
         view.setInt16(offset, hy, true);
@@ -3879,12 +3939,55 @@ function packWorldSnapshotBinary() {
             offset += 4;
         }
     }
+    view.setUint16(fullCountOffset, fullHazardCount, true);
 
-    // 8. Terrains
+    view.setUint16(offset, hazardUpdates.length, true);
+    offset += 2;
+    for (let i = 0; i < hazardUpdates.length; i++) {
+        const h = hazardUpdates[i];
+        view.setUint16(offset, h._nid, true);
+        offset += 2;
+        view.setUint8(offset, h._netTr);
+        offset += 1;
+        view.setInt16(offset, h._netX, true);
+        offset += 2;
+        view.setInt16(offset, h._netY, true);
+        offset += 2;
+    }
+
+    // Alive ids as (start uint16, extra uint8) ranges covering start..start+extra
+    const aliveIds = new Array(hazards.length);
+    for (let i = 0; i < hazards.length; i++) aliveIds[i] = hazards[i]._nid;
+    aliveIds.sort((a, b) => a - b);
+    const rangeCountOffset = offset;
+    let rangeCount = 0;
+    offset += 2;
+    for (let i = 0; i < aliveIds.length; ) {
+        const start = aliveIds[i];
+        let extra = 0;
+        i++;
+        while (
+            i < aliveIds.length &&
+            extra < 255 &&
+            aliveIds[i] === start + extra + 1
+        ) {
+            extra++;
+            i++;
+        }
+        view.setUint16(offset, start, true);
+        offset += 2;
+        view.setUint8(offset, extra);
+        offset += 1;
+        rangeCount++;
+    }
+    view.setUint16(rangeCountOffset, rangeCount, true);
+
+    // 8. Terrains (flag bit 6): only included after a change, on periodic refresh, or forced resync
     const terrains =
         typeof GAME_STATE !== 'undefined' && GAME_STATE.terrains
             ? GAME_STATE.terrains
             : [];
+    const terrainStart = offset;
     view.setUint8(offset, terrains.length);
     offset += 1;
     for (let i = 0; i < terrains.length; i++) {
@@ -3913,6 +4016,29 @@ function packWorldSnapshotBinary() {
             offset += 1;
         }
     }
+    const terrainBytes = sharedUint8.subarray(terrainStart, offset);
+    let terrainChanged = !netLastTerrainBytes;
+    if (!terrainChanged) {
+        terrainChanged = netLastTerrainBytes.length !== terrainBytes.length;
+        for (let i = 0; !terrainChanged && i < terrainBytes.length; i++) {
+            terrainChanged = netLastTerrainBytes[i] !== terrainBytes[i];
+        }
+    }
+    if (terrainChanged) {
+        netLastTerrainBytes = terrainBytes.slice();
+        netTerrainChangedSeq = snapshotSeq;
+    }
+    if (
+        forceFullSync ||
+        snapshotSeq - netTerrainChangedSeq < TERRAIN_CHANGE_REPEATS ||
+        snapshotSeq % STATIC_SYNC_REFRESH_TICKS === 0
+    ) {
+        flags |= 1 << 6;
+        view.setUint8(flagsOffset, flags);
+    } else {
+        offset = terrainStart;
+    }
+    if (netForceFullSyncTicks > 0) netForceFullSyncTicks--;
 
     // 9. Hit Events (if flag bit 1)
     if (flags & (1 << 1)) {
@@ -4014,7 +4140,8 @@ function unpackWorldSnapshotBinary(buffer) {
         const magic = view.getUint8(offset);
         offset += 1;
         if (magic !== BINARY_MAGIC) return null;
-        offset += 1; // packet format version
+        if (view.getUint8(offset) !== BINARY_VERSION) return null;
+        offset += 1;
 
         const seq = view.getUint32(offset, true);
         offset += 4;
@@ -4029,6 +4156,7 @@ function unpackWorldSnapshotBinary(buffer) {
         const hasVfxEvents = (flags & (1 << 3)) !== 0;
         const hasBlobDeforms = (flags & (1 << 4)) !== 0;
         const hasDeadEnemies = (flags & (1 << 5)) !== 0;
+        const hasTerrains = (flags & (1 << 6)) !== 0;
 
         const rawStateByte = view.getUint8(offset);
         offset += 1;
@@ -4493,10 +4621,36 @@ function unpackWorldSnapshotBinary(buffer) {
             });
         }
 
-        // 8. Terrains
-        const terrainCount = view.getUint8(offset);
-        offset += 1;
-        const terrains = [];
+        const hazardUpdateCount = view.getUint16(offset, true);
+        offset += 2;
+        const hazardUpdates = [];
+        for (let i = 0; i < hazardUpdateCount; i++) {
+            const id = view.getUint16(offset, true);
+            offset += 2;
+            const tr = view.getUint8(offset);
+            offset += 1;
+            const x = view.getInt16(offset, true);
+            offset += 2;
+            const y = view.getInt16(offset, true);
+            offset += 2;
+            hazardUpdates.push({ id, x, y, tr });
+        }
+
+        const hazardRangeCount = view.getUint16(offset, true);
+        offset += 2;
+        const hazardAlive = [];
+        for (let i = 0; i < hazardRangeCount; i++) {
+            const start = view.getUint16(offset, true);
+            offset += 2;
+            const extra = view.getUint8(offset);
+            offset += 1;
+            for (let j = 0; j <= extra; j++) hazardAlive.push(start + j);
+        }
+
+        // 8. Terrains (only present when flag bit 6 is set)
+        const terrainCount = hasTerrains ? view.getUint8(offset) : 0;
+        if (hasTerrains) offset += 1;
+        const terrains = hasTerrains ? [] : undefined;
         for (let i = 0; i < terrainCount; i++) {
             const type = view.getUint8(offset);
             offset += 1;
@@ -4612,6 +4766,8 @@ function unpackWorldSnapshotBinary(buffer) {
             gems,
             turrets,
             hazards,
+            hazardUpdates,
+            hazardAlive,
             terrains,
             hits: hitEvents,
             sounds: soundEvents,
@@ -4909,7 +5065,7 @@ function serializeWorldForNetworkJSON() {
             (h) => !(typeof CombatVFX !== 'undefined' && h instanceof CombatVFX),
         )
         .map((h) => {
-        if (!h._nid) h._nid = ++netEntityCounter;
+        assignHazardNid(h);
         let type = 'hazard';
         if (h instanceof PlayerMine) type = 'mine';
         else if (h instanceof MineExplosion) type = 'mine_explosion';
@@ -5299,6 +5455,12 @@ const NetworkEnemyProjectileProto = {
         ctx.restore();
     },
 };
+
+function applyNetworkHazardUpdate(hazard, sh, nowTime) {
+    if (hazard.x !== undefined) hazard.x = sh.x;
+    if (hazard.y !== undefined) hazard.y = sh.y;
+    if (sh.tr && hazard.triggeredTime === 0) hazard.triggeredTime = nowTime;
+}
 
 window.onWorldSnapshotReceived = (snapshot) => {
     if (!snapshot) return;
@@ -6112,10 +6274,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
 
     // 6. Reconcile Hazards, Mines & Visual Explosions (preserving original animations)
     if (snapshot.hazards) {
-        const seenHazardIds = new Set();
-        const activeHazards = [];
         for (const sh of snapshot.hazards) {
-            seenHazardIds.add(sh.id);
             let hazard = clientHazardCache.get(sh.id);
             const owner = GAME_STATE.players[sh.pi] || GAME_STATE.players[0];
 
@@ -6300,13 +6459,25 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 hazard._nid = sh.id;
                 clientHazardCache.set(sh.id, hazard);
             } else {
-                // Update position / state of ongoing hazard
-                if (hazard.x !== undefined) hazard.x = sh.x;
-                if (hazard.y !== undefined) hazard.y = sh.y;
-                if (sh.tr && hazard.triggeredTime === 0)
-                    hazard.triggeredTime = nowTime;
+                applyNetworkHazardUpdate(hazard, sh, nowTime);
             }
-            activeHazards.push(hazard);
+        }
+        if (snapshot.hazardUpdates) {
+            for (const su of snapshot.hazardUpdates) {
+                const hazard = clientHazardCache.get(su.id);
+                if (hazard) applyNetworkHazardUpdate(hazard, su, nowTime);
+            }
+        }
+
+        // Binary snapshots list every alive hazard id; legacy JSON snapshots list full records only
+        const aliveIds = snapshot.hazardAlive
+            ? snapshot.hazardAlive
+            : snapshot.hazards.map((sh) => sh.id);
+        const seenHazardIds = new Set(aliveIds);
+        const activeHazards = [];
+        for (const id of aliveIds) {
+            const hazard = clientHazardCache.get(id);
+            if (hazard) activeHazards.push(hazard);
         }
         for (const [id] of clientHazardCache.entries()) {
             if (!seenHazardIds.has(id)) {
