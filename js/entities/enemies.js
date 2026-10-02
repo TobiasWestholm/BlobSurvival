@@ -4152,7 +4152,7 @@ class FelhoundBoss extends BossEnemy {
             typeof MONSTER_BASE_XP !== 'undefined'
                 ? MONSTER_BASE_XP.felhound
                 : 2000;
-        super(x, y, 'felhound', now, 35, 100000, 0, 2000, '#6a0dad', xp);
+        super(x, y, 'felhound', now, 35, 90000, 0, 2000, '#6a0dad', xp);
         this.killPauseUntil = 0;
         const startAngle = Math.random() * Math.PI * 2;
         this.vx = Math.cos(startAngle) * 1.5;
