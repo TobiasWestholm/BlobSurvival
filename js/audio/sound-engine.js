@@ -682,11 +682,16 @@ const SoundEngine = {
         return buffer;
     },
 
+    // Resuming before any user gesture is rejected and makes Chrome log an autoplay warning.
+    resumeIfAllowed() {
+        if (this.ctx?.state !== 'suspended') return;
+        if (navigator.userActivation?.hasBeenActive === false) return;
+        this.ctx.resume().catch(() => {});
+    },
+
     init() {
         if (this.ctx) {
-            if (this.ctx.state === 'suspended') {
-                this.ctx.resume().catch(() => {});
-            }
+            this.resumeIfAllowed();
             return this.ctx;
         }
         try {
@@ -1866,9 +1871,7 @@ const SoundEngine = {
                 );
             }
 
-            if (this.ctx.state === 'suspended') {
-                this.ctx.resume().catch(() => {});
-            }
+            this.resumeIfAllowed();
 
             if (this.musicNextNoteTime < this.ctx.currentTime) {
                 this.musicNextNoteTime = this.ctx.currentTime + 0.02;
@@ -1967,9 +1970,7 @@ const SoundEngine = {
                 this.victoryStartBpm + (10 - this.victoryStartBpm) * t;
             const stepDuration = 60 / (currentBpm * 4);
 
-            if (this.ctx.state === 'suspended') {
-                this.ctx.resume().catch(() => {});
-            }
+            this.resumeIfAllowed();
 
             if (this.musicNextNoteTime < this.ctx.currentTime) {
                 this.musicNextNoteTime = this.ctx.currentTime + 0.02;
@@ -2114,9 +2115,7 @@ const SoundEngine = {
             }
         }
 
-        if (this.ctx.state === 'suspended') {
-            this.ctx.resume().catch(() => {});
-        }
+        this.resumeIfAllowed();
 
         // Catch up safely if audio clock drifted ahead during any unhandled frame pause
         if (this.musicNextNoteTime < this.ctx.currentTime) {
@@ -3613,9 +3612,7 @@ const SoundEngine = {
     // Preset recipe: [, 0, freq, 0.01, sustain, decay, 2, , , , , , , 0.2, , , , , , 0.18]
     playSynthNote(freq = 110, sustain = 0.33, decay = 0.4, volume = 0.3) {
         if (!this.ctx || this.isMuted) return null;
-        if (this.ctx.state === 'suspended') {
-            this.ctx.resume().catch(() => {});
-        }
+        this.resumeIfAllowed();
         const now = this.ctx.currentTime;
         const noteParams = [
             volume, // 0: volume

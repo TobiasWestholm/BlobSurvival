@@ -4,6 +4,118 @@
  * reliable event messaging, and mid-game reconnection.
  */
 
+// Browsers slow down ICE gathering with more than ~4 servers, so keep STUN minimal.
+const STUN_SERVERS = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+];
+
+// Namespaces our room codes on the shared public PeerJS broker.
+const PEER_ID_PREFIX = 'blobsurvival-';
+
+// Must stay below the minimum remaining lifetime of Worker-served credentials (4h).
+const TURN_CACHE_MS = 60 * 60 * 1000;
+let cachedTurnServers = null;
+let cachedTurnServersAt = 0;
+let lastTurnError = null;
+
+async function resolveTurnServers() {
+    if (cachedTurnServers && Date.now() - cachedTurnServersAt < TURN_CACHE_MS) {
+        return cachedTurnServers;
+    }
+    lastTurnError = null;
+    const cfg = (typeof window !== 'undefined' && window.TURN_CONFIG) || {};
+    let servers = Array.isArray(cfg.servers) ? cfg.servers.slice() : [];
+    if (cfg.credentialsUrl) {
+        try {
+            const res = await fetch(cfg.credentialsUrl);
+            if (res.status === 503) {
+                lastTurnError =
+                    'TURN relay is activating. Try again in about 2 minutes.';
+            }
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const fetched = await res.json();
+            if (Array.isArray(fetched)) servers = servers.concat(fetched);
+        } catch (e) {
+            console.warn('[Net] Could not fetch TURN credentials:', e);
+        }
+    }
+    if (servers.length) {
+        cachedTurnServers = servers;
+        cachedTurnServersAt = Date.now();
+    }
+    return servers;
+}
+
+// Gathers candidates with relay-only policy to verify TURN actually allocates.
+function probeRelayCandidates(iceServers, timeoutMs = 6000) {
+    return new Promise((resolve) => {
+        const errors = [];
+        let pc;
+        try {
+            pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: 'relay' });
+        } catch (e) {
+            return resolve({ ok: false, errors: [String(e)] });
+        }
+        let done = false;
+        const finish = (ok) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            try {
+                pc.close();
+            } catch {}
+            resolve({ ok, errors });
+        };
+        const timer = setTimeout(() => finish(false), timeoutMs);
+        pc.onicecandidate = (e) => {
+            if (!e.candidate) return finish(false);
+            if (/ typ relay /.test(e.candidate.candidate)) finish(true);
+        };
+        pc.onicecandidateerror = (e) => {
+            errors.push(`${e.url} ${e.errorCode} ${e.errorText}`);
+        };
+        pc.createDataChannel('probe');
+        pc.createOffer()
+            .then((offer) => pc.setLocalDescription(offer))
+            .catch(() => finish(false));
+    });
+}
+
+/** @returns {Promise<RTCConfiguration>} */
+async function buildIceConfig(isRelay) {
+    const turnServers = await resolveTurnServers();
+    if (isRelay) {
+        if (!turnServers.length) {
+            throw new Error(
+                lastTurnError ||
+                    'Relay mode needs a TURN server. Set TURN_CONFIG in js/config.js.',
+            );
+        }
+        const probe = await probeRelayCandidates(turnServers);
+        if (!probe.ok) {
+            cachedTurnServers = null;
+            console.error('[Net] TURN relay probe failed:', probe.errors);
+            // 701 host-lookup errors are routine (e.g. no IPv6 route) and never the real cause.
+            const cause =
+                probe.errors.find((e) => !/ 701 /.test(e)) || probe.errors[0];
+            throw new Error(
+                'TURN relay unreachable or credentials rejected' +
+                    (cause ? ` (${cause})` : '.'),
+            );
+        }
+        return { iceServers: turnServers, iceTransportPolicy: 'relay' };
+    }
+    if (!turnServers.length) {
+        console.warn(
+            '[Net] No TURN server configured; players behind strict NAT may fail to connect.',
+        );
+    }
+    return {
+        iceServers: STUN_SERVERS.concat(turnServers),
+        iceTransportPolicy: 'all',
+    };
+}
+
 class NetworkManager {
     constructor() {
         this.peer = null;
@@ -149,45 +261,58 @@ class NetworkManager {
         return code;
     }
 
+    // Canonical form shared by host and client: "4821", "RELAY-4821".
+    static normalizeRoomCode(code) {
+        const clean = String(code || '')
+            .trim()
+            .toUpperCase()
+            .replace(/^BLOB[-_\s]*/i, '')
+            .replace(/[^A-Z0-9]/g, '');
+        if (clean.startsWith('RELAY') && clean.length > 5) {
+            return 'RELAY-' + clean.slice(5);
+        }
+        return clean;
+    }
+
     static getJoinUrl(roomCode) {
         const url = new URL(window.location.href);
         url.searchParams.set('room', roomCode);
         return url.toString();
     }
 
-    initHost(customCode = null) {
+    async initHost(customCode = null) {
+        this.reset();
+        this.isHost = true;
+        this.isClient = false;
+        this.isOnline = true;
+        this.localPlayerIndex = 0;
+        const isRelay = Boolean(
+            (typeof window !== 'undefined' && window.FORCE_RELAY) ||
+                customCode?.toUpperCase().includes('RELAY'),
+        );
+        const baseCode = customCode
+            ? NetworkManager.normalizeRoomCode(customCode).replace(/^RELAY-/, '')
+            : NetworkManager.generateRoomCode();
+        this.roomCode = (isRelay ? 'RELAY-' : '') + baseCode;
+        if (typeof setupHostSoundBroadcasting === 'function') {
+            setupHostSoundBroadcasting();
+        }
+
+        if (typeof Peer === 'undefined') {
+            throw new Error('PeerJS library not loaded');
+        }
+
+        const iceConfig = await buildIceConfig(isRelay);
+
         return new Promise((resolve, reject) => {
-            this.reset();
-            this.isHost = true;
-            this.isClient = false;
-            this.isOnline = true;
-            this.localPlayerIndex = 0;
-            this.roomCode = customCode || NetworkManager.generateRoomCode();
-            if (typeof setupHostSoundBroadcasting === 'function') {
-                setupHostSoundBroadcasting();
-            }
-
-            if (typeof Peer === 'undefined') {
-                return reject(new Error('PeerJS library not loaded'));
-            }
-
             try {
-                this.peer = new Peer(this.roomCode, {
+                this.peer = new Peer(PEER_ID_PREFIX + this.roomCode, {
                     debug: 1,
-                    config: {
-                        iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' },
-                            { urls: 'stun:stun2.l.google.com:19302' },
-                            { urls: 'stun:stun.cloudflare.com:3478' },
-                            { urls: 'stun:stun.services.mozilla.com' },
-                            { urls: 'stun:global.stun.twilio.com:3478' },
-                        ],
-                    },
+                    config: iceConfig,
                 });
 
-                this.peer.on('open', (id) => {
-                    this.roomCode = id;
+                this.peer.on('open', () => {
+                    const id = this.roomCode;
                     console.log('[Net] Host registered room code:', id);
 
                     // Health check: check heartbeat of clients every 1s & measure peer RTT
@@ -237,7 +362,9 @@ class NetworkManager {
                     console.error('[Net] Host Peer error:', err);
                     if (err.type === 'unavailable-id') {
                         // If ID collision, try with new random code
-                        const newCode = NetworkManager.generateRoomCode();
+                        const newCode =
+                            (isRelay ? 'RELAY-' : '') +
+                            NetworkManager.generateRoomCode();
                         this.initHost(newCode).then(resolve).catch(reject);
                     } else {
                         reject(err);
@@ -256,18 +383,19 @@ class NetworkManager {
         });
     }
 
-    initClient(roomCode) {
-        return new Promise((resolve, reject) => {
-            this.reset();
-            this.isHost = false;
-            this.isClient = true;
-            this.isOnline = true;
-            this.roomCode = (roomCode || '')
-                .trim()
-                .toUpperCase()
-                .replace(/^BLOB[-_\s]*/i, '')
-                .replace(/[^A-Z0-9]/g, '');
+    async initClient(roomCode) {
+        this.reset();
+        this.isHost = false;
+        this.isClient = true;
+        this.isOnline = true;
+        this.roomCode = NetworkManager.normalizeRoomCode(roomCode);
+        const isRelay = Boolean(
+            (typeof window !== 'undefined' && window.FORCE_RELAY) ||
+                this.roomCode.startsWith('RELAY-'),
+        );
+        const iceConfig = await buildIceConfig(isRelay);
 
+        return new Promise((resolve, reject) => {
             // Retrieve or generate persistent sessionToken for this room (safe on mobile Safari Private Browsing)
             let sessionToken = null;
             try {
@@ -298,16 +426,7 @@ class NetworkManager {
                 // Client gets a random peer ID
                 this.peer = new Peer({
                     debug: 1,
-                    config: {
-                        iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' },
-                            { urls: 'stun:stun2.l.google.com:19302' },
-                            { urls: 'stun:stun.cloudflare.com:3478' },
-                            { urls: 'stun:stun.services.mozilla.com' },
-                            { urls: 'stun:global.stun.twilio.com:3478' },
-                        ],
-                    },
+                    config: iceConfig,
                 });
 
                 this.peer.on('open', (myPeerId) => {
@@ -317,17 +436,23 @@ class NetworkManager {
                         'sessionToken:',
                         this.sessionToken,
                     );
-                    const conn = this.peer.connect(this.roomCode, {
-                        reliable: true,
-                        serialization: 'json',
-                        label: 'rpc',
-                        metadata: {
-                            sessionToken: this.sessionToken,
-                            channelType: 'rpc',
+                    const conn = this.peer.connect(
+                        PEER_ID_PREFIX + this.roomCode,
+                        {
+                            reliable: true,
+                            serialization: 'json',
+                            label: 'rpc',
+                            metadata: {
+                                sessionToken: this.sessionToken,
+                                channelType: 'rpc',
+                            },
                         },
-                    });
+                    );
 
                     const connectionTimeout = setTimeout(() => {
+                        try {
+                            conn.close();
+                        } catch {}
                         reject(
                             new Error('Connection timed out. Check room code.'),
                         );
@@ -363,7 +488,7 @@ class NetworkManager {
                         // Secondary: Establish unreliable streaming channel for 20Hz snapshots & 60Hz inputs
                         try {
                             const streamConn = this.peer.connect(
-                                this.roomCode,
+                                PEER_ID_PREFIX + this.roomCode,
                                 {
                                     reliable: false,
                                     serialization: 'binary',
@@ -1139,7 +1264,7 @@ class NetworkManager {
                 } catch {}
             }
 
-            const conn = this.peer.connect(this.roomCode, {
+            const conn = this.peer.connect(PEER_ID_PREFIX + this.roomCode, {
                 reliable: true,
                 serialization: 'json',
                 label: 'rpc',
@@ -1183,15 +1308,18 @@ class NetworkManager {
                 });
 
                 try {
-                    const streamConn = this.peer.connect(this.roomCode, {
-                        reliable: false,
-                        serialization: 'binary',
-                        label: 'stream',
-                        metadata: {
-                            sessionToken: this.sessionToken,
-                            channelType: 'stream',
+                    const streamConn = this.peer.connect(
+                        PEER_ID_PREFIX + this.roomCode,
+                        {
+                            reliable: false,
+                            serialization: 'binary',
+                            label: 'stream',
+                            metadata: {
+                                sessionToken: this.sessionToken,
+                                channelType: 'stream',
+                            },
                         },
-                    });
+                    );
                     streamConn.on('open', () => {
                         if (streamConn.dataChannel) {
                             streamConn.dataChannel.binaryType = 'arraybuffer';
@@ -1751,6 +1879,8 @@ window.onAssignedSlot = (
     if (joinStep) joinStep.style.display = 'none';
     const tBtn = document.getElementById('testingBtn');
     if (tBtn) tBtn.style.display = 'none';
+    const rBtn = document.getElementById('relayToggleBtn');
+    if (rBtn) rBtn.style.display = 'none';
 
     if (
         currentGameState === STATES.WEAPON_SELECT ||
@@ -2428,7 +2558,7 @@ function applyNetworkBlobDeform(playerIndex, deformType, angleRad) {
 window.applyNetworkBlobDeform = applyNetworkBlobDeform;
 
 function queueNetworkCombatVfx(type, x, y, param = 0, playerIndex = 0) {
-    if (netVfxEvents.length >= 16) return;
+    if (netVfxEvents.length >= 32) return;
     if (!netManager?.isHost || !netManager?.connections?.size) return;
     const header = ((playerIndex & 0x03) << 4) | (type & 0x0f);
     netVfxEvents.push([
@@ -2878,6 +3008,17 @@ function spawnNetworkCombatVfx(type, x, y, param, playerIndex = 0) {
                         dmgApplied: true,
                         lashStartTime: 0,
                     });
+                }
+            }
+            break;
+        }
+        case 7: { // WarlockDartsLifesteal
+            if (owner) {
+                if (!owner.projectileLifedrainEnabled) {
+                    owner.projectileLifedrainEnabled = true;
+                }
+                if (typeof owner.triggerLifestealVisual === 'function') {
+                    owner.triggerLifestealVisual(x, y, true, param);
                 }
             }
             break;
@@ -3804,7 +3945,7 @@ function packWorldSnapshotBinary() {
 
     // 11. VFX Events (if flag bit 3)
     if (flags & (1 << 3)) {
-        const vfxCount = Math.min(netVfxEvents.length, 16);
+        const vfxCount = Math.min(netVfxEvents.length, 32);
         view.setUint8(offset, vfxCount);
         offset += 1;
         for (let i = 0; i < vfxCount; i++) {
@@ -4854,7 +4995,7 @@ function serializeWorldForNetworkJSON() {
 
     const vfx =
         netVfxEvents.length > 0
-            ? netVfxEvents.slice(0, 16).map((v) => ({
+            ? netVfxEvents.slice(0, 32).map((v) => ({
                   type: v[0] & 0x0f,
                   playerIndex: (v[0] >> 4) & 0x03,
                   x: v[1],

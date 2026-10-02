@@ -1497,11 +1497,7 @@ let pendingPlayerCount = 1;
 
 async function joinOnlineRoom(code) {
     const statusEl = document.getElementById('joinStatus');
-    const cleanCode = (code || '')
-        .trim()
-        .toUpperCase()
-        .replace(/^BLOB[-_\s]*/i, '')
-        .replace(/[^A-Z0-9]/g, '');
+    const cleanCode = NetworkManager.normalizeRoomCode(code);
     if (!cleanCode) {
         if (statusEl)
             statusEl.textContent =
@@ -1545,6 +1541,15 @@ function showStartStep(step) {
     const tBtn = document.getElementById('testingBtn');
     if (tBtn) {
         tBtn.style.display =
+            typeof window !== 'undefined' &&
+            window.ENABLE_TESTING_LAB &&
+            step === 'mode'
+                ? 'block'
+                : 'none';
+    }
+    const rBtn = document.getElementById('relayToggleBtn');
+    if (rBtn) {
+        rBtn.style.display =
             typeof window !== 'undefined' &&
             window.ENABLE_TESTING_LAB &&
             step === 'mode'
@@ -1617,6 +1622,12 @@ function showStartMenu() {
     const tBtn = document.getElementById('testingBtn');
     if (tBtn)
         tBtn.style.display =
+            typeof window !== 'undefined' && window.ENABLE_TESTING_LAB
+                ? 'block'
+                : 'none';
+    const rBtn = document.getElementById('relayToggleBtn');
+    if (rBtn)
+        rBtn.style.display =
             typeof window !== 'undefined' && window.ENABLE_TESTING_LAB
                 ? 'block'
                 : 'none';
@@ -2227,6 +2238,25 @@ function initUISystem() {
         pauseMenuBtn.addEventListener('pointerdown', (e) =>
             e.stopPropagation(),
         );
+    }
+
+    const relayToggleBtn = document.getElementById('relayToggleBtn');
+    if (relayToggleBtn) {
+        const updateRelayBtn = () => {
+            const on = Boolean(
+                typeof window !== 'undefined' && window.FORCE_RELAY,
+            );
+            relayToggleBtn.textContent = on ? 'RELAY: ON' : 'RELAY: OFF';
+            relayToggleBtn.style.color = on ? '#00ffcc' : '#888';
+            relayToggleBtn.style.borderColor = on ? '#00ffcc' : '#555';
+        };
+        relayToggleBtn.onclick = () => {
+            if (typeof window !== 'undefined') {
+                window.FORCE_RELAY = !window.FORCE_RELAY;
+            }
+            updateRelayBtn();
+        };
+        updateRelayBtn();
     }
 
     // Auto-run start menu on load

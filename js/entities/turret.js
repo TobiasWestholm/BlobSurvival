@@ -2,14 +2,14 @@ class TurretEntity extends Unit {
     constructor(x, y, player, now) {
         const turretMaxHp =
             GAME_CONFIG.TURRET.BASE_HP *
-            (player ? player.buildingHealthModifier : 1.0);
+            (player?.buildingHealthModifier || 1.0);
         super(x, y, 12, turretMaxHp);
         this.player = player;
         this.spawnTime = now;
         this.duration =
             GAME_CONFIG.TURRET.LIFETIME_SEC *
             1000 *
-            (player ? player.buildingDurationModifier : 1.0);
+            (player?.buildingDurationModifier || 1.0);
         this.hitCooldown = new Map();
         this.isFlamethrower = player
             ? !!player.turretFlamethrowerEnabled
@@ -769,7 +769,10 @@ class TurretEntity extends Unit {
                 const ringCount = 2;
                 for (let r = 0; r < ringCount; r++) {
                     const phase = (now * 0.003 + r * 0.5) % 1.0;
-                    const ringR = 3 + phase * 16 * destIntensity;
+                    const ringR = Math.max(
+                        0.1,
+                        3 + phase * 16 * destIntensity,
+                    );
                     const ringAlpha = (1 - phase) * 0.3 * destIntensity;
 
                     ctx.strokeStyle = pColor;
@@ -796,9 +799,11 @@ class TurretEntity extends Unit {
                 ctx.fill();
 
                 // Central budding node gestation core swelling at destination
-                const budRadius =
+                const budRadius = Math.max(
+                    0.1,
                     (1.4 + 3.0 * destIntensity) *
-                    (0.85 + 0.15 * Math.sin(now * 0.02));
+                        (0.85 + 0.15 * Math.sin(now * 0.02)),
+                );
                 const budGrad = ctx.createRadialGradient(
                     x1,
                     y1,
@@ -914,11 +919,9 @@ class TurretEntity extends Unit {
                     420 *
                     Math.max(
                         0.6,
-                        this.player
-                            ? this.player.buildingCooldownModifier || 1.0
-                            : 1.0,
+                        this.player?.buildingCooldownModifier || 1.0,
                     );
-                const isEstablishing = elapsed < animDuration;
+                const isEstablishing = elapsed >= 0 && elapsed < animDuration;
 
                 const isLaserWall =
                     this.laserWallsEnabled ||
@@ -1036,9 +1039,12 @@ class TurretEntity extends Unit {
         // 2. Initial Cytoplasmic Hatching Tether & Birth Sac (first 320ms after hatching)
         if (this.player?.alive) {
             const timeSinceSpawn = now - this.spawnTime;
-            if (timeSinceSpawn < 320) {
-                const tetherProg = timeSinceSpawn / 320;
-                const tetherAlpha = 1 - tetherProg;
+            if (timeSinceSpawn >= 0 && timeSinceSpawn < 320) {
+                const tetherProg = Math.max(
+                    0,
+                    Math.min(1, timeSinceSpawn / 320),
+                );
+                const tetherAlpha = Math.max(0, Math.min(1, 1 - tetherProg));
                 const pdx = this.x - this.player.x;
                 const pdy = this.y - this.player.y;
                 const pdist = Math.hypot(pdx, pdy);
@@ -1088,7 +1094,7 @@ class TurretEntity extends Unit {
                     ctx.arc(
                         this.x,
                         this.y,
-                        8.0 + (1 - tetherProg) * 4.0,
+                        Math.max(0.1, 8.0 + (1 - tetherProg) * 4.0),
                         0,
                         Math.PI * 2,
                     );
@@ -1102,7 +1108,10 @@ class TurretEntity extends Unit {
                     ? this.player.turretCooldownCount || 0
                     : 0;
                 if (rc > 0) {
-                    const ringR = 4 + tetherProg * (26 + rc * 2);
+                    const ringR = Math.max(
+                        0.1,
+                        4 + tetherProg * (26 + rc * 2),
+                    );
                     ctx.strokeStyle = pColor;
                     ctx.lineWidth = 1.6;
                     ctx.globalAlpha = tetherAlpha * 0.55;
@@ -1112,7 +1121,10 @@ class TurretEntity extends Unit {
                     const moteCount = 3 + rc;
                     for (let i = 0; i < moteCount; i++) {
                         const ma = (i / moteCount) * Math.PI * 2 + now * 0.001;
-                        const md = ringR * (0.3 + tetherProg * 0.7);
+                        const md = Math.max(
+                            0,
+                            ringR * (0.3 + tetherProg * 0.7),
+                        );
                         ctx.fillStyle = '#ffffff';
                         ctx.globalAlpha = tetherAlpha;
                         ctx.beginPath();
@@ -1131,14 +1143,16 @@ class TurretEntity extends Unit {
 
         // 3. Whirling Chitin Cilia / Spore Teeth (Sawblade upgrade - Dark Body with Bright Teeth)
         if (this.turretSawEnabled || this.player?.turretSawEnabled) {
-            const sawRadius =
+            const sawRadius = Math.max(
+                10,
                 50 *
-                (this.player?.meleeRangeModifier || 1.0) *
-                ((GAME_STATE.difficulty
-                    ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
-                    : 1.0) /
-                    2 +
-                    0.5);
+                    (this.player?.meleeRangeModifier || 1.0) *
+                    ((GAME_STATE.difficulty
+                        ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
+                        : 1.0) /
+                        2 +
+                        0.5),
+            );
             const rotAngle = now * 0.012;
             ctx.save();
             ctx.translate(this.x, this.y);
@@ -1602,7 +1616,7 @@ class TurretEntity extends Unit {
             const nucleusPulse = isFiringNova
                 ? 1.0 + 0.2 * Math.sin(now * 0.04)
                 : 0.75 + 0.25 * Math.sin(now * 0.005);
-            const nucR = 2.3 * nucleusPulse;
+            const nucR = Math.max(0.1, 2.3 * nucleusPulse);
 
             // Compact molten thermal ring around player nucleus
             ctx.beginPath();
@@ -1842,7 +1856,7 @@ class TurretEntity extends Unit {
                 const waveR = 2.0 + ((now * waveSpeed) % 1.0) * waveMaxR;
                 const waveAlpha = Math.max(0, 1 - (waveR - 2.0) / waveMaxR);
                 ctx.beginPath();
-                ctx.arc(0, mastTipY, waveR, 0, Math.PI * 2);
+                ctx.arc(0, mastTipY, Math.max(0.1, waveR), 0, Math.PI * 2);
                 ctx.strokeStyle = isPreExpanding ? '#00ffff' : beaconColor;
                 ctx.lineWidth = isPreExpanding ? 1.4 : 0.9;
                 ctx.globalAlpha = waveAlpha * (isPreExpanding ? 0.85 : 0.55);
@@ -1908,8 +1922,10 @@ class TurretEntity extends Unit {
         }
 
         // 7. Decaying Respiration Lifetime Ring
-        const elapsed = now - this.spawnTime;
-        const pct = Math.max(0, 1 - elapsed / this.duration);
+        const elapsed = Math.max(0, now - this.spawnTime);
+        const duration =
+            this.duration || GAME_CONFIG.TURRET.LIFETIME_SEC * 1000;
+        const pct = Math.max(0, Math.min(1, 1 - elapsed / duration));
         ctx.save();
         ctx.strokeStyle = isOverclocked ? '#ffee44' : pColor;
         ctx.lineWidth = 1.5;
@@ -1918,7 +1934,7 @@ class TurretEntity extends Unit {
         ctx.arc(
             this.x,
             this.y,
-            this.r + 4.5,
+            Math.max(0.1, (this.r || 12) + 4.5),
             -Math.PI / 2,
             -Math.PI / 2 + Math.PI * 2 * pct,
         );

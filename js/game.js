@@ -156,7 +156,10 @@ function startGame(playerCount, difficultyKey) {
         clearTimeout(GAME_STATE.countdownTimer);
         GAME_STATE.countdownTimer = null;
     }
-    document.getElementById('testingBtn').style.display = 'none';
+    const tBtn = document.getElementById('testingBtn');
+    if (tBtn) tBtn.style.display = 'none';
+    const rBtn = document.getElementById('relayToggleBtn');
+    if (rBtn) rBtn.style.display = 'none';
     document.getElementById('startMenu').classList.remove('show');
     document.getElementById('gameOverModal').classList.remove('show');
     document.getElementById('victoryModal').classList.remove('show');

@@ -407,8 +407,8 @@ function drawParticles(now) {
     for (let i = 0; i < len; i++) {
         const p = particles[i];
         if (!p || p.alive === false) continue;
-        if (typeof p.draw === 'function' && !(p instanceof Particle)) {
-            p.draw(curNow); // Custom complex particles (e.g. GoldenPillarParticle, LifestealWisp, CombatVFX)
+        if (typeof p.draw === 'function' && p.constructor !== Particle) {
+            p.draw(curNow, ctx); // Custom complex particles (e.g. GoldenPillarParticle, LifestealWisp, CombatVFX)
         } else {
             ctx.globalAlpha =
                 typeof p.getLifetimePercent === 'function'

@@ -178,11 +178,33 @@ class Player extends Unit {
         );
     }
 
-    triggerLifestealVisual(x, y) {
-        this.lifestealPulseUntil = gameClock + 220;
-        const count = 2 + (Math.random() < 0.4 ? 1 : 0);
-        for (let i = 0; i < count; i++) {
-            GAME_STATE.particles.push(new LifestealWisp(x, y, this));
+    triggerLifestealVisual(x, y, fromNetwork = false, wispCount = 0) {
+        const curClock =
+            typeof gameClock !== 'undefined'
+                ? gameClock
+                : typeof performance !== 'undefined'
+                  ? performance.now()
+                  : Date.now();
+        this.lifestealPulseUntil = curClock + 220;
+        const count =
+            wispCount > 0 ? wispCount : 2 + (Math.random() < 0.4 ? 1 : 0);
+        if (
+            typeof GAME_STATE !== 'undefined' &&
+            GAME_STATE.particles &&
+            typeof LifestealWisp !== 'undefined'
+        ) {
+            for (let i = 0; i < count; i++) {
+                GAME_STATE.particles.push(new LifestealWisp(x, y, this));
+            }
+        }
+        if (!fromNetwork && typeof queueNetworkCombatVfx === 'function') {
+            queueNetworkCombatVfx(
+                7,
+                x,
+                y,
+                count,
+                this.index !== undefined ? this.index : 0,
+            );
         }
     }
     updateWeapons(now, dt = 16, dtFactor = 1.0) {

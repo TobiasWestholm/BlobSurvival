@@ -1357,6 +1357,8 @@ function initTestingLabBindings() {
             )
                 return;
             testingBtn.style.display = 'none';
+            const rBtn = document.getElementById('relayToggleBtn');
+            if (rBtn) rBtn.style.display = 'none';
             const sMenu = document.getElementById('startMenu');
             if (sMenu) sMenu.classList.remove('show');
             const tModal = document.getElementById('testingModal');

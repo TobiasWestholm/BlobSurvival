@@ -166,11 +166,20 @@ class LifestealWisp extends Particle {
 
     /**
      * Renders radial glowing bio-energy wisp.
-     * @param {CanvasRenderingContext2D} [targetContext]
+     * @param {CanvasRenderingContext2D|number} [targetContext]
+     * @param {CanvasRenderingContext2D|number} [now]
      */
-    draw(targetContext) {
+    draw(targetContext, now) {
         const renderCtx =
-            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+            typeof targetContext === 'object' &&
+            targetContext &&
+            'save' in targetContext
+                ? targetContext
+                : typeof now === 'object' && now && 'save' in now
+                  ? now
+                  : typeof ctx !== 'undefined'
+                    ? ctx
+                    : null;
         if (!renderCtx) return;
 
         const t = this.getLifetimePercent();
@@ -239,12 +248,21 @@ class GoldenPillarParticle extends Particle {
 
     /**
      * Renders tapered golden beacon pillar with fade-in and sustain.
-     * @param {CanvasRenderingContext2D} [targetContext]
+     * @param {CanvasRenderingContext2D|number} [targetContext]
+     * @param {CanvasRenderingContext2D|number} [now]
      */
-    draw(targetContext) {
+    draw(targetContext, now) {
         if (this.elapsed < this.delay) return;
         const renderCtx =
-            targetContext || (typeof ctx !== 'undefined' ? ctx : null);
+            typeof targetContext === 'object' &&
+            targetContext &&
+            'save' in targetContext
+                ? targetContext
+                : typeof now === 'object' && now && 'save' in now
+                  ? now
+                  : typeof ctx !== 'undefined'
+                    ? ctx
+                    : null;
         if (!renderCtx) return;
 
         const t = this.getLifetimePercent();

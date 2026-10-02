@@ -364,6 +364,9 @@ function initInputSystem() {
                 const tBtn = document.getElementById('testingBtn');
                 if (tBtn)
                     tBtn.style.display = isEnabled ? 'block' : 'none';
+                const rBtn = document.getElementById('relayToggleBtn');
+                if (rBtn)
+                    rBtn.style.display = isEnabled ? 'block' : 'none';
             }
             // Audio toggle hotkeys
             if (k === 'm' && typeof SoundEngine !== 'undefined') {
@@ -425,6 +428,11 @@ function initInputSystem() {
                         const tBtn = document.getElementById('testingBtn');
                         if (tBtn && typeof window !== 'undefined')
                             tBtn.style.display = window.ENABLE_TESTING_LAB
+                                ? 'block'
+                                : 'none';
+                        const rBtn = document.getElementById('relayToggleBtn');
+                        if (rBtn && typeof window !== 'undefined')
+                            rBtn.style.display = window.ENABLE_TESTING_LAB
                                 ? 'block'
                                 : 'none';
                         const sMenu = document.getElementById('startMenu');
