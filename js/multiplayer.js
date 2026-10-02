@@ -811,6 +811,26 @@ class NetworkManager {
     }
 
     handleHostReceivedData(peerId, playerIndex, data) {
+        if (
+            data instanceof ArrayBuffer ||
+            (data?.buffer instanceof ArrayBuffer &&
+                data.byteLength !== undefined)
+        ) {
+            const input = unpackClientInputBinary(data);
+            if (!input) return;
+            this.peerLastSeenMap.set(peerId, Date.now());
+            if (typeof window.onRemoteInputReceived === 'function') {
+                window.onRemoteInputReceived(
+                    playerIndex,
+                    input.moveX,
+                    input.moveY,
+                    input.angle,
+                    input.dashing,
+                    input.seq,
+                );
+            }
+            return;
+        }
         if (typeof data === 'string') {
             try {
                 data = JSON.parse(data);
@@ -1431,21 +1451,35 @@ class NetworkManager {
     // Client sends input stream to host (prioritizing unreliable stream channel)
     sendLocalInput(moveX, moveY, angle, dashing = false) {
         if (!this.isClient) return;
+        if (!netRateDue('input', NET_INPUT_INTERVAL_MS)) return;
         this.clientInputSeq = (this.clientInputSeq || 0) + 1;
-        const msg = {
-            type: 'INPUT',
-            seq: this.clientInputSeq,
-            playerIndex: this.localPlayerIndex,
-            moveX: moveX,
-            moveY: moveY,
-            angle: angle,
-            dashing: dashing,
-        };
 
         if (this.streamConnection?.open) {
-            this.sendConn(this.streamConnection, msg, 32768);
+            this.sendConn(
+                this.streamConnection,
+                packClientInputBinary(
+                    this.clientInputSeq,
+                    moveX,
+                    moveY,
+                    angle,
+                    dashing,
+                ),
+                32768,
+            );
         } else if (this.hostConnection?.open) {
-            this.sendConn(this.hostConnection, msg, 32768);
+            // Reliable RPC channel uses JSON serialization, which cannot carry ArrayBuffers
+            this.sendConn(
+                this.hostConnection,
+                {
+                    type: 'INPUT',
+                    seq: this.clientInputSeq,
+                    moveX: moveX,
+                    moveY: moveY,
+                    angle: angle,
+                    dashing: dashing,
+                },
+                32768,
+            );
         }
     }
 
@@ -2282,6 +2316,62 @@ const TERRAIN_CHANGE_REPEATS = 4;
 let netForceFullSyncTicks = 0;
 let netLastTerrainBytes = null;
 let netTerrainChangedSeq = -Infinity;
+
+const NET_SNAPSHOT_INTERVAL_MS = 1000 / 30;
+const NET_INPUT_INTERVAL_MS = 1000 / 60;
+// Frame timestamps jitter around the interval; without slack a 60 Hz display would skip sends
+const NET_RATE_SLACK_MS = 2;
+const netRateNextAt = {};
+
+// Fixed wall-clock send cadence independent of display refresh rate
+function netRateDue(key, intervalMs) {
+    const now = performance.now();
+    const next = netRateNextAt[key];
+    if (next !== undefined && now + NET_RATE_SLACK_MS < next) return false;
+    netRateNextAt[key] =
+        next !== undefined && now - next < intervalMs
+            ? next + intervalMs
+            : now + intervalMs;
+    return true;
+}
+
+const INPUT_BINARY_MAGIC = 0xb1;
+const INPUT_BINARY_SIZE = 12;
+
+function packClientInputBinary(seq, moveX, moveY, angle, dashing) {
+    const buf = new ArrayBuffer(INPUT_BINARY_SIZE);
+    const view = new DataView(buf);
+    const clampAxis = (v) =>
+        Math.round(
+            Math.max(-1, Math.min(1, Number.isFinite(v) ? v : 0)) * 32767,
+        );
+    const a = Number.isFinite(angle) ? angle : 0;
+    const normAngle = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    view.setUint8(0, INPUT_BINARY_MAGIC);
+    view.setUint32(1, seq >>> 0, true);
+    view.setInt16(5, clampAxis(moveX), true);
+    view.setInt16(7, clampAxis(moveY), true);
+    view.setUint16(9, Math.round((normAngle / (Math.PI * 2)) * 65535), true);
+    view.setUint8(11, dashing ? 1 : 0);
+    return buf;
+}
+
+function unpackClientInputBinary(data) {
+    const rawBuf = data instanceof ArrayBuffer ? data : data?.buffer;
+    if (!(rawBuf instanceof ArrayBuffer)) return null;
+    const byteOffset = data instanceof ArrayBuffer ? 0 : data.byteOffset || 0;
+    const byteLength = data.byteLength;
+    if (byteLength !== INPUT_BINARY_SIZE) return null;
+    const view = new DataView(rawBuf, byteOffset, byteLength);
+    if (view.getUint8(0) !== INPUT_BINARY_MAGIC) return null;
+    return {
+        seq: view.getUint32(1, true),
+        moveX: view.getInt16(5, true) / 32767,
+        moveY: view.getInt16(7, true) / 32767,
+        angle: (view.getUint16(9, true) / 65535) * Math.PI * 2,
+        dashing: (view.getUint8(11) & 1) === 1,
+    };
+}
 
 function requestNetFullSync(ticks = 6) {
     netForceFullSyncTicks = Math.max(netForceFullSyncTicks, ticks);
@@ -3832,8 +3922,9 @@ function packWorldSnapshotBinary() {
         const h = hazards[i];
         assignHazardNid(h);
 
-        const hx = Math.round(h.x !== undefined ? h.x : h.x1 || 0);
-        const hy = Math.round(h.y !== undefined ? h.y : h.y1 || 0);
+        // Segment hazards (trails) carry their start point in x1/y1; x/y is only the midpoint
+        const hx = Math.round(h.x1 !== undefined ? h.x1 : h.x || 0);
+        const hy = Math.round(h.y1 !== undefined ? h.y1 : h.y || 0);
         const htr = h.triggeredTime ? 1 : 0;
         if (h._netFullSends === undefined) {
             h._netFullSends = 0;
@@ -5087,8 +5178,8 @@ function serializeWorldForNetworkJSON() {
         return {
             id: h._nid,
             t: type,
-            x: Math.round(h.x !== undefined ? h.x : h.x1 || 0),
-            y: Math.round(h.y !== undefined ? h.y : h.y1 || 0),
+            x: Math.round(h.x1 !== undefined ? h.x1 : h.x || 0),
+            y: Math.round(h.y1 !== undefined ? h.y1 : h.y || 0),
             x2:
                 h.x2 !== undefined
                     ? Math.round(h.x2)
@@ -5457,8 +5548,11 @@ const NetworkEnemyProjectileProto = {
 };
 
 function applyNetworkHazardUpdate(hazard, sh, nowTime) {
-    if (hazard.x !== undefined) hazard.x = sh.x;
-    if (hazard.y !== undefined) hazard.y = sh.y;
+    // Segment hazards are static and their wire x/y is the start point, not the midpoint
+    if (hazard.x1 === undefined) {
+        if (hazard.x !== undefined) hazard.x = sh.x;
+        if (hazard.y !== undefined) hazard.y = sh.y;
+    }
     if (sh.tr && hazard.triggeredTime === 0) hazard.triggeredTime = nowTime;
 }
 
@@ -6836,6 +6930,8 @@ if (typeof window !== 'undefined') {
     window.serializeWorldForNetworkJSON = serializeWorldForNetworkJSON;
     window.packWorldSnapshotBinary = packWorldSnapshotBinary;
     window.unpackWorldSnapshotBinary = unpackWorldSnapshotBinary;
+    window.netRateDue = netRateDue;
+    window.NET_SNAPSHOT_INTERVAL_MS = NET_SNAPSHOT_INTERVAL_MS;
     window.uint8ToBase64 = uint8ToBase64;
     window.base64ToUint8 = base64ToUint8;
     window.despawnPlayerEntities = despawnPlayerEntities;

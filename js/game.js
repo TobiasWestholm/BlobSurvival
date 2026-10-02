@@ -535,7 +535,7 @@ function loop(now) {
 
         if (netManager.isClient) {
             // CLIENT-SIDE:
-            // 1. Send local inputs to host at 60 FPS
+            // 1. Send local inputs to host (rate-limited to 60 Hz inside sendLocalInput)
             sendClientLocalInput();
 
             // 2. Predictively update client's own player movement for 0-latency feel
@@ -726,12 +726,11 @@ function loop(now) {
                 draw(gameClock);
             }
 
-            // 30 Hz authoritative sync broadcast to clients (every 2nd frame at 60fps = 33ms) for ultra-smooth 60fps client display
-            GAME_STATE.netTick = (GAME_STATE.netTick || 0) + 1;
+            // 30 Hz authoritative sync broadcast to clients, independent of display refresh rate
             if (
                 netManager.isHost &&
                 netManager.connections.size > 0 &&
-                GAME_STATE.netTick % 2 === 0
+                netRateDue('snapshot', NET_SNAPSHOT_INTERVAL_MS)
             ) {
                 netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
             }
@@ -806,13 +805,12 @@ function updateLobbyPlayers(dt, dtFactor, now) {
             if (!p || p.disconnected || p.kicked) continue;
             p.update(dt, dtFactor, now);
         }
-        // 30 Hz authoritative sync broadcast to clients during lobby (every 2nd frame at 60fps = 33ms)
-        GAME_STATE.lobbyNetTick = (GAME_STATE.lobbyNetTick || 0) + 1;
+        // 30 Hz authoritative sync broadcast to clients during lobby, independent of display refresh rate
         if (
             netManager.isHost &&
             netManager.connections.size > 0 &&
-            GAME_STATE.lobbyNetTick % 2 === 0 &&
-            typeof serializeWorldForNetwork === 'function'
+            typeof serializeWorldForNetwork === 'function' &&
+            netRateDue('snapshot', NET_SNAPSHOT_INTERVAL_MS)
         ) {
             netManager.broadcastWorldSnapshot(serializeWorldForNetwork());
         }
