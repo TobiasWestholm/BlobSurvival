@@ -770,6 +770,8 @@ class Player extends Unit {
         if (this.y > boundH - this.r) this.y = boundH - this.r;
     }
     updateNetworkExpansion(now) {
+        // Host-authoritative: clients hear autonomousNetwork via netSoundEvents
+        if (GAME_STATE.isOnline && !GAME_STATE.isHost) return;
         if (!this.turretNetworkEnabled) return;
         if (!this.lastNetworkExpansion) this.lastNetworkExpansion = now;
         const interval =

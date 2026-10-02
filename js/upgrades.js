@@ -361,7 +361,10 @@ const UPGRADE_POOL = [
             p.campervanUntil =
                 gameClock + GAME_CONFIG.UPGRADES.CAMPERVAN_DURATION_SEC * 1000;
             if (GAME_STATE.current === STATES.GAMEPLAY) {
-                SoundEngine.campervan();
+                // Host/offline play; online clients receive via netSoundEvents wrap
+                if (!GAME_STATE.isOnline || GAME_STATE.isHost) {
+                    SoundEngine.campervan();
+                }
             } else {
                 p.campervanSoundPending = true;
             }
@@ -392,8 +395,14 @@ const UPGRADE_POOL = [
             p.secondWindCount = (p.secondWindCount || 0) + 1;
             p.maxHp = Math.round(p.maxHp * 2.0);
             p.hp = p.maxHp;
-            if (typeof SoundEngine !== 'undefined' && SoundEngine.heal)
+            // Host/offline play; online clients receive via healMajor net wrap
+            if (
+                (!GAME_STATE.isOnline || GAME_STATE.isHost) &&
+                typeof SoundEngine !== 'undefined' &&
+                SoundEngine.heal
+            ) {
                 SoundEngine.heal('medium');
+            }
         },
     },
     {

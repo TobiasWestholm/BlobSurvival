@@ -592,8 +592,50 @@ function loop(now) {
                                 : owner.r
                                   ? owner.r + 16
                                   : 32;
-                        p.x = owner.x + Math.cos(p.angle) * radius;
-                        p.y = owner.y + Math.sin(p.angle) * radius;
+
+                        if (
+                            p.type === 'deflector_shield' &&
+                            p.targetX !== undefined &&
+                            p.targetY !== undefined
+                        ) {
+                            // Derive growth from host orbit radius (synced via target x/y)
+                            const dist = Math.hypot(
+                                p.targetX - owner.x,
+                                p.targetY - owner.y,
+                            );
+                            const maxExt = 14;
+                            const nextGrowth = Math.max(
+                                0,
+                                Math.min(1, (dist - (owner.r + 2)) / maxExt),
+                            );
+                            const prevGrowth =
+                                p.growth !== undefined ? p.growth : nextGrowth;
+                            if (
+                                prevGrowth > 0.85 &&
+                                nextGrowth < prevGrowth - 0.12
+                            ) {
+                                p.lastBlockTime =
+                                    typeof gameClock !== 'undefined'
+                                        ? gameClock
+                                        : performance.now();
+                                owner.mitosisBuds = owner.mitosisBuds || [];
+                                owner.mitosisBuds.push({
+                                    angle: p.angle || 0,
+                                    time: p.lastBlockTime,
+                                    duration: 260,
+                                });
+                            }
+                            p.growth = nextGrowth;
+                            const grownR =
+                                owner.r + 2 + maxExt * p.growth;
+                            p.x =
+                                owner.x + Math.cos(p.angle) * grownR;
+                            p.y =
+                                owner.y + Math.sin(p.angle) * grownR;
+                        } else {
+                            p.x = owner.x + Math.cos(p.angle) * radius;
+                            p.y = owner.y + Math.sin(p.angle) * radius;
+                        }
                     }
                 } else if (p.targetX !== undefined && p.targetY !== undefined) {
                     p.x += (p.targetX - p.x) * 0.35 * dtFactor;
@@ -644,6 +686,14 @@ function loop(now) {
                             SoundEngine.gemPickup
                         ) {
                             SoundEngine.gemPickup();
+                        }
+                        // Suppress host echo of the same predictive pickup
+                        if (typeof suppressNetworkSound === 'function') {
+                            suppressNetworkSound(
+                                typeof NET_SOUND_GEM_PICKUP !== 'undefined'
+                                    ? NET_SOUND_GEM_PICKUP
+                                    : 37,
+                            );
                         }
                     }
                 } else if (!g.attracted) {

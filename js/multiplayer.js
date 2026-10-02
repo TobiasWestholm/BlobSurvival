@@ -233,6 +233,8 @@ class NetworkManager {
         if (typeof clientHazardCache !== 'undefined') clientHazardCache.clear();
         if (typeof clientProjectileCache !== 'undefined')
             clientProjectileCache.clear();
+        if (typeof clientOmittedMineRingIds !== 'undefined')
+            clientOmittedMineRingIds.clear();
         if (typeof clientEnemyProjectileCache !== 'undefined')
             clientEnemyProjectileCache.clear();
         if (typeof clientGemCache !== 'undefined') clientGemCache.clear();
@@ -2272,6 +2274,8 @@ window.onOnlineCountdownStarted = (isNewGame) => {
         if (typeof clientHazardCache !== 'undefined') clientHazardCache.clear();
         if (typeof clientProjectileCache !== 'undefined')
             clientProjectileCache.clear();
+        if (typeof clientOmittedMineRingIds !== 'undefined')
+            clientOmittedMineRingIds.clear();
         if (typeof clientEnemyProjectileCache !== 'undefined')
             clientEnemyProjectileCache.clear();
         if (typeof clientGemCache !== 'undefined') clientGemCache.clear();
@@ -2310,10 +2314,13 @@ let snapshotSeq = 0;
 // Hazards & terrains are mostly static, so full records are only resent around spawn/change,
 // on a staggered periodic refresh, or during a forced resync after a client (re)connects.
 const HAZARD_FULL_REPEATS = 3;
+const HAZARD_TRAIL_FULL_REPEATS = 1;
 const HAZARD_UPDATE_REPEATS = 4;
 const STATIC_SYNC_REFRESH_TICKS = 60;
-const TERRAIN_CHANGE_REPEATS = 4;
+const STATIC_CHANGE_REPEATS = 4;
 let netForceFullSyncTicks = 0;
+const netWorldStatsSync = {};
+const netWorldXpKillsSync = {};
 let netLastTerrainBytes = null;
 let netTerrainChangedSeq = -Infinity;
 
@@ -2377,6 +2384,31 @@ function requestNetFullSync(ticks = 6) {
     netForceFullSyncTicks = Math.max(netForceFullSyncTicks, ticks);
 }
 
+// Rarely-changing field blocks (identified by signature `sig`) are only sent on first sight,
+// for a few ticks after a change, on a staggered periodic refresh, or during a forced resync
+function netBlockDue(holder, sigKey, seqKey, sig, staggerId = 0) {
+    if (holder[sigKey] !== sig) {
+        holder[sigKey] = sig;
+        holder[seqKey] = snapshotSeq;
+    }
+    const since = snapshotSeq - holder[seqKey];
+    return (
+        netForceFullSyncTicks > 0 ||
+        (since >= 0 && since < STATIC_CHANGE_REPEATS) ||
+        (snapshotSeq + staggerId) % STATIC_SYNC_REFRESH_TICKS === 0
+    );
+}
+
+function netStaticFieldsDue(holder, sig, staggerId = 0) {
+    return netBlockDue(
+        holder,
+        '_netStaticSig',
+        '_netStaticSeq',
+        sig,
+        staggerId,
+    );
+}
+
 // Dedicated counter keeps hazard ids contiguous so the alive-id list compresses into few ranges
 function assignHazardNid(h) {
     if (!h._nid) {
@@ -2392,6 +2424,7 @@ const clientHazardCache = new Map(); // id -> Hazard instance
 const clientProjectileCache = new Map(); // id -> NetworkProjectileProto instance
 const clientEnemyProjectileCache = new Map(); // id -> NetworkEnemyProjectileProto instance
 const clientGemCache = new Map(); // id -> Collectible instance
+const clientOmittedMineRingIds = new Set(); // mine-ring nids hidden while inactive (for rematerialize FX)
 const clientCollectedGems = new Set(); // Set of _nid collected locally on client
 window.clientCollectedGems = clientCollectedGems;
 const netHitEvents = []; // [ [x, y, colorByte], ... ] queued on host
@@ -2468,7 +2501,7 @@ const NET_SOUND_NAMES = [
     'rocketLaunch', // 13
     'flailHit', // 14
     'autonomousNetwork', // 15
-    'meteorFall', // 16
+    'meteorFall', // 16 — ctor-local on clients (Enemy.create); do not wrap
     'dasherJump', // 17
     'shooterFire', // 18
     'tentacleLash', // 19
@@ -2489,8 +2522,19 @@ const NET_SOUND_NAMES = [
     'healMajor', // 34
     'turretMissileFire', // 35
     'enemyFreeze', // 36
+    'gemPickup', // 37
 ];
 window.NET_SOUND_NAMES = NET_SOUND_NAMES;
+
+/** Sound IDs that clients play via local prediction; suppress host echo briefly. */
+const NET_SOUND_GEM_PICKUP = 37;
+window.NET_SOUND_GEM_PICKUP = NET_SOUND_GEM_PICKUP;
+
+/**
+ * SFX played by entity constructors when clients reconstruct entities from
+ * snapshots. Kept in NET_SOUND_NAMES for ID stability but not host-wrapped.
+ */
+const NET_SOUND_CTOR_LOCAL = new Set(['meteorFall']);
 
 function queueNetworkSoundEvent(soundId) {
     if (!soundId || netSoundEvents.length >= 16) return;
@@ -2499,8 +2543,22 @@ function queueNetworkSoundEvent(soundId) {
 }
 window.queueNetworkSoundEvent = queueNetworkSoundEvent;
 
+/** Client-side: suppress a net sound ID after local predictive playback. */
+const clientSuppressedNetSoundsUntil = new Map();
+function suppressNetworkSound(soundId, durationMs = 160) {
+    if (!soundId) return;
+    const t =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
+    clientSuppressedNetSoundsUntil.set(soundId, t + durationMs);
+}
+window.suppressNetworkSound = suppressNetworkSound;
+
 function playNetworkSound(soundId) {
     if (typeof SoundEngine === 'undefined') return;
+    const nowT =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const until = clientSuppressedNetSoundsUntil.get(soundId);
+    if (until && nowT < until) return;
     if (soundId === 33) {
         if (typeof SoundEngine.meleeSweep === 'function') {
             SoundEngine.meleeSweep(true);
@@ -2534,6 +2592,9 @@ function setupHostSoundBroadcasting() {
     for (let id = 1; id < NET_SOUND_NAMES.length; id++) {
         const soundName = NET_SOUND_NAMES[id];
         if (!soundName) continue;
+        // Aliases (sledgeSweep/healMajor/turretMissileFire) are not real methods;
+        // ctor-local sounds are played when clients reconstruct entities.
+        if (NET_SOUND_CTOR_LOCAL.has(soundName)) continue;
         const origFn = SoundEngine[soundName];
         if (typeof origFn !== 'function') continue;
 
@@ -2639,12 +2700,13 @@ function applyNetworkBlobDeform(playerIndex, deformType, angleRad) {
             };
             break;
         case 4: // SNIPER_CHARGE
+            // fired:true — host already spawned the shot; keep deform only
             p.sniperCharge = {
                 startTime: nowTime,
                 preFireDuration: 200,
                 totalDuration: 300,
                 angle: angleRad,
-                fired: false,
+                fired: true,
             };
             break;
         case 5: // DASH_LAUNCH
@@ -2661,6 +2723,15 @@ function applyNetworkBlobDeform(playerIndex, deformType, angleRad) {
             if (isRemote) {
                 p.dashing = true;
                 p.dashUntil = nowTime + 200;
+                if (
+                    typeof GAME_STATE !== 'undefined' &&
+                    GAME_STATE.particles &&
+                    typeof Particle !== 'undefined'
+                ) {
+                    GAME_STATE.particles.push(
+                        new Particle(p.x, p.y, 0, 0, p.color, 180),
+                    );
+                }
             }
             break;
         case 6: // MITOSIS_BUD
@@ -2779,10 +2850,39 @@ function getEnemyVisualState(e, hostClock) {
                 vParam: angleToUint8(e.chargeAngle || e.facingAngle),
             };
         }
+        // Stable angle only — clients predict tip / wall motion locally (no per-tick tip sync)
+        if (e.behemothState === 'trample_charging') {
+            return {
+                vState: 17,
+                vParam: angleToUint8(e.chargeAngle || e.facingAngle),
+            };
+        }
+        if (e.behemothState === 'mortar_firing') {
+            return { vState: 21, vParam: 0 };
+        }
         if (e.behemothState === 'tongue_windup') {
             return {
                 vState: 16,
                 vParam: angleToUint8(e.tongueAimAngle || e.facingAngle),
+            };
+        }
+        if (e.behemothState === 'tongue_firing') {
+            return {
+                vState: 18,
+                vParam: angleToUint8(
+                    e.tongueAimAngle || e.facingAngle || 0,
+                ),
+            };
+        }
+        if (e.behemothState === 'tongue_dragging_player') {
+            const pIdx =
+                e.heldPlayer?.index !== undefined ? e.heldPlayer.index : 0;
+            return { vState: 19, vParam: pIdx & 3 };
+        }
+        if (e.behemothState === 'tongue_dragging_wall') {
+            return {
+                vState: 20,
+                vParam: angleToUint8(e.wallPieceAngle || 0),
             };
         }
         if (e.behemothState === 'subterranean_travel') {
@@ -2829,15 +2929,33 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
             e.viperState = 'following';
             e.tongueActive = false;
         } else if (e.type === 'behemoth') {
+            // Cleave slash pose: fire when windup ends (host performs cleave then)
+            if (e.behemothState === 'cleave_windup') {
+                e.lastCleaveTime = nowTime;
+            }
             e.nydusEmerging = false;
             if (
                 e.behemothState === 'erupting' ||
                 e.behemothState === 'burrowing' ||
                 e.behemothState === 'cleave_windup' ||
                 e.behemothState === 'charge_windup' ||
+                e.behemothState === 'trample_charging' ||
+                e.behemothState === 'mortar_firing' ||
                 e.behemothState === 'tongue_windup' ||
+                e.behemothState === 'tongue_firing' ||
+                e.behemothState === 'tongue_dragging_player' ||
+                e.behemothState === 'tongue_dragging_wall' ||
                 e.behemothState === 'subterranean_travel'
             ) {
+                if (
+                    e.behemothState === 'tongue_dragging_player' &&
+                    e.heldPlayer &&
+                    e.heldPlayer.viperGrabber === e
+                ) {
+                    e.heldPlayer.viperGrabber = null;
+                }
+                e.heldPlayer = null;
+                e.tongueActive = false;
                 e.behemothState = 'normal';
                 e.burrowed = false;
             }
@@ -2861,12 +2979,15 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
         } else if (vs === 3) {
             e.aiming = false;
             e.flameBeamUntil = nowTime + vp;
+            // Reuse aimAngle from prior telegraph (vs 2) — no extra net bytes
+            const aim =
+                e.aimAngle !== undefined ? e.aimAngle : e.facingAngle || 0;
             const reach = 180;
             e.flameLine = {
                 x1: e.x,
                 y1: e.y,
-                x2: e.x + Math.cos(e.facingAngle) * reach,
-                y2: e.y + Math.sin(e.facingAngle) * reach,
+                x2: e.x + Math.cos(aim) * reach,
+                y2: e.y + Math.sin(aim) * reach,
             };
         }
     } else if (e.type === 'viper') {
@@ -2887,13 +3008,23 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
             e.heldPlayer = null;
             e.tongueActive = false;
         } else if (vs === 5) {
+            const a = uint8ToAngle(vp);
+            const wasFiring =
+                e.viperState === 'tongue_firing' && e.tongueActive;
             e.viperState = 'tongue_firing';
             e.tongueActive = true;
-            const a = uint8ToAngle(vp);
-            e.tongueTipX = e.x + Math.cos(a) * 120;
-            e.tongueTipY = e.y + Math.sin(a) * 120;
-            e.tongueHeadX = e.tongueTipX;
-            e.tongueHeadY = e.tongueTipY;
+            e.tongueAimAngle = a;
+            // Client predicts tip flight from angle; only reset tip when entering
+            if (!wasFiring) {
+                e.tongueTipX = e.x;
+                e.tongueTipY = e.y;
+                e.tongueHeadX = e.x;
+                e.tongueHeadY = e.y;
+                const range = e.tongueRange || 1500;
+                e.tongueTargetX = e.x + Math.cos(a) * range;
+                e.tongueTargetY = e.y + Math.sin(a) * range;
+                if (!e.tongueSpeed) e.tongueSpeed = 11.0;
+            }
         } else if (vs === 6) {
             e.viperState = 'holding';
             const p =
@@ -2942,10 +3073,21 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
             const dur = Math.round(300 * Math.pow(warnMult, 2));
             e.chargeWindupDuration = dur;
             e.stateTimer = nowTime + dur;
+        } else if (vs === 17) {
+            e.nydusEmerging = false;
+            e.behemothState = 'trample_charging';
+            e.chargeAngle = uint8ToAngle(vp);
+            e.facingAngle = e.chargeAngle;
+            e.tongueActive = false;
+        } else if (vs === 21) {
+            e.nydusEmerging = false;
+            e.behemothState = 'mortar_firing';
+            e.tongueActive = false;
         } else if (vs === 16) {
             e.nydusEmerging = false;
             e.behemothState = 'tongue_windup';
             e.facingAngle = uint8ToAngle(vp);
+            e.tongueAimAngle = e.facingAngle;
             const warnMult =
                 typeof GAME_STATE !== 'undefined' && GAME_STATE.difficulty
                     ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
@@ -2953,6 +3095,77 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
             const dur = Math.round(500 * warnMult);
             e.tongueWindupDuration = dur;
             e.stateTimer = nowTime + dur;
+        } else if (vs === 18) {
+            const a = uint8ToAngle(vp);
+            const wasFiring = e.behemothState === 'tongue_firing';
+            e.nydusEmerging = false;
+            e.behemothState = 'tongue_firing';
+            e.tongueActive = true;
+            e.tongueAimAngle = a;
+            e.facingAngle = a;
+            if (!wasFiring) {
+                e.tongueTipX = e.x;
+                e.tongueTipY = e.y;
+                const range = e.tongueRange || 2000;
+                e.tongueTargetX = e.x + Math.cos(a) * range;
+                e.tongueTargetY = e.y + Math.sin(a) * range;
+                if (!e.tongueSpeed) e.tongueSpeed = 16.0;
+            }
+        } else if (vs === 19) {
+            e.nydusEmerging = false;
+            e.behemothState = 'tongue_dragging_player';
+            e.tongueActive = true;
+            const p =
+                typeof GAME_STATE !== 'undefined' && GAME_STATE.players
+                    ? GAME_STATE.players[vp & 3]
+                    : null;
+            if (p) {
+                e.heldPlayer = p;
+                p.viperGrabber = e;
+                e.tongueTipX = p.x;
+                e.tongueTipY = p.y;
+            }
+        } else if (vs === 20) {
+            const wasWall = e.behemothState === 'tongue_dragging_wall';
+            e.nydusEmerging = false;
+            e.behemothState = 'tongue_dragging_wall';
+            e.tongueActive = true;
+            e.wallPieceAngle = uint8ToAngle(vp);
+            e.heldPlayer = null;
+            if (!wasWall) {
+                // Approximate border grab along facing; client retracts toward boss
+                const a = e.tongueAimAngle || e.facingAngle || 0;
+                const arenaW =
+                    typeof GAME_STATE !== 'undefined' && GAME_STATE.hostW
+                        ? GAME_STATE.hostW
+                        : typeof W !== 'undefined'
+                          ? W
+                          : 1562;
+                const arenaH =
+                    typeof GAME_STATE !== 'undefined' && GAME_STATE.hostH
+                        ? GAME_STATE.hostH
+                        : typeof H !== 'undefined'
+                          ? H
+                          : 950;
+                let tipX = e.x;
+                let tipY = e.y;
+                for (let s = 0; s < 2500; s += 40) {
+                    tipX = e.x + Math.cos(a) * s;
+                    tipY = e.y + Math.sin(a) * s;
+                    if (
+                        tipX <= 6 ||
+                        tipX >= arenaW - 6 ||
+                        tipY <= 6 ||
+                        tipY >= arenaH - 6
+                    ) {
+                        break;
+                    }
+                }
+                e.tongueTipX = Math.max(6, Math.min(arenaW - 6, tipX));
+                e.tongueTipY = Math.max(6, Math.min(arenaH - 6, tipY));
+                e.wallPieceX = e.tongueTipX;
+                e.wallPieceY = e.tongueTipY;
+            }
         } else if (vs === 13) {
             e.nydusEmerging = false;
             e.burrowed = true;
@@ -3151,7 +3364,7 @@ window.spawnNetworkCombatVfx = spawnNetworkCombatVfx;
 // =========================================================================
 
 const BINARY_MAGIC = 0xbf; // 'Blob Format' identifier
-const BINARY_VERSION = 2;
+const BINARY_VERSION = 6;
 
 let sharedBinaryBuffer = new ArrayBuffer(131072); // Pre-allocated 128 KB buffer
 let sharedDataView = new DataView(sharedBinaryBuffer);
@@ -3232,6 +3445,8 @@ const PROJECTILE_TYPE_TO_ID = {
     rocket: 9,
     sniper: 10,
     magic_missile: 11,
+    shrapnel: 12,
+    explosive_shrapnel: 13,
 };
 const ID_TO_PROJECTILE_TYPE = [
     '',
@@ -3246,6 +3461,8 @@ const ID_TO_PROJECTILE_TYPE = [
     'rocket',
     'sniper',
     'magic_missile',
+    'shrapnel',
+    'explosive_shrapnel',
 ];
 
 const HAZARD_TYPE_TO_ID = {
@@ -3285,6 +3502,39 @@ const ID_TO_HAZARD_TYPE = [
     'white_hole',
     'black_hole',
 ];
+const TRAIL_HAZARD_TYPE_IDS = new Set([10, 11, 12]);
+
+const UPGRADE_ID_TO_BYTE = Object.create(null);
+const BYTE_TO_UPGRADE_ID = [''];
+function ensureUpgradeByteMaps() {
+    if (BYTE_TO_UPGRADE_ID.length > 1) return;
+    if (typeof UPGRADE_POOL === 'undefined' || !UPGRADE_POOL.length) return;
+    for (let i = 0; i < UPGRADE_POOL.length; i++) {
+        const id = UPGRADE_POOL[i].id;
+        UPGRADE_ID_TO_BYTE[id] = i + 1;
+        BYTE_TO_UPGRADE_ID[i + 1] = id;
+    }
+}
+function upgradeNameFromByte(b) {
+    ensureUpgradeByteMaps();
+    const id = BYTE_TO_UPGRADE_ID[b];
+    if (!id || typeof UPGRADE_POOL === 'undefined') return id || '';
+    const u = UPGRADE_POOL.find((item) => item.id === id);
+    return u ? u.name : id;
+}
+function upgradeByteFromPlayer(p) {
+    ensureUpgradeByteMaps();
+    const name = p.currentLevelUpgradeName || '';
+    if (!name) return 0;
+    if (UPGRADE_ID_TO_BYTE[name]) return UPGRADE_ID_TO_BYTE[name];
+    if (typeof UPGRADE_POOL !== 'undefined') {
+        const u = UPGRADE_POOL.find(
+            (item) => item.name === name || item.id === name,
+        );
+        if (u) return UPGRADE_ID_TO_BYTE[u.id] || 0;
+    }
+    return 0;
+}
 
 const WEAPON_TYPE_TO_ID = {
     magic_missile: 1,
@@ -3413,7 +3663,7 @@ function packWorldSnapshotBinary() {
     offset += 4;
 
     netGemSyncTick = (netGemSyncTick + 1) % 6;
-    const includeGems = netGemSyncTick === 0 || GAME_STATE.activeBoss;
+    const includeGems = netGemSyncTick === 0;
 
     const curTimeForDead =
         typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -3455,55 +3705,62 @@ function packWorldSnapshotBinary() {
         true,
     );
     offset += 4;
-    view.setUint16(
-        offset,
-        typeof GAME_STATE !== 'undefined' ? GAME_STATE.level || 1 : 1,
-        true,
-    );
-    offset += 2;
-    view.setUint32(
-        offset,
-        typeof GAME_STATE !== 'undefined' ? GAME_STATE.xp || 0 : 0,
-        true,
-    );
-    offset += 4;
-    view.setUint32(
-        offset,
-        typeof GAME_STATE !== 'undefined' ? GAME_STATE.nextXp || 100 : 100,
-        true,
-    );
-    offset += 4;
-    view.setUint16(
-        offset,
-        typeof GAME_STATE !== 'undefined' ? GAME_STATE.kills || 0 : 0,
-        true,
-    );
-    offset += 2;
-    view.setUint16(offset, typeof W !== 'undefined' ? W : 1562, true);
-    offset += 2;
-    view.setUint16(offset, typeof H !== 'undefined' ? H : 950, true);
-    offset += 2;
 
+    // World stats (flag bit 7): rare fields and xp/kills gated independently
+    const hasGs = typeof GAME_STATE !== 'undefined';
+    const statLevel = hasGs ? GAME_STATE.level || 1 : 1;
+    const statXp = hasGs ? GAME_STATE.xp || 0 : 0;
+    const statNextXp = hasGs ? GAME_STATE.nextXp || 100 : 100;
+    const statKills = hasGs ? GAME_STATE.kills || 0 : 0;
+    const statW = typeof W !== 'undefined' ? W : 1562;
+    const statH = typeof H !== 'undefined' ? H : 950;
     const bossByte =
-        typeof GAME_STATE !== 'undefined' && GAME_STATE.activeBoss
+        hasGs && GAME_STATE.activeBoss
             ? BOSS_ID_TO_BYTE[GAME_STATE.activeBoss] || 0
             : 0;
-    view.setUint8(offset, bossByte);
-    offset += 1;
-    view.setUint32(
-        offset,
-        typeof GAME_STATE !== 'undefined'
-            ? GAME_STATE.activeBossStartTime || 0
-            : 0,
-        true,
+    const statBossStart = hasGs ? GAME_STATE.activeBossStartTime || 0 : 0;
+    const statHordeStart = hasGs ? GAME_STATE.hordeStartTime || 0 : 0;
+    const hasRareWorld = netStaticFieldsDue(
+        netWorldStatsSync,
+        `${statLevel}|${statNextXp}|${statW}|${statH}|${bossByte}|${statBossStart}|${statHordeStart}`,
     );
-    offset += 4;
-    view.setUint32(
-        offset,
-        typeof GAME_STATE !== 'undefined' ? GAME_STATE.hordeStartTime || 0 : 0,
-        true,
+    const hasXpKills = netBlockDue(
+        netWorldXpKillsSync,
+        '_netStaticSig',
+        '_netStaticSeq',
+        `${statXp}|${statKills}`,
     );
-    offset += 4;
+    if (hasRareWorld || hasXpKills) {
+        flags |= 1 << 7;
+        view.setUint8(flagsOffset, flags);
+        let worldSub = 0;
+        if (hasRareWorld) worldSub |= 1 << 0;
+        if (hasXpKills) worldSub |= 1 << 1;
+        view.setUint8(offset, worldSub);
+        offset += 1;
+        if (hasRareWorld) {
+            view.setUint16(offset, statLevel, true);
+            offset += 2;
+            view.setUint32(offset, statNextXp, true);
+            offset += 4;
+            view.setUint16(offset, statW, true);
+            offset += 2;
+            view.setUint16(offset, statH, true);
+            offset += 2;
+            view.setUint8(offset, bossByte);
+            offset += 1;
+            view.setUint32(offset, statBossStart, true);
+            offset += 4;
+            view.setUint32(offset, statHordeStart, true);
+            offset += 4;
+        }
+        if (hasXpKills) {
+            view.setUint32(offset, statXp, true);
+            offset += 4;
+            view.setUint16(offset, statKills, true);
+            offset += 2;
+        }
+    }
 
     // 1. Players
     const players =
@@ -3521,7 +3778,64 @@ function packWorldSnapshotBinary() {
             ? p.weapons.find((w) => w.id === 'melee_sweep')
             : null;
 
-        view.setUint8(offset, p.index !== undefined ? p.index : i);
+        const pIdx = p.index !== undefined ? p.index : i;
+        const curTime =
+            typeof gameClock !== 'undefined'
+                ? gameClock
+                : typeof performance !== 'undefined'
+                  ? performance.now()
+                  : 0;
+        const pMaxHp = Math.min(65535, Math.round(p.maxHp || 100));
+        const weaponId = WEAPON_TYPE_TO_ID[p.selectedWeapon] || 0;
+        const cv =
+            p.campervanUntil > curTime ? Math.round(p.campervanUntil) : 0;
+        const mf = melee && melee.lastFire > 0 ? Math.round(melee.lastFire) : 0;
+        const mrm = Math.min(
+            255,
+            Math.round((p.meleeRangeModifier || 1.0) * 50),
+        );
+        const hasExt = netStaticFieldsDue(
+            p,
+            `${pMaxHp}|${weaponId}|${cv}|${mrm}`,
+            pIdx * 15,
+        );
+        const hasMf = netBlockDue(
+            p,
+            '_netMfSig',
+            '_netMfSeq',
+            mf,
+            pIdx * 15 + 1,
+        );
+        const iv =
+            p.invuln > 0
+                ? Math.round(p.invuln)
+                : p.spawnInvuln > 0
+                  ? Math.round(p.spawnInvuln)
+                  : 0;
+        let hasIv = iv > 0;
+        if (iv > 0) {
+            p._netIvClearLeft = STATIC_CHANGE_REPEATS;
+        } else if (p._netIvClearLeft > 0) {
+            p._netIvClearLeft--;
+            hasIv = true;
+        }
+        const upByte = upgradeByteFromPlayer(p);
+        let hasUp = upByte > 0;
+        if (upByte > 0) {
+            p._netUpClearLeft = STATIC_CHANGE_REPEATS;
+        } else if (p._netUpClearLeft > 0) {
+            p._netUpClearLeft--;
+            hasUp = true;
+        }
+
+        // bit7 hasExt | bit6 hasMf | bit5 hasIv | bits0-4 player index
+        view.setUint8(
+            offset,
+            (pIdx & 0x1f) |
+                (hasIv ? 0x20 : 0) |
+                (hasMf ? 0x40 : 0) |
+                (hasExt ? 0x80 : 0),
+        );
         offset += 1;
         view.setInt16(offset, Math.round(p.x || 0), true);
         offset += 2;
@@ -3530,12 +3844,6 @@ function packWorldSnapshotBinary() {
         view.setUint16(
             offset,
             Math.min(65535, Math.round((p.hp || 0) * 10)),
-            true,
-        );
-        offset += 2;
-        view.setUint16(
-            offset,
-            Math.min(65535, Math.round(p.maxHp || 100)),
             true,
         );
         offset += 2;
@@ -3552,45 +3860,14 @@ function packWorldSnapshotBinary() {
         if (p.disconnected || p.kicked) pFlags |= 1 << 4;
         if (flail) pFlags |= 1 << 5;
         if (p.sledgeHammerAnimation) pFlags |= 1 << 6;
-        const upName = p.currentLevelUpgradeName || '';
-        if (upName.length > 0) pFlags |= 1 << 7;
+        if (hasUp) pFlags |= 1 << 7;
         view.setUint8(offset, pFlags);
         offset += 1;
 
-        const weaponId = WEAPON_TYPE_TO_ID[p.selectedWeapon] || 0;
-        view.setUint8(offset, weaponId);
-        offset += 1;
-
-        const curTime =
-            typeof gameClock !== 'undefined'
-                ? gameClock
-                : typeof performance !== 'undefined'
-                  ? performance.now()
-                  : 0;
-        const cv =
-            p.campervanUntil > curTime ? Math.round(p.campervanUntil) : 0;
-        view.setUint32(offset, cv, true);
-        offset += 4;
-
-        const iv =
-            p.invuln > 0
-                ? Math.round(p.invuln)
-                : p.spawnInvuln > 0
-                  ? Math.round(p.spawnInvuln)
-                  : 0;
-        view.setUint16(offset, Math.min(65535, iv), true);
-        offset += 2;
-
-        const mf = melee && melee.lastFire > 0 ? Math.round(melee.lastFire) : 0;
-        view.setUint32(offset, mf, true);
-        offset += 4;
-
-        const mrm = Math.min(
-            255,
-            Math.round((p.meleeRangeModifier || 1.0) * 50),
-        );
-        view.setUint8(offset, mrm);
-        offset += 1;
+        if (hasIv) {
+            view.setUint16(offset, Math.min(65535, iv), true);
+            offset += 2;
+        }
 
         if (flail) {
             view.setInt16(offset, Math.round(flail.x || 0), true);
@@ -3617,13 +3894,23 @@ function packWorldSnapshotBinary() {
             view.setUint8(offset, angleToUint8(p.sledgeHammerAnimation.angle));
             offset += 1;
         }
-        if (upName.length > 0) {
-            const upLen = Math.min(64, upName.length);
-            view.setUint8(offset, upLen);
+        if (hasUp) {
+            view.setUint8(offset, upByte);
             offset += 1;
-            for (let j = 0; j < upLen; j++) {
-                sharedUint8[offset++] = upName.charCodeAt(j) & 0xff;
-            }
+        }
+        if (hasExt) {
+            view.setUint16(offset, pMaxHp, true);
+            offset += 2;
+            view.setUint8(offset, weaponId);
+            offset += 1;
+            view.setUint32(offset, cv, true);
+            offset += 4;
+            view.setUint8(offset, mrm);
+            offset += 1;
+        }
+        if (hasMf) {
+            view.setUint32(offset, mf, true);
+            offset += 4;
         }
     }
 
@@ -3645,81 +3932,136 @@ function packWorldSnapshotBinary() {
         const e = aliveEnemies[i];
         if (!e._nid) e._nid = ++netEntityCounter;
 
+        // Motion is always sent; hp / static / dyn extras are gated separately
         view.setUint16(offset, e._nid, true);
         offset += 2;
-        const typeId = ENEMY_TYPE_TO_ID[e.type] || 1;
-        view.setUint8(offset, typeId);
-        offset += 1;
         view.setInt16(offset, Math.round(e.x || 0), true);
         offset += 2;
         view.setInt16(offset, Math.round(e.y || 0), true);
         offset += 2;
-        view.setUint16(
-            offset,
-            Math.min(65535, Math.max(1, Math.round(e.hp || 0))),
-            true,
-        );
-        offset += 2;
-        view.setUint16(
-            offset,
-            Math.min(65535, Math.round(e.maxHp || 100)),
-            true,
-        );
-        offset += 2;
         view.setUint8(offset, angleToUint8(e.facingAngle));
         offset += 1;
 
-        let eFlags = 0;
-        if (e.airborne) eFlags |= 1 << 0;
-        if (e.r && e.r !== 15) eFlags |= 1 << 1;
-        if (e.shieldRadius) eFlags |= 1 << 2;
-        if (e.landY || e.landAt) eFlags |= 1 << 3;
+        const eHp = Math.min(65535, Math.max(1, Math.round(e.hp || 0)));
+        const typeId = ENEMY_TYPE_TO_ID[e.type] || 1;
+        const eMaxHp = Math.min(65535, Math.round(e.maxHp || 100));
+        const eR = e.r && e.r !== 15 ? Math.min(255, Math.round(e.r)) : 0;
+        const eSr = e.shieldRadius
+            ? Math.min(255, Math.round(e.shieldRadius))
+            : 0;
+        // Numeric signature (type 8b | maxHp 16b | r 8b | shield 8b) avoids per-enemy string allocs
+        // and stays well below 2^53
+        const hasStatic = netStaticFieldsDue(
+            e,
+            typeId + eMaxHp * 0x100 + eR * 0x1000000 + eSr * 0x100000000,
+            e._nid,
+        );
+        const hasHp = netBlockDue(
+            e,
+            '_netHpSig',
+            '_netHpSeq',
+            eHp,
+            e._nid + 17,
+        );
+
         const isFrozen = Boolean(e.frozenUntil && e.frozenUntil > hostClock);
-        if (isFrozen) eFlags |= 1 << 4;
+        const landY = Math.round(e.landY || 0);
+        const landAt = Math.round(e.landAt || 0);
         const { vState, vParam } = getEnemyVisualState(e, hostClock);
-        if (vState !== 0) eFlags |= 1 << 5;
+        // Freeze uses a boolean in the signature so countdown ticks don't force a dyn resend;
+        // client keeps counting down locally from the last remaining-ms value it received
+        const hasDyn = netBlockDue(
+            e,
+            '_netDynSig',
+            '_netDynSeq',
+            `${e.airborne ? 1 : 0}|${landY}|${landAt}|${isFrozen ? 1 : 0}|${vState}|${vParam}`,
+            e._nid + 31,
+        );
+
+        // header: bit7 hasHp | bit6 hasStatic | bit5 hasDyn | bit2 hasSr | bit1 hasR
+        let eFlags = 0;
+        if (hasHp) eFlags |= 1 << 7;
+        if (hasStatic) eFlags |= 1 << 6;
+        if (hasDyn) eFlags |= 1 << 5;
+        if (hasStatic && eR) eFlags |= 1 << 1;
+        if (hasStatic && eSr) eFlags |= 1 << 2;
         view.setUint8(offset, eFlags);
         offset += 1;
 
+        if (hasHp) {
+            view.setUint16(offset, eHp, true);
+            offset += 2;
+        }
+        if (hasStatic) {
+            view.setUint8(offset, typeId);
+            offset += 1;
+            view.setUint16(offset, eMaxHp, true);
+            offset += 2;
+        }
         if (eFlags & (1 << 1)) {
-            view.setUint8(offset, Math.min(255, Math.round(e.r)));
+            view.setUint8(offset, eR);
             offset += 1;
         }
         if (eFlags & (1 << 2)) {
-            view.setUint8(offset, Math.min(255, Math.round(e.shieldRadius)));
+            view.setUint8(offset, eSr);
             offset += 1;
         }
-        if (eFlags & (1 << 3)) {
-            view.setInt16(offset, Math.round(e.landY || 0), true);
-            offset += 2;
-            view.setUint32(offset, Math.round(e.landAt || 0), true);
-            offset += 4;
-        }
-        if (eFlags & (1 << 4)) {
-            const fz = Math.max(
-                0,
-                Math.min(65535, Math.round((e.frozenUntil || 0) - hostClock)),
-            );
-            view.setUint16(offset, fz, true);
-            offset += 2;
-        }
-        if (eFlags & (1 << 5)) {
-            view.setUint8(offset, vState);
+        if (hasDyn) {
+            let dynFlags = 0;
+            if (e.airborne) dynFlags |= 1 << 0;
+            if (landY || landAt) dynFlags |= 1 << 3;
+            if (isFrozen) dynFlags |= 1 << 4;
+            if (vState !== 0) dynFlags |= 1 << 5;
+            view.setUint8(offset, dynFlags);
             offset += 1;
-            view.setUint16(offset, vParam, true);
-            offset += 2;
+            if (dynFlags & (1 << 3)) {
+                view.setInt16(offset, landY, true);
+                offset += 2;
+                view.setUint32(offset, landAt, true);
+                offset += 4;
+            }
+            if (dynFlags & (1 << 4)) {
+                const fz = Math.max(
+                    0,
+                    Math.min(
+                        65535,
+                        Math.round((e.frozenUntil || 0) - hostClock),
+                    ),
+                );
+                view.setUint16(offset, fz, true);
+                offset += 2;
+            }
+            if (dynFlags & (1 << 5)) {
+                view.setUint8(offset, vState);
+                offset += 1;
+                view.setUint16(offset, vParam, true);
+                offset += 2;
+            }
         }
     }
 
-    // 3. Projectiles
-    const projectiles =
+    // 3. Projectiles (omit inactive mine-ring orbiters so clients hide them like host draw)
+    const allProjectiles =
         typeof GAME_STATE !== 'undefined' && GAME_STATE.projectiles
             ? GAME_STATE.projectiles
             : [];
+    const projectiles = [];
+    for (let i = 0; i < allProjectiles.length; i++) {
+        const p = allProjectiles[i];
+        if (
+            p instanceof OrbitProjectile &&
+            p.player?.mineRingEnabled &&
+            p.active === false
+        ) {
+            continue;
+        }
+        projectiles.push(p);
+    }
     view.setUint16(offset, projectiles.length, true);
     offset += 2;
     for (let i = 0; i < projectiles.length; i++) {
         const p = projectiles[i];
+        if (!p._nid) p._nid = ++netEntityCounter;
         const t =
             p instanceof OrbitProjectile
                 ? 'fire_ring'
@@ -3729,55 +4071,82 @@ function packWorldSnapshotBinary() {
                     ? 'rocket'
                     : p instanceof SniperProjectile
                       ? 'sniper'
-                      : p instanceof MagicMissileProjectile
-                        ? p.kind === 'laser'
-                            ? 'laser'
-                            : 'magic_missile'
-                        : p.type || 'missile';
+                      : p instanceof ShrapnelProjectile ||
+                          p.kind === 'shrapnel'
+                        ? p.isExplosive
+                            ? 'explosive_shrapnel'
+                            : 'shrapnel'
+                        : p instanceof MagicMissileProjectile
+                          ? p.kind === 'laser'
+                              ? 'laser'
+                              : 'magic_missile'
+                          : p.type || 'missile';
         const typeId = PROJECTILE_TYPE_TO_ID[t] || 1;
-        view.setUint8(offset, typeId);
-        offset += 1;
+        const pR = Math.min(255, Math.round(p.r || 3));
+        const mr =
+            (p instanceof OrbitProjectile &&
+                p.player &&
+                p.player.mineRingEnabled &&
+                p.active !== false) ||
+            (p instanceof DeflectorOrbiter &&
+                (p.growth === undefined || p.growth > 0.05))
+                ? 1
+                : 0;
+        const pIndex =
+            p.player && p.player.index !== undefined ? p.player.index & 3 : 0;
+        const hasTarget = p.targetX !== undefined || p.targetY !== undefined;
+        const hasStart = p.startX !== undefined || p.startY !== undefined;
+        const tx = hasTarget ? Math.round(p.targetX || 0) : 0;
+        const ty = hasTarget ? Math.round(p.targetY || 0) : 0;
+        const sx = hasStart ? Math.round(p.startX || 0) : 0;
+        const sy = hasStart ? Math.round(p.startY || 0) : 0;
+        const hasStatic = netStaticFieldsDue(
+            p,
+            `${typeId}|${pR}|${mr}|${pIndex}|${hasTarget ? 1 : 0}|${tx}|${ty}|${hasStart ? 1 : 0}|${sx}|${sy}`,
+            p._nid,
+        );
+
+        // Motion every tick; type/r/owner/start/target only on static refresh
+        view.setUint16(offset, p._nid, true);
+        offset += 2;
         view.setInt16(offset, Math.round(p.x || 0), true);
         offset += 2;
         view.setInt16(offset, Math.round(p.y || 0), true);
         offset += 2;
-        view.setUint8(offset, Math.min(255, Math.round(p.r || 3)));
-        offset += 1;
-        view.setUint8(offset, angleToUint8(p.angle));
+        // Orbiters keep phase in `angle` with vx/vy=0; atan2(0,0) would falsely lock them east
+        const speed2 = (p.vx || 0) ** 2 + (p.vy || 0) ** 2;
+        const facing = speed2 > 1e-6 ? Math.atan2(p.vy, p.vx) : p.angle || 0;
+        view.setUint8(offset, angleToUint8(facing));
         offset += 1;
 
         let pFlags = 0;
-        if (
-            p instanceof OrbitProjectile &&
-            p.player &&
-            p.player.mineRingEnabled
-        )
-            pFlags |= 1 << 0;
-        if (
-            p instanceof DeflectorOrbiter &&
-            (p.growth === undefined || p.growth > 0.05)
-        )
-            pFlags |= 1 << 0;
-        if (p.targetX !== undefined || p.targetY !== undefined)
-            pFlags |= 1 << 1;
-        if (p.startX !== undefined || p.startY !== undefined) pFlags |= 1 << 2;
-        const pIndex =
-            p.player && p.player.index !== undefined ? p.player.index & 3 : 0;
-        pFlags |= pIndex << 3;
+        if (hasStatic) {
+            pFlags |= 1 << 6;
+            if (mr) pFlags |= 1 << 0;
+            if (hasTarget) pFlags |= 1 << 1;
+            if (hasStart) pFlags |= 1 << 2;
+            pFlags |= pIndex << 3;
+        }
         view.setUint8(offset, pFlags);
         offset += 1;
 
-        if (pFlags & (1 << 1)) {
-            view.setInt16(offset, Math.round(p.targetX || 0), true);
-            offset += 2;
-            view.setInt16(offset, Math.round(p.targetY || 0), true);
-            offset += 2;
-        }
-        if (pFlags & (1 << 2)) {
-            view.setInt16(offset, Math.round(p.startX || 0), true);
-            offset += 2;
-            view.setInt16(offset, Math.round(p.startY || 0), true);
-            offset += 2;
+        if (hasStatic) {
+            view.setUint8(offset, typeId);
+            offset += 1;
+            view.setUint8(offset, pR);
+            offset += 1;
+            if (pFlags & (1 << 1)) {
+                view.setInt16(offset, tx, true);
+                offset += 2;
+                view.setInt16(offset, ty, true);
+                offset += 2;
+            }
+            if (pFlags & (1 << 2)) {
+                view.setInt16(offset, sx, true);
+                offset += 2;
+                view.setInt16(offset, sy, true);
+                offset += 2;
+            }
         }
     }
 
@@ -3856,23 +4225,21 @@ function packWorldSnapshotBinary() {
         offset += 1;
         view.setUint16(offset, Math.min(65535, Math.round(t.hp || 0)), true);
         offset += 2;
-        view.setUint16(
-            offset,
-            Math.min(65535, Math.round(t.maxHp || 100)),
-            true,
-        );
-        offset += 2;
-        view.setUint8(
-            offset,
+
+        const tMaxHp = Math.min(65535, Math.round(t.maxHp || 100));
+        const tOwner =
             t.player && t.player.index !== undefined
                 ? t.player.index
-                : t.playerIndex || 0,
+                : t.playerIndex || 0;
+        const tSpawn = Math.round(t.spawnTime || 0);
+        const hasStatic = netStaticFieldsDue(
+            t,
+            `${tMaxHp}|${tOwner}|${tSpawn}`,
+            t._nid,
         );
-        offset += 1;
-        view.setUint32(offset, Math.round(t.spawnTime || 0), true);
-        offset += 4;
 
         let tFlags = 0;
+        if (hasStatic) tFlags |= 1 << 7;
         if (t.isFlamethrower) tFlags |= 1 << 0;
         if (t.flameActiveUntil) tFlags |= 1 << 1;
         if (t.laserWallsEnabled || t.player?.laserWallsEnabled)
@@ -3891,6 +4258,14 @@ function packWorldSnapshotBinary() {
         view.setUint8(offset, tFlags);
         offset += 1;
 
+        if (hasStatic) {
+            view.setUint16(offset, tMaxHp, true);
+            offset += 2;
+            view.setUint8(offset, tOwner);
+            offset += 1;
+            view.setUint32(offset, tSpawn, true);
+            offset += 4;
+        }
         if (tFlags & (1 << 1)) {
             view.setUint32(offset, Math.round(t.flameActiveUntil || 0), true);
             offset += 4;
@@ -3926,6 +4301,13 @@ function packWorldSnapshotBinary() {
         const hx = Math.round(h.x1 !== undefined ? h.x1 : h.x || 0);
         const hy = Math.round(h.y1 !== undefined ? h.y1 : h.y || 0);
         const htr = h.triggeredTime ? 1 : 0;
+        const isTrail =
+            (typeof BurningTrailSegment !== 'undefined' &&
+                h instanceof BurningTrailSegment) ||
+            (typeof LaserTrailSegment !== 'undefined' &&
+                h instanceof LaserTrailSegment) ||
+            (typeof IceTrailSegment !== 'undefined' &&
+                h instanceof IceTrailSegment);
         if (h._netFullSends === undefined) {
             h._netFullSends = 0;
             h._netX = hx;
@@ -3941,7 +4323,8 @@ function packWorldSnapshotBinary() {
 
         const sendFull =
             forceFullSync ||
-            h._netFullSends < HAZARD_FULL_REPEATS ||
+            h._netFullSends <
+                (isTrail ? HAZARD_TRAIL_FULL_REPEATS : HAZARD_FULL_REPEATS) ||
             (snapshotSeq + h._nid) % STATIC_SYNC_REFRESH_TICKS === 0;
         if (!sendFull) {
             if (snapshotSeq - h._netChangedSeq < HAZARD_UPDATE_REPEATS) {
@@ -3970,11 +4353,39 @@ function packWorldSnapshotBinary() {
         else if (h instanceof BlackHolePull) type = 'black_hole';
         else if (h.type) type = h.type;
 
+        const typeId = HAZARD_TYPE_TO_ID[type] || 1;
         view.setUint16(offset, h._nid, true);
         offset += 2;
-        const typeId = HAZARD_TYPE_TO_ID[type] || 1;
         view.setUint8(offset, typeId);
         offset += 1;
+
+        // Trails: compact x1/y1/x2/y2/player only (r/angle/spawn/duration are fixed client-side)
+        if (isTrail) {
+            view.setInt16(offset, hx, true);
+            offset += 2;
+            view.setInt16(offset, hy, true);
+            offset += 2;
+            const hx2 = Math.round(
+                h.x2 !== undefined
+                    ? h.x2
+                    : /** @type {{ targetX?: number }} */ (h).targetX || hx,
+            );
+            const hy2 = Math.round(
+                h.y2 !== undefined
+                    ? h.y2
+                    : /** @type {{ targetY?: number }} */ (h).targetY || hy,
+            );
+            view.setInt16(offset, hx2, true);
+            offset += 2;
+            view.setInt16(offset, hy2, true);
+            offset += 2;
+            view.setUint8(
+                offset,
+                h.player && h.player.index !== undefined ? h.player.index : 0,
+            );
+            offset += 1;
+            continue;
+        }
 
         view.setInt16(offset, hx, true);
         offset += 2;
@@ -3999,6 +4410,7 @@ function packWorldSnapshotBinary() {
         if (h.duration !== undefined) hFlags |= 1 << 2;
         if (h.landTime !== undefined) hFlags |= 1 << 3;
         if (h.triggeredTime) hFlags |= 1 << 4;
+        if (h.attractsEnemies) hFlags |= 1 << 5;
         view.setUint8(offset, hFlags);
         offset += 1;
 
@@ -4121,7 +4533,7 @@ function packWorldSnapshotBinary() {
     }
     if (
         forceFullSync ||
-        snapshotSeq - netTerrainChangedSeq < TERRAIN_CHANGE_REPEATS ||
+        snapshotSeq - netTerrainChangedSeq < STATIC_CHANGE_REPEATS ||
         snapshotSeq % STATIC_SYNC_REFRESH_TICKS === 0
     ) {
         flags |= 1 << 6;
@@ -4222,10 +4634,9 @@ function unpackWorldSnapshotBinary(buffer) {
                 : rawBuf
                   ? rawBuf.byteLength
                   : 0;
-        if (!rawBuf || byteLength < 41) return null;
+        if (!rawBuf || byteLength < 16) return null;
 
         const view = new DataView(rawBuf, byteOffset, byteLength);
-        const u8 = new Uint8Array(rawBuf, byteOffset, byteLength);
         let offset = 0;
 
         const magic = view.getUint8(offset);
@@ -4248,6 +4659,7 @@ function unpackWorldSnapshotBinary(buffer) {
         const hasBlobDeforms = (flags & (1 << 4)) !== 0;
         const hasDeadEnemies = (flags & (1 << 5)) !== 0;
         const hasTerrains = (flags & (1 << 6)) !== 0;
+        const hasWorldStats = (flags & (1 << 7)) !== 0;
 
         const rawStateByte = view.getUint8(offset);
         offset += 1;
@@ -4275,41 +4687,54 @@ function unpackWorldSnapshotBinary(buffer) {
 
         const elapsed = view.getUint32(offset, true);
         offset += 4;
-        const level = view.getUint16(offset, true);
-        offset += 2;
-        const xp = view.getUint32(offset, true);
-        offset += 4;
-        const nextXp = view.getUint32(offset, true);
-        offset += 4;
-        const kills = view.getUint16(offset, true);
-        offset += 2;
-        const hostW = view.getUint16(offset, true);
-        offset += 2;
-        const hostH = view.getUint16(offset, true);
-        offset += 2;
 
-        const bossByte = view.getUint8(offset);
-        offset += 1;
-        const activeBoss = BYTE_TO_BOSS_ID[bossByte] || null;
-        const activeBossStartTime = view.getUint32(offset, true);
-        offset += 4;
-        const hordeStartTime = view.getUint32(offset, true);
-        offset += 4;
+        // Left undefined when absent so the client keeps its last known values
+        let level, xp, nextXp, kills, hostW, hostH;
+        let activeBoss, activeBossStartTime, hordeStartTime;
+        if (hasWorldStats) {
+            const worldSub = view.getUint8(offset);
+            offset += 1;
+            if (worldSub & (1 << 0)) {
+                level = view.getUint16(offset, true);
+                offset += 2;
+                nextXp = view.getUint32(offset, true);
+                offset += 4;
+                hostW = view.getUint16(offset, true);
+                offset += 2;
+                hostH = view.getUint16(offset, true);
+                offset += 2;
+                const bossByte = view.getUint8(offset);
+                offset += 1;
+                activeBoss = BYTE_TO_BOSS_ID[bossByte] || null;
+                activeBossStartTime = view.getUint32(offset, true);
+                offset += 4;
+                hordeStartTime = view.getUint32(offset, true);
+                offset += 4;
+            }
+            if (worldSub & (1 << 1)) {
+                xp = view.getUint32(offset, true);
+                offset += 4;
+                kills = view.getUint16(offset, true);
+                offset += 2;
+            }
+        }
 
         // 1. Players
         const playerCount = view.getUint8(offset);
         offset += 1;
         const players = [];
         for (let i = 0; i < playerCount; i++) {
-            const idx = view.getUint8(offset);
+            const idxByte = view.getUint8(offset);
             offset += 1;
+            const idx = idxByte & 0x1f;
+            const hasIv = (idxByte & 0x20) !== 0;
+            const hasMf = (idxByte & 0x40) !== 0;
+            const hasExt = (idxByte & 0x80) !== 0;
             const x = view.getInt16(offset, true);
             offset += 2;
             const y = view.getInt16(offset, true);
             offset += 2;
             const hp = view.getUint16(offset, true) / 10;
-            offset += 2;
-            const mhp = view.getUint16(offset, true);
             offset += 2;
             const fa =
                 Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100;
@@ -4324,24 +4749,13 @@ function unpackWorldSnapshotBinary(buffer) {
             const dc = pFlags & (1 << 4) ? 1 : 0;
             const hasFlail = (pFlags & (1 << 5)) !== 0;
             const hasSledge = (pFlags & (1 << 6)) !== 0;
-            const hasUpName = (pFlags & (1 << 7)) !== 0;
+            const hasUp = (pFlags & (1 << 7)) !== 0;
 
-            const weaponIdByte = view.getUint8(offset);
-            offset += 1;
-            const w = ID_TO_WEAPON_TYPE[weaponIdByte] || '';
-            const wl =
-                typeof WEAPON_LABELS !== 'undefined' && WEAPON_LABELS[w]
-                    ? WEAPON_LABELS[w]
-                    : '';
-
-            const cv = view.getUint32(offset, true);
-            offset += 4;
-            const iv = view.getUint16(offset, true);
-            offset += 2;
-            const mf = view.getUint32(offset, true);
-            offset += 4;
-            const mrm = view.getUint8(offset) / 50;
-            offset += 1;
+            let iv;
+            if (hasIv) {
+                iv = view.getUint16(offset, true);
+                offset += 2;
+            }
 
             let fx = undefined,
                 fy = undefined;
@@ -4362,13 +4776,32 @@ function unpackWorldSnapshotBinary(buffer) {
                 offset += 1;
                 sh = { st, du, a };
             }
-            let up = '';
-            if (hasUpName) {
-                const upLen = view.getUint8(offset);
+            let up = undefined;
+            if (hasUp) {
+                const upByte = view.getUint8(offset);
                 offset += 1;
-                for (let j = 0; j < upLen; j++) {
-                    up += String.fromCharCode(u8[offset++]);
-                }
+                up = upByte ? upgradeNameFromByte(upByte) : '';
+            }
+
+            let mhp, w, wl, cv, mrm;
+            if (hasExt) {
+                mhp = view.getUint16(offset, true);
+                offset += 2;
+                w = ID_TO_WEAPON_TYPE[view.getUint8(offset)] || '';
+                offset += 1;
+                wl =
+                    typeof WEAPON_LABELS !== 'undefined' && WEAPON_LABELS[w]
+                        ? WEAPON_LABELS[w]
+                        : '';
+                cv = view.getUint32(offset, true);
+                offset += 4;
+                mrm = view.getUint8(offset) / 50;
+                offset += 1;
+            }
+            let mf;
+            if (hasMf) {
+                mf = view.getUint32(offset, true);
+                offset += 4;
             }
 
             players.push({
@@ -4396,23 +4829,16 @@ function unpackWorldSnapshotBinary(buffer) {
             });
         }
 
-        // 2. Enemies (compact flat tuples: [id, type, x, y, hp, mhp, fa, r, color, state, shieldRadius, airborne, landY, landAt])
+        // 2. Enemies (motion always; hp/static/dyn optional via header bits)
         const enemyCount = view.getUint16(offset, true);
         offset += 2;
         const enemies = [];
         for (let i = 0; i < enemyCount; i++) {
             const id = view.getUint16(offset, true);
             offset += 2;
-            const typeId = view.getUint8(offset);
-            offset += 1;
-            const type = ID_TO_ENEMY_TYPE[typeId] || 'swarm';
             const x = view.getInt16(offset, true);
             offset += 2;
             const y = view.getInt16(offset, true);
-            offset += 2;
-            const hp = view.getUint16(offset, true);
-            offset += 2;
-            const mhp = view.getUint16(offset, true);
             offset += 2;
             const fa =
                 Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100;
@@ -4420,14 +4846,23 @@ function unpackWorldSnapshotBinary(buffer) {
 
             const eFlags = view.getUint8(offset);
             offset += 1;
-            const ab = eFlags & (1 << 0) ? 1 : 0;
+            const hasHp = (eFlags & (1 << 7)) !== 0;
+            const hasStatic = (eFlags & (1 << 6)) !== 0;
+            const hasDyn = (eFlags & (1 << 5)) !== 0;
+
+            let hp, type, mhp;
+            if (hasHp) {
+                hp = view.getUint16(offset, true);
+                offset += 2;
+            }
+            if (hasStatic) {
+                type = ID_TO_ENEMY_TYPE[view.getUint8(offset)] || 'swarm';
+                offset += 1;
+                mhp = view.getUint16(offset, true);
+                offset += 2;
+            }
             let r = 0,
-                sr = 0,
-                ly = 0,
-                la = 0,
-                fz = 0,
-                vs = 0,
-                vp = 0;
+                sr = 0;
             if (eFlags & (1 << 1)) {
                 r = view.getUint8(offset);
                 offset += 1;
@@ -4436,21 +4871,33 @@ function unpackWorldSnapshotBinary(buffer) {
                 sr = view.getUint8(offset);
                 offset += 1;
             }
-            if (eFlags & (1 << 3)) {
-                ly = view.getInt16(offset, true);
-                offset += 2;
-                la = view.getUint32(offset, true);
-                offset += 4;
-            }
-            if (eFlags & (1 << 4)) {
-                fz = view.getUint16(offset, true);
-                offset += 2;
-            }
-            if (eFlags & (1 << 5)) {
-                vs = view.getUint8(offset);
+
+            let ab, ly, la, fz, vs, vp;
+            if (hasDyn) {
+                const dynFlags = view.getUint8(offset);
                 offset += 1;
-                vp = view.getUint16(offset, true);
-                offset += 2;
+                ab = dynFlags & (1 << 0) ? 1 : 0;
+                ly = 0;
+                la = 0;
+                fz = 0;
+                vs = 0;
+                vp = 0;
+                if (dynFlags & (1 << 3)) {
+                    ly = view.getInt16(offset, true);
+                    offset += 2;
+                    la = view.getUint32(offset, true);
+                    offset += 4;
+                }
+                if (dynFlags & (1 << 4)) {
+                    fz = view.getUint16(offset, true);
+                    offset += 2;
+                }
+                if (dynFlags & (1 << 5)) {
+                    vs = view.getUint8(offset);
+                    offset += 1;
+                    vp = view.getUint16(offset, true);
+                    offset += 2;
+                }
             }
 
             enemies.push([
@@ -4474,59 +4921,64 @@ function unpackWorldSnapshotBinary(buffer) {
             ]);
         }
 
-        // 3. Projectiles (compact flat tuples)
+        // 3. Projectiles (nid + motion always; type/r/owner/start/target optional)
         const projectileCount = view.getUint16(offset, true);
         offset += 2;
         const projectiles = [];
         for (let i = 0; i < projectileCount; i++) {
-            const typeId = view.getUint8(offset);
-            offset += 1;
-            const t = ID_TO_PROJECTILE_TYPE[typeId] || 'missile';
+            const id = view.getUint16(offset, true);
+            offset += 2;
             const x = view.getInt16(offset, true);
             offset += 2;
             const y = view.getInt16(offset, true);
             offset += 2;
-            const r = view.getUint8(offset);
-            offset += 1;
             const a =
                 Math.round(uint8ToAngle(view.getUint8(offset)) * 100) / 100;
             offset += 1;
 
             const pFlags = view.getUint8(offset);
             offset += 1;
-            const mr = pFlags & (1 << 0) ? 1 : 0;
-            const hasTarget = (pFlags & (1 << 1)) !== 0;
-            const hasStart = (pFlags & (1 << 2)) !== 0;
-            const pi = (pFlags >> 3) & 3;
+            const hasStatic = (pFlags & (1 << 6)) !== 0;
 
-            let tx = 0,
-                ty = 0,
-                sx = 0,
-                sy = 0;
-            if (hasTarget) {
-                tx = view.getInt16(offset, true);
-                offset += 2;
-                ty = view.getInt16(offset, true);
-                offset += 2;
-            }
-            if (hasStart) {
-                sx = view.getInt16(offset, true);
-                offset += 2;
-                sy = view.getInt16(offset, true);
-                offset += 2;
+            let t, r, mr, pi, tx, ty, sx, sy, c;
+            if (hasStatic) {
+                const typeId = view.getUint8(offset);
+                offset += 1;
+                t = ID_TO_PROJECTILE_TYPE[typeId] || 'missile';
+                r = view.getUint8(offset);
+                offset += 1;
+                mr = pFlags & (1 << 0) ? 1 : 0;
+                pi = (pFlags >> 3) & 3;
+                tx = undefined;
+                ty = undefined;
+                sx = undefined;
+                sy = undefined;
+                if (pFlags & (1 << 1)) {
+                    tx = view.getInt16(offset, true);
+                    offset += 2;
+                    ty = view.getInt16(offset, true);
+                    offset += 2;
+                }
+                if (pFlags & (1 << 2)) {
+                    sx = view.getInt16(offset, true);
+                    offset += 2;
+                    sy = view.getInt16(offset, true);
+                    offset += 2;
+                }
+                const owner =
+                    typeof GAME_STATE !== 'undefined' && GAME_STATE.players
+                        ? GAME_STATE.players[pi]
+                        : null;
+                c =
+                    t === 'fire_ring'
+                        ? '#ff6600'
+                        : t === 'deflector_shield'
+                          ? '#00e5ff'
+                          : owner?.color || '#00ffcc';
             }
 
-            const owner =
-                typeof GAME_STATE !== 'undefined' && GAME_STATE.players
-                    ? GAME_STATE.players[pi]
-                    : null;
-            const c =
-                t === 'fire_ring'
-                    ? '#ff6600'
-                    : t === 'deflector_shield'
-                      ? '#00e5ff'
-                      : owner?.color || '#00ffcc';
-            projectiles.push([t, x, y, r, c, a, tx, ty, sx, sy, mr, pi]);
+            // Modern tuple with _nid; omitted static fields stay undefined
+            projectiles.push([id, t, x, y, r, c, a, tx, ty, sx, sy, mr, pi]);
         }
 
         // 4. Enemy Projectiles
@@ -4593,15 +5045,18 @@ function unpackWorldSnapshotBinary(buffer) {
             offset += 1;
             const hp = view.getUint16(offset, true);
             offset += 2;
-            const mhp = view.getUint16(offset, true);
-            offset += 2;
-            const pi = view.getUint8(offset);
-            offset += 1;
-            const st = view.getUint32(offset, true);
-            offset += 4;
 
             const tFlags = view.getUint8(offset);
             offset += 1;
+            let mhp, pi, st;
+            if (tFlags & (1 << 7)) {
+                mhp = view.getUint16(offset, true);
+                offset += 2;
+                pi = view.getUint8(offset);
+                offset += 1;
+                st = view.getUint32(offset, true);
+                offset += 4;
+            }
             const fl = tFlags & (1 << 0) ? 1 : 0;
             const lw = tFlags & (1 << 2) ? 1 : 0;
             const sw = tFlags & (1 << 3) ? 1 : 0;
@@ -4653,6 +5108,38 @@ function unpackWorldSnapshotBinary(buffer) {
             const typeId = view.getUint8(offset);
             offset += 1;
             const t = ID_TO_HAZARD_TYPE[typeId] || 'hazard';
+
+            // Compact trail records: x1/y1/x2/y2/player
+            if (TRAIL_HAZARD_TYPE_IDS.has(typeId)) {
+                const x = view.getInt16(offset, true);
+                offset += 2;
+                const y = view.getInt16(offset, true);
+                offset += 2;
+                const x2 = view.getInt16(offset, true);
+                offset += 2;
+                const y2 = view.getInt16(offset, true);
+                offset += 2;
+                const pi = view.getUint8(offset);
+                offset += 1;
+                hazards.push({
+                    id,
+                    t,
+                    x,
+                    y,
+                    x2,
+                    y2,
+                    r: 22,
+                    a: 0,
+                    ca: undefined,
+                    st: undefined,
+                    dur: 4500,
+                    lt: undefined,
+                    tr: 0,
+                    pi,
+                });
+                continue;
+            }
+
             const x = view.getInt16(offset, true);
             offset += 2;
             const y = view.getInt16(offset, true);
@@ -4693,6 +5180,7 @@ function unpackWorldSnapshotBinary(buffer) {
                 offset += 4;
             }
             const tr = hFlags & (1 << 4) ? 1 : 0;
+            const at = hFlags & (1 << 5) ? 1 : 0;
 
             hazards.push({
                 id,
@@ -4708,6 +5196,7 @@ function unpackWorldSnapshotBinary(buffer) {
                 dur,
                 lt,
                 tr,
+                at,
                 pi,
             });
         }
@@ -5024,7 +5513,16 @@ function serializeWorldForNetworkJSON() {
         });
 
     // 3. Projectiles: compact flat tuples [id, type, x, y, r, color, angle, tx, ty, sx, sy, mr, pi]
-    const projectiles = GAME_STATE.projectiles.map((p) => {
+    const projectiles = GAME_STATE.projectiles
+        .filter(
+            (p) =>
+                !(
+                    p instanceof OrbitProjectile &&
+                    p.player?.mineRingEnabled &&
+                    p.active === false
+                ),
+        )
+        .map((p) => {
         if (!p._nid) p._nid = ++netEntityCounter;
         const t =
             p instanceof OrbitProjectile
@@ -5035,11 +5533,16 @@ function serializeWorldForNetworkJSON() {
                     ? 'rocket'
                     : p instanceof SniperProjectile
                       ? 'sniper'
-                      : p instanceof MagicMissileProjectile
-                        ? p.kind === 'laser'
-                            ? 'laser'
-                            : 'magic_missile'
-                        : p.type || '';
+                      : p instanceof ShrapnelProjectile ||
+                          p.kind === 'shrapnel'
+                        ? p.isExplosive
+                            ? 'explosive_shrapnel'
+                            : 'shrapnel'
+                        : p instanceof MagicMissileProjectile
+                          ? p.kind === 'laser'
+                              ? 'laser'
+                              : 'magic_missile'
+                          : p.type || '';
         const owner =
             p.player ||
             (typeof GAME_STATE !== 'undefined' && GAME_STATE.players
@@ -5052,13 +5555,19 @@ function serializeWorldForNetworkJSON() {
                   ? '#00e5ff'
                   : owner?.color || p.color || '#00ffcc';
         const r = p.r || (p instanceof OrbitProjectile ? 10 : 3);
-        const a = Math.round((p.angle || 0) * 100) / 100;
+        // Orbiters keep phase in `angle` with vx/vy=0; atan2(0,0) would falsely lock them east
+        const speed2 = (p.vx || 0) ** 2 + (p.vy || 0) ** 2;
+        const facing = speed2 > 1e-6 ? Math.atan2(p.vy, p.vx) : p.angle || 0;
+        const a = Math.round(facing * 100) / 100;
         const tx = p.targetX !== undefined ? Math.round(p.targetX) : 0;
         const ty = p.targetY !== undefined ? Math.round(p.targetY) : 0;
         const sx = p.startX !== undefined ? Math.round(p.startX) : 0;
         const sy = p.startY !== undefined ? Math.round(p.startY) : 0;
         const mr =
-            p instanceof OrbitProjectile && p.player && p.player.mineRingEnabled
+            p instanceof OrbitProjectile &&
+            p.player &&
+            p.player.mineRingEnabled &&
+            p.active !== false
                 ? 1
                 : p instanceof DeflectorOrbiter &&
                     (p.growth === undefined || p.growth > 0.05)
@@ -5103,7 +5612,7 @@ function serializeWorldForNetworkJSON() {
     // 5. Gems, Health Packs & Supply Drops (sync every 6 network ticks to save 80%+ bandwidth on static gems)
     let gems = undefined;
     netGemSyncTick = (netGemSyncTick + 1) % 6;
-    if (netGemSyncTick === 0 || GAME_STATE.activeBoss) {
+    if (netGemSyncTick === 0) {
         gems = GAME_STATE.gems.map((g) => {
             if (!g._nid) g._nid = ++netEntityCounter;
             const isHp = g instanceof HealthPack ? 1 : 0;
@@ -5203,6 +5712,7 @@ function serializeWorldForNetworkJSON() {
             dur: h.duration || undefined,
             lt: h.landTime || undefined,
             tr: h.triggeredTime ? 1 : 0,
+            at: h.attractsEnemies ? 1 : 0,
             pi: h.player && h.player.index !== undefined ? h.player.index : 0,
         };
     });
@@ -5311,17 +5821,119 @@ const NetworkProjectileProto = {
         ctx.save();
         if (this.type === 'fire_ring') {
             const owner = GAME_STATE.players[this.playerIndex];
+            const curNow =
+                typeof now === 'number'
+                    ? now
+                    : typeof gameClock !== 'undefined'
+                      ? gameClock
+                      : performance.now();
             if (
                 this.mineRing &&
                 owner &&
                 typeof drawBioMineVesicle === 'function'
             ) {
+                let mineDrawX = this.x;
+                let mineDrawY = this.y;
+                let mineScale = 1.0;
+                // Client-predicted rematerialize arm (mirrors OrbitProjectile.draw)
+                if (this.respawnAnimation) {
+                    const elapsed = curNow - this.respawnAnimation.startTime;
+                    if (elapsed < this.respawnAnimation.duration) {
+                        const t = elapsed / this.respawnAnimation.duration;
+                        let reach = 0;
+                        let armAlpha = 1.0;
+                        if (t < 0.45) {
+                            const extendT = t / 0.45;
+                            reach = Math.sin(extendT * Math.PI * 0.5);
+                            mineScale = 0.35 + 0.65 * reach;
+                        } else {
+                            const retractT = (t - 0.45) / 0.55;
+                            reach = 1.0 - retractT;
+                            armAlpha = 1.0 - retractT * 0.7;
+                            mineScale = 1.0;
+                        }
+                        const orbitR = 70;
+                        const rootX =
+                            owner.x + Math.cos(this.angle) * owner.r;
+                        const rootY =
+                            owner.y + Math.sin(this.angle) * owner.r;
+                        const normX = -Math.sin(this.angle);
+                        const normY = Math.cos(this.angle);
+                        const currentDist =
+                            owner.r + (orbitR - owner.r) * reach;
+                        const tipX =
+                            owner.x + Math.cos(this.angle) * currentDist;
+                        const tipY =
+                            owner.y + Math.sin(this.angle) * currentDist;
+                        if (t < 0.45) {
+                            mineDrawX = tipX;
+                            mineDrawY = tipY;
+                        }
+                        if (reach > 0.02) {
+                            const rootWidth = Math.max(
+                                2.0,
+                                5.0 * Math.min(1.0, reach * 2.0),
+                            );
+                            const tipWidth = Math.max(1.2, 3.2 * reach);
+                            const midDist = (owner.r + currentDist) * 0.5;
+                            const midX =
+                                owner.x + Math.cos(this.angle) * midDist;
+                            const midY =
+                                owner.y + Math.sin(this.angle) * midDist;
+                            const waist = Math.max(
+                                1.0,
+                                (rootWidth + tipWidth) * 0.35,
+                            );
+                            ctx.beginPath();
+                            ctx.moveTo(
+                                rootX + normX * rootWidth,
+                                rootY + normY * rootWidth,
+                            );
+                            ctx.quadraticCurveTo(
+                                midX + normX * waist,
+                                midY + normY * waist,
+                                tipX + normX * tipWidth,
+                                tipY + normY * tipWidth,
+                            );
+                            ctx.lineTo(
+                                tipX - normX * tipWidth,
+                                tipY - normY * tipWidth,
+                            );
+                            ctx.quadraticCurveTo(
+                                midX - normX * waist,
+                                midY - normY * waist,
+                                rootX - normX * rootWidth,
+                                rootY - normY * rootWidth,
+                            );
+                            ctx.closePath();
+                            ctx.fillStyle = owner.color;
+                            ctx.globalAlpha = 0.9 * armAlpha;
+                            ctx.fill();
+                            ctx.strokeStyle = owner.ring || '#000000';
+                            ctx.lineWidth = 1.3;
+                            ctx.stroke();
+                            ctx.globalAlpha = 1;
+                            ctx.fillStyle = owner.ring || '#222222';
+                            ctx.beginPath();
+                            ctx.arc(
+                                midX,
+                                midY,
+                                Math.max(1.0, 2.2 * reach),
+                                0,
+                                Math.PI * 2,
+                            );
+                            ctx.fill();
+                        }
+                    } else {
+                        this.respawnAnimation = null;
+                    }
+                }
                 drawBioMineVesicle(
                     ctx,
-                    this.x,
-                    this.y,
-                    this.r,
-                    now,
+                    mineDrawX,
+                    mineDrawY,
+                    this.r * mineScale,
+                    curNow,
                     owner,
                     false,
                     0,
@@ -5348,7 +5960,14 @@ const NetworkProjectileProto = {
                       ? gameClock
                       : performance.now();
             if (typeof drawDeflectorOrbiterPlate === 'function') {
-                const growth = this.mineRing === 0 ? 0.0 : 1.0;
+                const growth =
+                    this.growth !== undefined
+                        ? this.growth
+                        : this.mineRing === 0
+                          ? 0.0
+                          : 1.0;
+                const isRecentBlock =
+                    this.lastBlockTime && curNow - this.lastBlockTime < 350;
                 drawDeflectorOrbiterPlate(
                     ctx,
                     this.x,
@@ -5357,7 +5976,7 @@ const NetworkProjectileProto = {
                     owner,
                     growth,
                     curNow,
-                    false,
+                    isRecentBlock,
                 );
             } else {
                 ctx.fillStyle = owner ? owner.color : '#00e5ff';
@@ -5369,6 +5988,30 @@ const NetworkProjectileProto = {
             }
         } else if (this.type === 'rocket') {
             const owner = GAME_STATE.players[this.playerIndex];
+            // Local exhaust trail (host spawns in update; no net cost)
+            if (
+                typeof GAME_STATE !== 'undefined' &&
+                GAME_STATE.particles &&
+                typeof Particle !== 'undefined' &&
+                typeof gameClock !== 'undefined' &&
+                gameClock % 2 === 0
+            ) {
+                const oppositeAngle = (this.angle || 0) + Math.PI;
+                const px = this.x + Math.cos(oppositeAngle) * 8;
+                const py = this.y + Math.sin(oppositeAngle) * 8;
+                GAME_STATE.particles.push(
+                    new Particle(
+                        px,
+                        py,
+                        Math.cos(oppositeAngle + (Math.random() * 0.4 - 0.2)) *
+                            1.5,
+                        Math.sin(oppositeAngle + (Math.random() * 0.4 - 0.2)) *
+                            1.5,
+                        '#ffaa00',
+                        300,
+                    ),
+                );
+            }
             ctx.translate(this.x, this.y);
             ctx.rotate(this.angle || 0);
             ctx.scale(2.2, 2.2);
@@ -5386,6 +6029,22 @@ const NetworkProjectileProto = {
             ctx.moveTo(4, -3);
             ctx.lineTo(10, 0);
             ctx.lineTo(4, 3);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(-10, -3);
+            ctx.lineTo(-13, -6);
+            ctx.lineTo(-10, -6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(-10, 3);
+            ctx.lineTo(-13, 6);
+            ctx.lineTo(-10, 6);
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
@@ -5417,7 +6076,10 @@ const NetworkProjectileProto = {
                 ctx.arc(this.x, this.y, 1.5, 0, Math.PI * 2);
                 ctx.fill();
             }
-        } else if (this.type === 'magic_missile' || this.type === 'missile') {
+        } else if (
+            this.type === 'magic_missile' ||
+            this.type === 'missile'
+        ) {
             const owner =
                 this.owner ||
                 GAME_STATE.players?.[this.playerIndex] ||
@@ -5435,6 +6097,31 @@ const NetworkProjectileProto = {
                 );
             } else {
                 ctx.fillStyle = owner ? owner.color : this.color || '#00ffcc';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (
+            this.type === 'shrapnel' ||
+            this.type === 'explosive_shrapnel'
+        ) {
+            const owner =
+                this.owner || GAME_STATE.players?.[this.playerIndex];
+            if (this.type === 'explosive_shrapnel') {
+                ctx.fillStyle = 'rgba(255, 68, 0, 0.4)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r + 3.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ff4400';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r * 1.4, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = 'rgba(255,170,0,0.35)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r + 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = owner ? owner.color : '#ffaa00';
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
                 ctx.fill();
@@ -5513,7 +6200,26 @@ const NetworkEnemyProjectileProto = {
             ctx.fill();
             ctx.stroke();
         } else if (this.r === 7) {
-            // Marauder concussive missile
+            // Marauder concussive missile + local exhaust (no net cost)
+            if (
+                typeof GAME_STATE !== 'undefined' &&
+                GAME_STATE.particles &&
+                typeof Particle !== 'undefined' &&
+                typeof gameClock !== 'undefined' &&
+                gameClock % 2 === 0
+            ) {
+                const back = (this.angle || 0) + Math.PI;
+                GAME_STATE.particles.push(
+                    new Particle(
+                        this.x + Math.cos(back) * 6,
+                        this.y + Math.sin(back) * 6,
+                        Math.cos(back) * 1.2,
+                        Math.sin(back) * 1.2,
+                        '#90a4ae',
+                        220,
+                    ),
+                );
+            }
             ctx.globalAlpha = 0.3;
             ctx.fillStyle = '#78909c';
             ctx.beginPath();
@@ -5656,7 +6362,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
             const wasAlive =
                 typeof p.isAlive === 'function' ? p.isAlive() : p.alive;
             p.hp = sp.hp;
-            p.maxHp = sp.mhp;
+            if (sp.mhp !== undefined) p.maxHp = sp.mhp;
             const nowAlive = sp.al === 1 && sp.hp > 0;
             p.alive = nowAlive;
             if (sp.da !== undefined && !nowAlive) {
@@ -5693,7 +6399,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
             if (sp.nm && sp.nm !== p.name) {
                 p.name = sp.nm;
             }
-            if (p.selectedWeapon !== sp.w) {
+            if (sp.w !== undefined && p.selectedWeapon !== sp.w) {
                 p.selectedWeapon = sp.w;
                 p.selectedWeaponLabel = sp.wl;
                 p.weapons = [];
@@ -5729,9 +6435,9 @@ window.onWorldSnapshotReceived = (snapshot) => {
             } else if (p.weapons && p.index !== netManager.localPlayerIndex) {
                 p.weapons = p.weapons.filter((w) => w.id !== 'player_flail');
             }
-            p.currentLevelUpgradeName = sp.up;
-            p.campervanUntil = sp.cv || 0;
-            p.invuln = sp.iv || 0;
+            if (sp.up !== undefined) p.currentLevelUpgradeName = sp.up || null;
+            if (sp.cv !== undefined) p.campervanUntil = sp.cv || 0;
+            if (sp.iv !== undefined) p.invuln = sp.iv || 0;
             p.martyrdomAuraEnabled = sp.ma === 1;
             p.martyrsPresenceEnabled = sp.mp === 1;
             p.disconnected = sp.dc === 1;
@@ -5739,8 +6445,8 @@ window.onWorldSnapshotReceived = (snapshot) => {
             if (sp.i === netManager.localPlayerIndex) {
                 // Client's own player: trust local joystick prediction while moving
                 const dist2 = (p.x - sp.x) ** 2 + (p.y - sp.y) ** 2;
-                if (dist2 > 22500) {
-                    // Hard snap only if severely desynced (> 150px, e.g. teleport / respawn / massive knockback)
+                if (dist2 > 10000) {
+                    // Hard snap only if severely desynced (> 100px, e.g. teleport / respawn / massive knockback)
                     p.x = sp.x;
                     p.y = sp.y;
                     const myFlail = p.weapons
@@ -5750,7 +6456,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
                         myFlail.x = sp.fx;
                         myFlail.y = sp.fy;
                     }
-                } else if (!p.isMoving && dist2 > 900) {
+                } else if (!p.isMoving && dist2 > 100) {
                     // Smooth exponential decay towards authoritative position only when stationary
                     p.x += (sp.x - p.x) * 0.15;
                     p.y += (sp.y - p.y) * 0.15;
@@ -5844,11 +6550,12 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 c = se[8] || '';
                 st = se[9] || '';
                 sr = se[10] || 0;
-                ab = se[11] === 1;
-                ly = se[12] || 0;
-                la = se[13] || 0;
-                fz = se[14] || 0;
-                vs = se[15] || 0;
+                // undefined = dyn block omitted this tick; keep client last-known values
+                ab = se[11] === undefined ? undefined : se[11] === 1;
+                ly = se[12];
+                la = se[13];
+                fz = se[14];
+                vs = se[15];
                 vp = se[16] || 0;
             } else {
                 id = se.id;
@@ -5862,16 +6569,20 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 c = se.c || '';
                 st = se.st || '';
                 sr = se.sr || 0;
-                ab = se.ab === 1;
-                ly = se.ly || 0;
-                la = se.la || 0;
-                fz = se.fz || 0;
-                vs = se.vs || 0;
+                ab = se.ab === undefined ? undefined : se.ab === 1;
+                ly = se.ly;
+                la = se.la;
+                fz = se.fz;
+                vs = se.vs;
                 vp = se.vp || 0;
             }
-            if (hp <= 0 || clientDeadEnemyIds.has(id)) continue;
-            seenIds.add(id);
+            if (hp !== undefined && (hp <= 0 || clientDeadEnemyIds.has(id)))
+                continue;
+            if (hp === undefined && clientDeadEnemyIds.has(id)) continue;
             let e = clientEnemyCache.get(id);
+            // Type only arrives on first sight / refresh; wait for it if those packets were lost
+            if (!e && type === undefined) continue;
+            seenIds.add(id);
             if (!e) {
                 e = Enemy.create(x, y, type, nowTime);
                 e._nid = id;
@@ -5880,6 +6591,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 e.targetX = x;
                 e.targetY = y;
                 e.facingAngle = fa;
+                if (hp !== undefined) e.hp = hp;
                 clientEnemyCache.set(id, e);
             } else {
                 e.targetX = x;
@@ -5898,8 +6610,8 @@ window.onWorldSnapshotReceived = (snapshot) => {
             }
             e.lastSeenNetTime = nowTime;
             e.alive = true;
-            e.hp = hp;
-            e.maxHp = mhp;
+            if (hp !== undefined) e.hp = hp;
+            if (mhp !== undefined) e.maxHp = mhp;
             if (r) e.r = r;
             if (c) e.color = c;
             if (st) {
@@ -5907,9 +6619,9 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 e.stalkerState = st;
             }
             if (sr) e.shieldRadius = sr;
-            e.airborne = ab;
-            if (ly) e.landY = ly;
-            if (la) {
+            if (ab !== undefined) e.airborne = ab;
+            if (ly !== undefined && ly) e.landY = ly;
+            if (la !== undefined && la) {
                 e.landAt = la;
                 if (typeof METEOR_FALL_MS !== 'undefined') {
                     const warnMult =
@@ -5920,22 +6632,19 @@ window.onWorldSnapshotReceived = (snapshot) => {
                     e.fallDuration = METEOR_FALL_MS * warnMult;
                 }
             }
-            if (fz > 0) {
-                const targetFrozenUntil = nowTime + fz;
-                if (nowTime >= (e.frozenUntil || 0)) {
-                    e.frozenStart = nowTime;
-                    if (
-                        typeof SoundEngine !== 'undefined' &&
-                        SoundEngine.enemyFreeze
-                    ) {
-                        SoundEngine.enemyFreeze();
+            if (fz !== undefined) {
+                if (fz > 0) {
+                    const targetFrozenUntil = nowTime + fz;
+                    if (nowTime >= (e.frozenUntil || 0)) {
+                        e.frozenStart = nowTime;
+                        // Freeze SFX arrives via host netSoundEvents (enemyFreeze wrap)
                     }
+                    e.frozenUntil = targetFrozenUntil;
+                } else if (e.frozenUntil && e.frozenUntil > nowTime) {
+                    e.frozenUntil = 0;
                 }
-                e.frozenUntil = targetFrozenUntil;
-            } else if (e.frozenUntil && e.frozenUntil > nowTime) {
-                e.frozenUntil = 0;
             }
-            if (typeof applyEnemyVisualState === 'function') {
+            if (vs !== undefined && typeof applyEnemyVisualState === 'function') {
                 applyEnemyVisualState(e, vs, vp, nowTime);
             }
             activeEnemies.push(e);
@@ -5961,21 +6670,22 @@ window.onWorldSnapshotReceived = (snapshot) => {
             const sp = snapshot.projectiles[i];
             let id, type, x, y, r, color, angle, tx, ty, sx, sy, mr, pi;
             if (Array.isArray(sp)) {
-                if (typeof sp[0] === 'number' && typeof sp[1] === 'string') {
-                    // Modern format with _nid: [id, type, x, y, r, color, angle, ...]
+                if (typeof sp[0] === 'number') {
+                    // Format with _nid: [id, type, x, y, r, color, angle, ...]
+                    // type/r/color/owner/start/target may be undefined when static omitted
                     id = sp[0];
                     type = sp[1];
                     x = sp[2];
                     y = sp[3];
-                    r = sp[4] || 3;
-                    color = sp[5] || '#00ffcc';
+                    r = sp[4];
+                    color = sp[5];
                     angle = sp[6] || 0;
-                    tx = sp[7] || undefined;
-                    ty = sp[8] || undefined;
-                    sx = sp[9] || undefined;
-                    sy = sp[10] || undefined;
-                    mr = sp[11] === 1;
-                    pi = sp[12] || 0;
+                    tx = sp[7];
+                    ty = sp[8];
+                    sx = sp[9];
+                    sy = sp[10];
+                    mr = sp[11] === undefined ? undefined : sp[11] === 1;
+                    pi = sp[12];
                 } else {
                     // Legacy tuple format: [type, x, y, r, color, angle, ...]
                     id = i + 1;
@@ -5997,34 +6707,43 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 type = sp.t;
                 x = sp.x;
                 y = sp.y;
-                r = sp.r || 3;
-                color = sp.c || '#00ffcc';
+                r = sp.r;
+                color = sp.c;
                 angle = sp.a || 0;
                 tx = sp.tx;
                 ty = sp.ty;
                 sx = sp.sx;
                 sy = sp.sy;
-                mr = sp.mr === 1;
-                pi = sp.pi || 0;
+                mr = sp.mr === undefined ? undefined : sp.mr === 1;
+                pi = sp.pi;
             }
-            seenIds.add(id);
             let p = clientProjectileCache.get(id);
+            // Type only arrives on first sight / refresh; wait if those packets were lost
+            if (!p && type === undefined) continue;
+            seenIds.add(id);
+            const isNew = !p;
             if (!p) {
                 p = Object.create(NetworkProjectileProto);
                 p._nid = id;
                 p.x = x;
                 p.y = y;
-                p.spawnTime = performance.now();
+                p.spawnTime =
+                    typeof gameClock !== 'undefined'
+                        ? gameClock
+                        : performance.now();
                 p.targetX = x;
                 p.targetY = y;
                 p.angle = angle;
                 p.targetAngle = angle;
+                p.growth = 1.0;
+                p.lastBlockTime = 0;
                 clientProjectileCache.set(id, p);
             } else {
                 p.targetX = x;
                 p.targetY = y;
                 p.targetAngle = angle;
-                if (type !== 'fire_ring' && type !== 'deflector_shield') {
+                const pType = type !== undefined ? type : p.type;
+                if (pType !== 'fire_ring' && pType !== 'deflector_shield') {
                     const d2 = (p.x - x) ** 2 + (p.y - y) ** 2;
                     if (d2 > 14400) {
                         // snap if desynced by > 120px
@@ -6033,31 +6752,64 @@ window.onWorldSnapshotReceived = (snapshot) => {
                     }
                 }
             }
-            p.type = type;
-            p.r = r;
-            p.color = color;
+            if (type !== undefined) p.type = type;
+            if (r !== undefined) p.r = r;
+            if (color !== undefined) p.color = color;
             if (p.type === 'fire_ring' || p.type === 'deflector_shield') {
                 if (p.angle === undefined) p.angle = angle;
                 p.targetAngle = angle;
             } else {
                 p.angle = angle;
             }
-            p.tx = tx;
-            p.ty = ty;
-            p.startX = sx;
-            p.startY = sy;
-            p.mineRing = mr;
-            p.playerIndex = pi;
-            p.owner =
-                typeof GAME_STATE !== 'undefined' && GAME_STATE.players
-                    ? GAME_STATE.players[pi] || GAME_STATE.players[0]
-                    : null;
+            if (tx !== undefined) p.tx = tx;
+            if (ty !== undefined) p.ty = ty;
+            if (sx !== undefined) p.startX = sx;
+            if (sy !== undefined) p.startY = sy;
+            if (mr !== undefined) p.mineRing = mr;
+            if (pi !== undefined) {
+                p.playerIndex = pi;
+                p.owner =
+                    typeof GAME_STATE !== 'undefined' && GAME_STATE.players
+                        ? GAME_STATE.players[pi] || GAME_STATE.players[0]
+                        : null;
+            }
+            // Mine-ring rematerialize arm only after an omit (not first spawn)
+            if (
+                isNew &&
+                (p.type === 'fire_ring' || type === 'fire_ring') &&
+                (p.mineRing || mr) &&
+                clientOmittedMineRingIds.has(id)
+            ) {
+                clientOmittedMineRingIds.delete(id);
+                const owner = p.owner || GAME_STATE.players?.[p.playerIndex];
+                p.respawnAnimation = {
+                    startTime: nowTime,
+                    duration: 380,
+                };
+                if (owner) {
+                    owner.mitosisBuds = owner.mitosisBuds || [];
+                    owner.mitosisBuds.push({
+                        angle: p.angle || 0,
+                        time: nowTime,
+                        duration: 380,
+                    });
+                }
+            }
             const speed =
-                p.type === 'missile' || p.type === 'laser'
-                    ? 8
-                    : p.type === 'lightning'
-                      ? 0
-                      : 5;
+                p.type === 'sniper'
+                    ? 48
+                    : p.type === 'rocket'
+                      ? 7.5
+                      : p.type === 'laser'
+                        ? 11
+                        : p.type === 'magic_missile' || p.type === 'missile'
+                          ? 7.3
+                          : p.type === 'shrapnel' ||
+                              p.type === 'explosive_shrapnel'
+                            ? 8
+                            : p.type === 'lightning'
+                              ? 0
+                              : 5;
             p.vx = Math.cos(p.angle) * speed;
             p.vy = Math.sin(p.angle) * speed;
             p.alive = true;
@@ -6067,20 +6819,17 @@ window.onWorldSnapshotReceived = (snapshot) => {
             if (!seenIds.has(id)) {
                 if (
                     p?.alive &&
+                    p.type === 'rocket' &&
                     p.x >= 0 &&
                     p.x <= (GAME_STATE.hostW || W || 1512) &&
                     p.y >= 0 &&
                     p.y <= (GAME_STATE.hostH || H || 900)
                 ) {
-                    if (p.type === 'rocket') {
-                        spawnHitParticles(p.x, p.y, '#ffaa00', 4);
-                        if (typeof MineExplosion !== 'undefined') {
-                            const r = p.blastRadius || 60;
-                            GAME_STATE.particles.push(
-                                new MineExplosion(p.x, p.y, r, nowTime, null, true),
-                            );
-                        }
-                    }
+                    // Sparks only — MineExplosion arrives via netVfxEvents
+                    spawnHitParticles(p.x, p.y, '#ffaa00', 4);
+                }
+                if (p?.type === 'fire_ring' && p.mineRing) {
+                    clientOmittedMineRingIds.add(id);
                 }
                 clientProjectileCache.delete(id);
             }
@@ -6269,9 +7018,14 @@ window.onWorldSnapshotReceived = (snapshot) => {
         const seenTurretIds = new Set();
         const activeTurrets = [];
         for (const st of snapshot.turrets) {
-            seenTurretIds.add(st.id);
             let turret = clientTurretCache.get(st.id);
-            const owner = GAME_STATE.players[st.pi] || GAME_STATE.players[0];
+            // Owner/spawn time only arrive on first sight / refresh; wait for them if lost
+            if (!turret && st.pi === undefined) continue;
+            seenTurretIds.add(st.id);
+            const owner =
+                st.pi !== undefined
+                    ? GAME_STATE.players[st.pi] || GAME_STATE.players[0]
+                    : turret.player;
             if (owner) {
                 if (st.lw) owner.laserWallsEnabled = true;
                 if (st.sw) owner.slowWallsEnabled = true;
@@ -6296,7 +7050,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 turret.flameAngle = st.fa || 0;
             }
             turret.hp = st.hp;
-            turret.maxHp = st.mhp;
+            if (st.mhp !== undefined) turret.maxHp = st.mhp;
             turret.isFlamethrower = st.fl === 1;
             turret.flameActiveUntil = st.faU || 0;
             turret.flameCenterAngle = st.fcA || 0;
@@ -6384,6 +7138,9 @@ window.onWorldSnapshotReceived = (snapshot) => {
                             sh.st || nowTime,
                         );
                         hazard.spawnTime = sh.st || nowTime;
+                        if (sh.at !== undefined) {
+                            hazard.attractsEnemies = !!sh.at;
+                        }
                         if (sh.tr) hazard.triggeredTime = nowTime;
                         break;
                     case 'mine_explosion':
@@ -6393,6 +7150,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
                             sh.r,
                             sh.st || nowTime,
                             owner,
+                            true, // fromNetwork — SFX via netSoundEvents
                         );
                         hazard.spawnTime = sh.st || nowTime;
                         break;
@@ -6402,6 +7160,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
                             sh.y,
                             sh.r,
                             sh.st || nowTime,
+                            true, // fromNetwork — SFX via netSoundEvents
                         );
                         hazard.spawnTime = sh.st || nowTime;
                         break;
@@ -6502,6 +7261,29 @@ window.onWorldSnapshotReceived = (snapshot) => {
                             sh.lt || sh.st + 1500,
                         );
                         hazard.spawnTime = sh.st || nowTime;
+                        // Launch plume (host fires this with each round)
+                        if (
+                            GAME_STATE.particles &&
+                            typeof Particle !== 'undefined'
+                        ) {
+                            for (let i = 0; i < 16; i++) {
+                                const ang =
+                                    -Math.PI / 2 + (Math.random() - 0.5) * 1.4;
+                                const spd = 3.0 + Math.random() * 4.0;
+                                GAME_STATE.particles.push(
+                                    new Particle(
+                                        sh.x,
+                                        sh.y,
+                                        Math.cos(ang) * spd,
+                                        Math.sin(ang) * spd,
+                                        Math.random() < 0.5
+                                            ? '#76ff03'
+                                            : '#00e676',
+                                        450,
+                                    ),
+                                );
+                            }
+                        }
                         break;
                     case 'acid_pool':
                         hazard = new AcidPoolHazard(
@@ -6521,6 +7303,29 @@ window.onWorldSnapshotReceived = (snapshot) => {
                             sh.st || nowTime,
                         );
                         hazard.spawnTime = sh.st || nowTime;
+                        if (
+                            GAME_STATE.particles &&
+                            typeof Particle !== 'undefined'
+                        ) {
+                            for (let i = 0; i < 65; i++) {
+                                const a = Math.random() * Math.PI * 2;
+                                const spd = 3.5 + Math.random() * 6.5;
+                                GAME_STATE.particles.push(
+                                    new Particle(
+                                        sh.x,
+                                        sh.y,
+                                        Math.cos(a) * spd,
+                                        Math.sin(a) * spd,
+                                        Math.random() < 0.4
+                                            ? '#ffffff'
+                                            : Math.random() < 0.7
+                                              ? '#ddd6fe'
+                                              : '#a855f7',
+                                        550,
+                                    ),
+                                );
+                            }
+                        }
                         break;
                     case 'black_hole':
                         hazard = new BlackHolePull(
@@ -6530,6 +7335,33 @@ window.onWorldSnapshotReceived = (snapshot) => {
                             sh.st || nowTime,
                         );
                         hazard.spawnTime = sh.st || nowTime;
+                        if (
+                            GAME_STATE.particles &&
+                            typeof Particle !== 'undefined'
+                        ) {
+                            for (let i = 0; i < 65; i++) {
+                                const a = Math.random() * Math.PI * 2;
+                                const spawnDist =
+                                    (sh.r || 80) * (0.35 + Math.random() * 0.65);
+                                const px = sh.x + Math.cos(a) * spawnDist;
+                                const py = sh.y + Math.sin(a) * spawnDist;
+                                const spd = (spawnDist / 320) * 8.5;
+                                GAME_STATE.particles.push(
+                                    new Particle(
+                                        px,
+                                        py,
+                                        -Math.cos(a) * spd,
+                                        -Math.sin(a) * spd,
+                                        Math.random() < 0.5
+                                            ? '#d500f9'
+                                            : Math.random() < 0.8
+                                              ? '#a855f7'
+                                              : '#7c4dff',
+                                        500,
+                                    ),
+                                );
+                            }
+                        }
                         break;
                     default:
                         hazard = {
@@ -6902,6 +7734,145 @@ function interpolateNetworkWorld(renderTime, dtFactor = 1.0) {
                 turret.y = stB.y;
                 if (stB.a !== undefined) turret.angle = stB.a;
                 if (stB.fa !== undefined) turret.flameAngle = stB.fa;
+            }
+        }
+    }
+
+    // Client-only visual prediction (no bandwidth): tongue tips, remote dash trails
+    advanceClientCombatVisuals(dtFactor);
+}
+
+function advanceClientCombatVisuals(dtFactor = 1.0) {
+    if (typeof clientEnemyCache === 'undefined') return;
+    const df = Number.isFinite(dtFactor) ? dtFactor : 1.0;
+
+    for (const e of clientEnemyCache.values()) {
+        if (!e) continue;
+
+        if (
+            (e.viperState === 'tongue_firing' ||
+                e.behemothState === 'tongue_firing') &&
+            e.tongueActive &&
+            !e.heldPlayer
+        ) {
+            const tdx = (e.tongueTargetX || e.x) - e.tongueTipX;
+            const tdy = (e.tongueTargetY || e.y) - e.tongueTipY;
+            const tdist = Math.hypot(tdx, tdy);
+            const step = (e.tongueSpeed || 11) * df;
+            if (tdist > 0.001) {
+                const moveDist = Math.min(step, tdist);
+                e.tongueTipX += (tdx / tdist) * moveDist;
+                e.tongueTipY += (tdy / tdist) * moveDist;
+                e.tongueHeadX = e.tongueTipX;
+                e.tongueHeadY = e.tongueTipY;
+            }
+        } else if (
+            e.behemothState === 'tongue_dragging_player' &&
+            e.heldPlayer
+        ) {
+            e.tongueTipX = e.heldPlayer.x;
+            e.tongueTipY = e.heldPlayer.y;
+        } else if (
+            e.behemothState === 'tongue_dragging_wall' &&
+            e.wallPieceX !== undefined
+        ) {
+            const wdx = e.x - e.wallPieceX;
+            const wdy = e.y - e.wallPieceY;
+            const wdist = Math.hypot(wdx, wdy);
+            const dragSpeed = 11.5 * df;
+            if (wdist > 0.001) {
+                const step = Math.min(dragSpeed, wdist);
+                e.wallPieceX += (wdx / wdist) * step;
+                e.wallPieceY += (wdy / wdist) * step;
+                e.tongueTipX = e.wallPieceX;
+                e.tongueTipY = e.wallPieceY;
+            }
+        } else if (
+            e.behemothState === 'trample_charging' &&
+            typeof GAME_STATE !== 'undefined' &&
+            GAME_STATE.particles &&
+            typeof Particle !== 'undefined'
+        ) {
+            const a =
+                (e.chargeAngle || e.facingAngle || 0) +
+                Math.PI +
+                (Math.random() - 0.5) * 1.2;
+            const ps = 2.0 + Math.random() * 3.0;
+            GAME_STATE.particles.push(
+                new Particle(
+                    e.x,
+                    e.y,
+                    Math.cos(a) * ps,
+                    Math.sin(a) * ps,
+                    Math.random() < 0.5 ? '#ff1744' : '#76ff03',
+                    300,
+                ),
+            );
+        } else if (
+            e.behemothState === 'mortar_firing' &&
+            typeof GAME_STATE !== 'undefined' &&
+            GAME_STATE.particles &&
+            typeof Particle !== 'undefined' &&
+            Math.random() < 0.6
+        ) {
+            const a = Math.random() * Math.PI * 2;
+            const spd = 1.0 + Math.random() * 2.5;
+            GAME_STATE.particles.push(
+                new Particle(
+                    e.x + Math.cos(a) * 25,
+                    e.y + Math.sin(a) * 25,
+                    Math.cos(a) * spd,
+                    -1.8 - Math.random() * 2.2,
+                    Math.random() < 0.7 ? '#76ff03' : '#aeea00',
+                    400,
+                ),
+            );
+        }
+    }
+
+    // Acid pool ambient vapor (never call hazard.update — that deals damage)
+    if (
+        typeof GAME_STATE !== 'undefined' &&
+        GAME_STATE.hazards &&
+        GAME_STATE.particles &&
+        typeof Particle !== 'undefined' &&
+        typeof AcidPoolHazard !== 'undefined'
+    ) {
+        for (let i = 0; i < GAME_STATE.hazards.length; i++) {
+            const h = GAME_STATE.hazards[i];
+            if (!(h instanceof AcidPoolHazard)) continue;
+            if (Math.random() >= 0.25) continue;
+            const ang = Math.random() * Math.PI * 2;
+            const d = Math.random() * (h.r || 40) * 0.8;
+            GAME_STATE.particles.push(
+                new Particle(
+                    h.x + Math.cos(ang) * d,
+                    h.y + Math.sin(ang) * d,
+                    (Math.random() - 0.5) * 0.4,
+                    -0.6 - Math.random() * 0.8,
+                    Math.random() < 0.5 ? '#76ff03' : '#aeea00',
+                    350,
+                ),
+            );
+        }
+    }
+
+    // Remote dash trails (local player already spawns these in update)
+    if (
+        typeof GAME_STATE !== 'undefined' &&
+        GAME_STATE.players &&
+        typeof netManager !== 'undefined' &&
+        netManager &&
+        typeof Particle !== 'undefined'
+    ) {
+        const now =
+            typeof gameClock !== 'undefined' ? gameClock : performance.now();
+        for (const p of GAME_STATE.players) {
+            if (!p || p.index === netManager.localPlayerIndex) continue;
+            if (p.dashing && p.dashUntil && now < p.dashUntil) {
+                GAME_STATE.particles.push(
+                    new Particle(p.x, p.y, 0, 0, p.color, 180),
+                );
             }
         }
     }

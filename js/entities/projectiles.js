@@ -164,6 +164,8 @@ class RocketProjectile extends Projectile {
                     const decay = Math.pow(0.9, dtFactor);
                     this.vx = this.vx * decay + tx * (1 - decay);
                     this.vy = this.vy * decay + ty * (1 - decay);
+                    // Keep angle in sync with velocity so net clients face correctly
+                    this.angle = Math.atan2(this.vy, this.vx);
                 }
 
                 // Explode exactly when reaching the target's body boundary
@@ -1660,6 +1662,7 @@ class ShrapnelProjectile extends Projectile {
     ) {
         super(x, y, vx, vy, damage, 1.0, player, ignoreEnemy, 800, now);
         this.kind = 'shrapnel';
+        this.type = isExplosive ? 'explosive_shrapnel' : 'shrapnel';
         this.isExplosive = isExplosive;
         this.aoeRadius = aoeRadius;
         this.sourceUnitType = sourceUnitType;

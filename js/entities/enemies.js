@@ -812,7 +812,11 @@ class MeteorEnemy extends Enemy {
         this.fallHeight = 340;
         this.blastDamage = 20;
         this.blastRadius = 80;
-        SoundEngine.meteorFall(this.fallDuration / 1000);
+        // Clients reconstruct via Enemy.create — play locally so duration matches fall;
+        // meteorFall is intentionally not host-wrapped (see NET_SOUND_CTOR_LOCAL).
+        if (typeof SoundEngine !== 'undefined' && SoundEngine.meteorFall) {
+            SoundEngine.meteorFall(this.fallDuration / 1000);
+        }
     }
 
     land(now) {
@@ -4066,27 +4070,16 @@ class OctopusBoss extends BossEnemy {
                     t.startY = this.y;
                     t.endX = this.x + Math.cos(t.angle) * t.length;
                     t.endY = this.y + Math.sin(t.angle) * t.length;
+                    // Advance tentacle visuals only — SFX arrive via host netSoundEvents
                     if (t.state === 'telegraph') {
                         if (now >= t.timer) {
                             t.state = 'lashing';
                             t.timer = now + 350;
                             t.lashStartTime = now;
-                            if (
-                                typeof SoundEngine !== 'undefined' &&
-                                SoundEngine.tentacleLash
-                            ) {
-                                SoundEngine.tentacleLash();
-                            }
                         }
                     } else if (t.state === 'lashing') {
                         if (now >= t.timer) {
                             t.state = 'done';
-                            if (
-                                typeof SoundEngine !== 'undefined' &&
-                                SoundEngine.flailHit
-                            ) {
-                                SoundEngine.flailHit(2);
-                            }
                         }
                     }
                 }

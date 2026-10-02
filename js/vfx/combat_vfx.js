@@ -173,7 +173,9 @@ class MineExplosion extends ExplosionVFX {
     ) {
         super(x, y, r, 300, now);
         this.player = player;
+        // Host wrap broadcasts mineExplosion; skip on networked spawn to avoid double-play
         if (
+            !fromNetwork &&
             typeof SoundEngine !== 'undefined' &&
             SoundEngine &&
             typeof SoundEngine.mineExplosion === 'function'
@@ -285,7 +287,9 @@ class NukeExplosion extends ExplosionVFX {
         fromNetwork = false,
     ) {
         super(x, y, r, 320, now);
+        // Host wrap broadcasts nukeExplosion; skip on networked spawn to avoid double-play
         if (
+            !fromNetwork &&
             typeof SoundEngine !== 'undefined' &&
             SoundEngine &&
             typeof SoundEngine.nukeExplosion === 'function'

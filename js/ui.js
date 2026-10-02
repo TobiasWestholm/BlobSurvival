@@ -1141,7 +1141,13 @@ function startCountdown(isNewGame = false) {
                     lastFrameTime = performance.now();
                 }
                 if (GAME_STATE.players?.some((p) => p?.campervanSoundPending)) {
+                    const isOnlineClient =
+                        GAME_STATE.gameMode === 'online' &&
+                        typeof netManager !== 'undefined' &&
+                        netManager?.isClient;
+                    // Host plays (and broadcasts); clients hear via netSoundEvents
                     if (
+                        !isOnlineClient &&
                         typeof SoundEngine !== 'undefined' &&
                         SoundEngine.campervan
                     ) {
