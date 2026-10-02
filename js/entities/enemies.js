@@ -329,16 +329,11 @@ class Enemy extends Unit {
             let provokedBestD2 = Infinity;
             if (
                 GAME_STATE.players.some(
-                    (p) =>
-                        p?.isTargetable() &&
-                        p.martyrsPresenceEnabled,
+                    (p) => p?.isTargetable() && p.martyrsPresenceEnabled,
                 )
             ) {
                 for (const p of GAME_STATE.players) {
-                    if (
-                        !p?.isTargetable() ||
-                        !p.martyrsPresenceEnabled
-                    )
+                    if (!p?.isTargetable() || !p.martyrsPresenceEnabled)
                         continue;
                     const dx = p.x - this.x,
                         dy = p.y - this.y;
@@ -466,7 +461,10 @@ class Enemy extends Unit {
         }
         if (this.updateKnockbackAirborne(now)) return;
         if (this.airborne) {
-            if (now >= (this['landAt'] || 0) && typeof this['land'] === 'function')
+            if (
+                now >= (this['landAt'] || 0) &&
+                typeof this['land'] === 'function'
+            )
                 this['land'](now);
             return;
         }
@@ -2114,8 +2112,8 @@ class MedivacEnemy extends Enemy {
 
         if (this.healTargets && this.healTargets.length > 0) {
             // Stand still — decelerate smoothly
-            this.vx *= Math.pow(0.85, dtFactor);
-            this.vy *= Math.pow(0.85, dtFactor);
+            this.vx *= 0.85 ** dtFactor;
+            this.vy *= 0.85 ** dtFactor;
             // Heal tick: apply to all active targets
             if (now >= this.nextHealTick) {
                 this.nextHealTick = now + this.healTickMs;
@@ -2164,8 +2162,8 @@ class MedivacEnemy extends Enemy {
             const ny = ed > 0.001 ? exdy / ed : 0;
             const followDist = closestMonster.r + this.r + 15;
             if (ed < followDist) {
-                this.vx *= Math.pow(0.88, dtFactor);
-                this.vy *= Math.pow(0.88, dtFactor);
+                this.vx *= 0.88 ** dtFactor;
+                this.vy *= 0.88 ** dtFactor;
             } else {
                 const isFrozen = this.isPhase2Unit() && now < this.frozenUntil;
                 const effAccel = isFrozen ? this.accel * 0.5 : this.accel;
@@ -2180,8 +2178,8 @@ class MedivacEnemy extends Enemy {
             }
         } else {
             // No monsters anywhere — idle friction
-            this.vx *= Math.pow(0.95, dtFactor);
-            this.vy *= Math.pow(0.95, dtFactor);
+            this.vx *= 0.95 ** dtFactor;
+            this.vy *= 0.95 ** dtFactor;
         }
 
         this.x += this.vx * dtFactor;
@@ -3080,8 +3078,8 @@ class ViperEnemy extends Enemy {
                 }
 
                 // Viper stays in place as long as player is grabbed
-                this.vx *= Math.pow(0.85, dtFactor);
-                this.vy *= Math.pow(0.85, dtFactor);
+                this.vx *= 0.85 ** dtFactor;
+                this.vy *= 0.85 ** dtFactor;
                 this.x += this.vx * dtFactor;
                 this.y += this.vy * dtFactor;
                 this.x = Math.max(30, Math.min(W - 30, this.x));
@@ -3149,8 +3147,8 @@ class ViperEnemy extends Enemy {
             }
 
             // Stays in place while shooting tongue
-            this.vx *= Math.pow(0.85, dtFactor);
-            this.vy *= Math.pow(0.85, dtFactor);
+            this.vx *= 0.85 ** dtFactor;
+            this.vy *= 0.85 ** dtFactor;
             this.x += this.vx * dtFactor;
             this.y += this.vy * dtFactor;
             this.x = Math.max(30, Math.min(W - 30, this.x));
@@ -3198,8 +3196,8 @@ class ViperEnemy extends Enemy {
                 GAME_STATE.attractingVipers.push(this);
             }
             // Viper is stopped in place
-            this.vx *= Math.pow(0.85, dtFactor);
-            this.vy *= Math.pow(0.85, dtFactor);
+            this.vx *= 0.85 ** dtFactor;
+            this.vy *= 0.85 ** dtFactor;
             this.x += this.vx * dtFactor;
             this.y += this.vy * dtFactor;
             this.x = Math.max(30, Math.min(W - 30, this.x));
@@ -4083,7 +4081,9 @@ class OctopusBoss extends BossEnemy {
                         }
                     }
                 }
-                this.tentacles = this.tentacles.filter((t) => t.state !== 'done');
+                this.tentacles = this.tentacles.filter(
+                    (t) => t.state !== 'done',
+                );
             }
 
             // Draw tentacle states
@@ -4170,7 +4170,10 @@ class FelhoundBoss extends BossEnemy {
         }
 
         // --- Targeting: pick closest alive player, re-evaluate every 2s ---
-        if (!this.targetPlayer?.isTargetable() || now >= this.retargetCooldown) {
+        if (
+            !this.targetPlayer?.isTargetable() ||
+            now >= this.retargetCooldown
+        ) {
             let bestDist = Infinity,
                 bestPlayer = null;
             for (const p of GAME_STATE.players) {
@@ -4341,14 +4344,9 @@ class FelhoundBoss extends BossEnemy {
             // Wave progress for visual escalation
             const WAVE_DURATION = 120000;
             const bossStart =
-                GAME_STATE.activeBossStartTime ||
-                GAME_STATE.bossLvl3Start ||
-                0;
+                GAME_STATE.activeBossStartTime || GAME_STATE.bossLvl3Start || 0;
             const waveFrac = bossStart
-                ? Math.min(
-                      1,
-                      Math.max(0, now - bossStart) / WAVE_DURATION,
-                  )
+                ? Math.min(1, Math.max(0, now - bossStart) / WAVE_DURATION)
                 : 0;
 
             // Pulsing outer aura — brighter and more frantic as wave progresses
@@ -4645,7 +4643,9 @@ class BehemothBoss extends BossEnemy {
 
     launchBileMortars(now) {
         // Launches 12 acid mortar pods with broad spread across players and arena
-        const alivePlayers = GAME_STATE.players.filter((p) => p?.isTargetable());
+        const alivePlayers = GAME_STATE.players.filter((p) =>
+            p?.isTargetable(),
+        );
         if (alivePlayers.length === 0) return;
 
         const podCount = 12;
@@ -4886,7 +4886,10 @@ class BehemothBoss extends BossEnemy {
                     if (e !== this) {
                         e.hp = 0;
                         e.alive = false;
-                        if (e._nid && typeof queueNetworkEnemyDeath === 'function') {
+                        if (
+                            e._nid &&
+                            typeof queueNetworkEnemyDeath === 'function'
+                        ) {
                             queueNetworkEnemyDeath(e._nid);
                         }
                         spawnHitParticles(e.x, e.y, '#76ff03');
@@ -4963,7 +4966,7 @@ class BehemothBoss extends BossEnemy {
                 return;
             } else if (now >= this.nextChargeReady && d >= 220) {
                 this.behemothState = 'charge_windup';
-                this.chargeWindupDuration = 300 * Math.pow(warnMult, 2);
+                this.chargeWindupDuration = 300 * warnMult ** 2;
                 this.stateTimer = now + this.chargeWindupDuration;
                 this.chargeAngle = targetAngle;
                 this.nextChargeReady = now + 16000 + Math.random() * 4000;
