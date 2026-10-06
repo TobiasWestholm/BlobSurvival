@@ -463,6 +463,7 @@ class TurretEntity extends Unit {
                     let strongest = null;
                     let highestMaxHp = -999999;
                     let minD2 = Infinity;
+                    // Global strongest-target pick (map-wide by design — spatial grid not suitable)
                     for (const e of GAME_STATE.enemies) {
                         if (!isTargetable(e)) continue;
                         const dx = e.x - this.x;

@@ -429,22 +429,20 @@ function draw(now) {
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, W, H);
 
-    // subtle grid
+    // subtle grid (single path / single stroke)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
     ctx.lineWidth = 1;
     const grid = 80;
+    ctx.beginPath();
     for (let x = 0; x < W; x += grid) {
-        ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, H);
-        ctx.stroke();
     }
     for (let y = 0; y < H; y += grid) {
-        ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(W, y);
-        ctx.stroke();
     }
+    ctx.stroke();
 
     // Draw Smokey Teal Host Battlefield Border
     drawBattlefieldBorder(now);

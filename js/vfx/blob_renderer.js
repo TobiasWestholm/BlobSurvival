@@ -57,7 +57,28 @@ function drawOrganicBlobPath(
     laserSnailDeform = null,
 ) {
     const segments = 32;
-    const cacheKey = `${centerX.toFixed(1)}_${centerY.toFixed(1)}_${radius.toFixed(1)}_${now.toFixed(1)}_${facingAngle.toFixed(2)}_${moveSpeed.toFixed(2)}`;
+    // Include deform/bud state so a still blob mid-animation never reuses a stale path
+    const dPart = (d, keys) => {
+        if (!d) return '0';
+        return keys.map((k) => Number(d[k] || 0).toFixed(2)).join('_');
+    };
+    const budPart = buds?.length
+        ? buds
+              .map(
+                  (b) =>
+                      `${(b.angle || 0).toFixed(2)}_${(b.time || 0).toFixed(0)}`,
+              )
+              .join(';')
+        : '0';
+    const rootPart = deflectorRoots?.length
+        ? deflectorRoots
+              .map(
+                  (r) =>
+                      `${(r.angle || 0).toFixed(2)}_${(r.growth || 0).toFixed(2)}`,
+              )
+              .join(';')
+        : '0';
+    const cacheKey = `${centerX.toFixed(1)}_${centerY.toFixed(1)}_${radius.toFixed(1)}_${now.toFixed(1)}_${facingAngle.toFixed(2)}_${moveSpeed.toFixed(2)}_${budPart}_${dPart(pseudopod, ['angle', 'reach'])}_${dPart(flagellum, ['angle', 'tension'])}_${dPart(sniperDeform, ['angle', 'intensity'])}_${dPart(hatchDeform, ['angle', 'intensity'])}_${dPart(sledgeDeform, ['angle', 'intensity'])}_${dPart(mineLaunchDeform, ['angle', 'intensity'])}_${dPart(rocketDeform, ['angle', 'intensity'])}_${dPart(dashLaunchDeform, ['angle', 'intensity'])}_${dPart(laserSnailDeform, ['facingAngle', 'intensity'])}_${rootPart}`;
     let points;
 
     if (_blobPathCache.key === cacheKey) {

@@ -918,95 +918,101 @@ class PlayerFlail extends Weapon {
             const flailMinY = Math.min(this.player.y, this.y) - this.r - 35;
             const flailMaxY = Math.max(this.player.y, this.y) + this.r + 35;
 
-            for (const e of GAME_STATE.enemies) {
-                if (!isDamageable(e)) continue;
-                if (
-                    e.x < flailMinX ||
-                    e.x > flailMaxX ||
-                    e.y < flailMinY ||
-                    e.y > flailMaxY
-                )
-                    continue;
+            SPATIAL_GRID.queryBox(
+                flailMinX,
+                flailMaxX,
+                flailMinY,
+                flailMaxY,
+                (e) => {
+                    if (!isDamageable(e)) return;
 
-                // A. Check ball collision
-                const edx = e.x - this.x;
-                const edy = e.y - this.y;
-                const touchBall = this.r + e.r;
-                if (edx * edx + edy * edy < touchBall * touchBall) {
-                    const nextHit = this.hitCooldown.get(e) || 0;
-                    if (now >= nextHit) {
-                        e.hp -= dmg;
-                        const cd = Math.max(75, 240 - speed * 12);
-                        this.hitCooldown.set(e, now + cd);
-                        if (typeof spawnHitParticles === 'function') {
-                            spawnHitParticles(e.x, e.y, this.player.color);
-                        }
-                        if (
-                            typeof SoundEngine !== 'undefined' &&
-                            SoundEngine &&
-                            SoundEngine.flailHit
-                        ) {
-                            SoundEngine.flailHit(speed);
-                        }
+                    // A. Check ball collision
+                    const edx = e.x - this.x;
+                    const edy = e.y - this.y;
+                    const touchBall = this.r + e.r;
+                    if (edx * edx + edy * edy < touchBall * touchBall) {
+                        const nextHit = this.hitCooldown.get(e) || 0;
+                        if (now >= nextHit) {
+                            e.hp -= dmg;
+                            const cd = Math.max(75, 240 - speed * 12);
+                            this.hitCooldown.set(e, now + cd);
+                            if (typeof spawnHitParticles === 'function') {
+                                spawnHitParticles(e.x, e.y, this.player.color);
+                            }
+                            if (
+                                typeof SoundEngine !== 'undefined' &&
+                                SoundEngine &&
+                                SoundEngine.flailHit
+                            ) {
+                                SoundEngine.flailHit(speed);
+                            }
 
-                        if (
-                            this.player.freezeEnabled &&
-                            speed >= 5.0 &&
-                            !e.isBoss()
-                        ) {
-                            const baseDur = this.player.cryoMineBuffed ? 500 : 250;
-                            const speedScale = this.player.cryoMineBuffed
-                                ? 200
-                                : 100;
-                            const dur = baseDur + (speed - 5.0) * speedScale;
-                            e.freeze(dur, now);
+                            if (
+                                this.player.freezeEnabled &&
+                                speed >= 5.0 &&
+                                !e.isBoss()
+                            ) {
+                                const baseDur = this.player.cryoMineBuffed
+                                    ? 500
+                                    : 250;
+                                const speedScale = this.player.cryoMineBuffed
+                                    ? 200
+                                    : 100;
+                                const dur =
+                                    baseDur + (speed - 5.0) * speedScale;
+                                e.freeze(dur, now);
+                            }
+                        }
+                        return; // Skip chain collision check if ball hit registered
+                    }
+
+                    // B. Check chain segment collision
+                    const ax = this.player.x;
+                    const ay = this.player.y;
+                    const bx = this.x;
+                    const by = this.y;
+                    const cx = e.x;
+                    const cy = e.y;
+
+                    const abx = bx - ax;
+                    const aby = by - ay;
+                    const acx = cx - ax;
+                    const acy = cy - ay;
+
+                    const abLen2 = abx * abx + aby * aby;
+                    let t = 0;
+                    if (abLen2 > 0.01) {
+                        t = (acx * abx + acy * aby) / abLen2;
+                        t = Math.max(0, Math.min(1, t));
+                    }
+
+                    const closestX = ax + t * abx;
+                    const closestY = ay + t * aby;
+                    const cdx = cx - closestX;
+                    const cdy = cy - closestY;
+                    const dist2 = cdx * cdx + cdy * cdy;
+                    const touchChain = e.r + 4; // chain link radius is 4
+
+                    if (dist2 < touchChain * touchChain) {
+                        const nextChainHit = this.chainHitCooldown.get(e) || 0;
+                        if (now >= nextChainHit) {
+                            e.hp -= chainDmg;
+                            const cd = Math.max(75, 240 - speed * 12);
+                            this.chainHitCooldown.set(e, now + cd);
+                            if (
+                                Math.random() < 0.3 &&
+                                typeof spawnHitParticles === 'function'
+                            ) {
+                                spawnHitParticles(
+                                    closestX,
+                                    closestY,
+                                    '#b0b5bc',
+                                );
+                            }
                         }
                     }
-                    continue; // Skip chain collision check if ball hit registered
-                }
-
-                // B. Check chain segment collision
-                const ax = this.player.x;
-                const ay = this.player.y;
-                const bx = this.x;
-                const by = this.y;
-                const cx = e.x;
-                const cy = e.y;
-
-                const abx = bx - ax;
-                const aby = by - ay;
-                const acx = cx - ax;
-                const acy = cy - ay;
-
-                const abLen2 = abx * abx + aby * aby;
-                let t = 0;
-                if (abLen2 > 0.01) {
-                    t = (acx * abx + acy * aby) / abLen2;
-                    t = Math.max(0, Math.min(1, t));
-                }
-
-                const closestX = ax + t * abx;
-                const closestY = ay + t * aby;
-                const cdx = cx - closestX;
-                const cdy = cy - closestY;
-                const dist2 = cdx * cdx + cdy * cdy;
-                const touchChain = e.r + 4; // chain link radius is 4
-
-                if (dist2 < touchChain * touchChain) {
-                    const nextChainHit = this.chainHitCooldown.get(e) || 0;
-                    if (now >= nextChainHit) {
-                        e.hp -= chainDmg;
-                        const cd = Math.max(75, 240 - speed * 12);
-                        this.chainHitCooldown.set(e, now + cd);
-                        if (
-                            Math.random() < 0.3 &&
-                            typeof spawnHitParticles === 'function'
-                        ) {
-                            spawnHitParticles(closestX, closestY, '#b0b5bc');
-                        }
-                    }
-                }
-            }
+                },
+            );
         }
     }
 
@@ -1322,8 +1328,8 @@ function fireInstantMissile(
         ),
     );
 
-    // Record organic budding membrane ripple on player blob
-    if (player) {
+    // Bud ripple only for player-body shots (not turret muzzles)
+    if (player && !sourceTurret) {
         player.mitosisBuds = player.mitosisBuds || [];
         player.mitosisBuds.push({
             angle: shootAngle,
@@ -1395,23 +1401,34 @@ function fireInstantMissile(
         );
         let totalClusterDmg = 0;
         const clusterHitEnemies = [];
-        for (const e of GAME_STATE.enemies) {
-            if (!isDamageable(e)) continue;
-            const dx = e.x - edgeX;
-            const dy = e.y - edgeY;
-            if (dx * dx + dy * dy <= (aoeRadius + e.r) * (aoeRadius + e.r)) {
-                e.hp -= dmg;
-                totalClusterDmg += dmg;
-                clusterHitEnemies.push(e);
-                if (player?.freezeEnabled && !e.isBoss()) {
-                    let dur = e.type === 'meteor' ? 125 : 250;
-                    if (player.cryoMineBuffed)
-                        dur *=
-                            1 + GAME_CONFIG.UPGRADES.CRYO_MINE_BOOST_PCT / 100;
-                    e.freeze(dur, now);
+        const clusterPad = aoeRadius + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+        SPATIAL_GRID.queryBox(
+            edgeX - clusterPad,
+            edgeX + clusterPad,
+            edgeY - clusterPad,
+            edgeY + clusterPad,
+            (e) => {
+                if (!isDamageable(e)) return;
+                const dx = e.x - edgeX;
+                const dy = e.y - edgeY;
+                if (
+                    dx * dx + dy * dy <=
+                    (aoeRadius + e.r) * (aoeRadius + e.r)
+                ) {
+                    e.hp -= dmg;
+                    totalClusterDmg += dmg;
+                    clusterHitEnemies.push(e);
+                    if (player?.freezeEnabled && !e.isBoss()) {
+                        let dur = e.type === 'meteor' ? 125 : 250;
+                        if (player.cryoMineBuffed)
+                            dur *=
+                                1 +
+                                GAME_CONFIG.UPGRADES.CRYO_MINE_BOOST_PCT / 100;
+                        e.freeze(dur, now);
+                    }
                 }
-            }
-        }
+            },
+        );
         if (
             player?.explosionHealEnabled &&
             typeof applyExplosionHealing === 'function'
@@ -1499,18 +1516,25 @@ function fireInstantMissile(
 // ---------------- Laser Fences Network Update Helper ----------------
 
 function updateLaserFences(dt, now) {
-    // 1. Fast reset inLaserFence on all active enemies
-    const enemies = GAME_STATE.enemies;
-    const numEnemies = enemies.length;
-    for (let i = 0; i < numEnemies; i++) {
-        enemies[i].inLaserFence = false;
+    // Advance stamp every frame so prior fence tags expire without an O(n) clear
+    if (typeof SPATIAL_GRID !== 'undefined') {
+        SPATIAL_GRID.laserFenceStamp =
+            (SPATIAL_GRID.laserFenceStamp + 1) | 0;
+        if (SPATIAL_GRID.laserFenceStamp > 1000000000) {
+            SPATIAL_GRID.laserFenceStamp = 1;
+        }
     }
 
     const turrets = GAME_STATE.turrets;
-    const numTurrets = turrets.length;
-    if (numTurrets === 0 || numEnemies === 0) return;
+    const numTurrets = turrets ? turrets.length : 0;
+    if (
+        numTurrets === 0 ||
+        !GAME_STATE.enemies ||
+        GAME_STATE.enemies.length === 0
+    )
+        return;
 
-    // 2. Collect unique active laser fence segments
+    // Collect unique active laser fence segments
     const segments = [];
     for (let i = 0; i < numTurrets; i++) {
         const tur = turrets[i];
@@ -1567,8 +1591,9 @@ function updateLaserFences(dt, now) {
     const numSegments = segments.length;
     if (numSegments === 0) return;
 
-    // 3. Process enemies against active segments with bounding-box pre-filtering
     const fenceRadius = 14;
+    const fenceStamp =
+        typeof SPATIAL_GRID !== 'undefined' ? SPATIAL_GRID.laserFenceStamp : 0;
     for (let s = 0; s < numSegments; s++) {
         const seg = segments[s];
         const {
@@ -1585,10 +1610,8 @@ function updateLaserFences(dt, now) {
             isDamaging,
         } = seg;
 
-        for (let i = 0; i < numEnemies; i++) {
-            const e = enemies[i];
-            if (e.hp <= 0 || e['burrowed'] || e.airborne) continue;
-            if (e.x < minX || e.x > maxX || e.y < minY || e.y > maxY) continue;
+        SPATIAL_GRID.queryBox(minX, maxX, minY, maxY, (e) => {
+            if (e.hp <= 0 || e['burrowed'] || e.airborne) return;
 
             let t = ((e.x - x0) * dx + (e.y - y0) * dy) * invLen2;
             if (t < 0) t = 0;
@@ -1601,6 +1624,7 @@ function updateLaserFences(dt, now) {
 
             if (edx * edx + edy * edy < hitR * hitR) {
                 if (!e.isBoss()) {
+                    e._laserFenceStamp = fenceStamp;
                     e.inLaserFence = true;
                 }
                 if (isDamaging && dmgThisFrame > 0) {
@@ -1616,7 +1640,7 @@ function updateLaserFences(dt, now) {
                     }
                 }
             }
-        }
+        });
     }
 }
 

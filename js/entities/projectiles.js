@@ -131,28 +131,38 @@ class RocketProjectile extends Projectile {
                 this.rocketStage = 1;
             }
         } else {
-            // Homing: Seek closest enemy with highest maxhp inside range
+            // Homing: Seek strongest (highest maxHp) enemy inside range via spatial grid
             let strongest = null;
             let highestMaxHp = -99999;
             let targetD2 = Infinity;
             const r2 = this.homingRadius * this.homingRadius;
-            for (const e of GAME_STATE.enemies) {
-                if (!isTargetable(e)) continue;
-                const dx = e.x - this.x;
-                const dy = e.y - this.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 <= r2) {
-                    const enemyMaxHp = e.maxHp || e.hp;
-                    if (enemyMaxHp > highestMaxHp) {
-                        highestMaxHp = enemyMaxHp;
-                        targetD2 = d2;
-                        strongest = e;
-                    } else if (enemyMaxHp === highestMaxHp && d2 < targetD2) {
-                        targetD2 = d2;
-                        strongest = e;
+            const homePad = this.homingRadius + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+            SPATIAL_GRID.queryBox(
+                this.x - homePad,
+                this.x + homePad,
+                this.y - homePad,
+                this.y + homePad,
+                (e) => {
+                    if (!isTargetable(e)) return;
+                    const dx = e.x - this.x;
+                    const dy = e.y - this.y;
+                    const d2 = dx * dx + dy * dy;
+                    if (d2 <= r2) {
+                        const enemyMaxHp = e.maxHp || e.hp;
+                        if (enemyMaxHp > highestMaxHp) {
+                            highestMaxHp = enemyMaxHp;
+                            targetD2 = d2;
+                            strongest = e;
+                        } else if (
+                            enemyMaxHp === highestMaxHp &&
+                            d2 < targetD2
+                        ) {
+                            targetD2 = d2;
+                            strongest = e;
+                        }
                     }
-                }
-            }
+                },
+            );
 
             if (strongest) {
                 const dist = Math.sqrt(targetD2);
@@ -306,14 +316,21 @@ class RocketProjectile extends Projectile {
         );
         let totalRocketDmg = 0;
         const rocketHitEnemies = [];
-        for (const e of GAME_STATE.enemies) {
-            if (!isDamageable(e)) continue;
-            const dx = e.x - this.x;
-            const dy = e.y - this.y;
-            if (
-                dx * dx + dy * dy <=
-                (blastRadius + e.r) * (blastRadius + e.r)
-            ) {
+        const blastPad = blastRadius + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+        SPATIAL_GRID.queryBox(
+            this.x - blastPad,
+            this.x + blastPad,
+            this.y - blastPad,
+            this.y + blastPad,
+            (e) => {
+                if (!isDamageable(e)) return;
+                const dx = e.x - this.x;
+                const dy = e.y - this.y;
+                if (
+                    dx * dx + dy * dy >
+                    (blastRadius + e.r) * (blastRadius + e.r)
+                )
+                    return;
                 // If detonation occurred on a shield or wall, verify line of sight
                 if (hitObstacle) {
                     if (hitObstacle.isWallObstacle) {
@@ -329,7 +346,7 @@ class RocketProjectile extends Projectile {
                             hitObstacle.halfH || 22,
                             hitObstacle.angle || 0,
                         );
-                        if (hitCheck.hit) continue;
+                        if (hitCheck.hit) return;
                     } else {
                         const sX = hitObstacle.x,
                             sY = hitObstacle.y;
@@ -350,7 +367,7 @@ class RocketProjectile extends Projectile {
                             sFacing,
                             sHalfArc,
                         );
-                        if (hitCheck.hit) continue;
+                        if (hitCheck.hit) return;
                     }
                 }
                 e.hp -= dmg;
@@ -368,8 +385,8 @@ class RocketProjectile extends Projectile {
                     e.y,
                     this.player ? this.player.color : '#ff4400',
                 );
-            }
-        }
+            },
+        );
         applyExplosionHealing(
             this.x,
             this.y,
@@ -664,70 +681,73 @@ class SniperProjectile extends Projectile {
         const sMaxX = sX1 > sX2 ? sX1 : sX2;
         const sMinY = sY1 < sY2 ? sY1 : sY2;
         const sMaxY = sY1 > sY2 ? sY1 : sY2;
+        const segPad = this.r + SPATIAL_GRID.MAX_ENEMY_RADIUS;
 
-        for (let i = 0; i < GAME_STATE.enemies.length; i++) {
-            const e = GAME_STATE.enemies[i];
-            if (!isTargetable(e)) continue;
-            if (this.hitEnemies.has(e)) continue;
+        SPATIAL_GRID.queryBox(
+            sMinX - segPad,
+            sMaxX + segPad,
+            sMinY - segPad,
+            sMaxY + segPad,
+            (e) => {
+                if (!isTargetable(e)) return;
+                if (this.hitEnemies.has(e)) return;
 
-            const er = e.r + this.r;
-            if (
-                e.x < sMinX - er ||
-                e.x > sMaxX + er ||
-                e.y < sMinY - er ||
-                e.y > sMaxY + er
-            )
-                continue;
+                const er = e.r + this.r;
+                let distSq;
+                if (sLenSq === 0) {
+                    const dx = e.x - sX1,
+                        dy = e.y - sY1;
+                    distSq = dx * dx + dy * dy;
+                } else {
+                    const wx = e.x - sX1,
+                        wy = e.y - sY1;
+                    const t = (wx * sDxSeg + wy * sDySeg) / sLenSq;
+                    const tClamped = t < 0 ? 0 : t > 1 ? 1 : t;
+                    const px = sX1 + tClamped * sDxSeg,
+                        py = sY1 + tClamped * sDySeg;
+                    const ex = e.x - px,
+                        ey = e.y - py;
+                    distSq = ex * ex + ey * ey;
+                }
 
-            let distSq;
-            if (sLenSq === 0) {
-                const dx = e.x - sX1,
-                    dy = e.y - sY1;
-                distSq = dx * dx + dy * dy;
-            } else {
-                const wx = e.x - sX1,
-                    wy = e.y - sY1;
-                const t = (wx * sDxSeg + wy * sDySeg) / sLenSq;
-                const tClamped = t < 0 ? 0 : t > 1 ? 1 : t;
-                const px = sX1 + tClamped * sDxSeg,
-                    py = sY1 + tClamped * sDySeg;
-                const ex = e.x - px,
-                    ey = e.y - py;
-                distSq = ex * ex + ey * ey;
-            }
-
-            if (distSq <= er * er) {
-                // If the enemy itself is a shield bearer, check if hit is in front arc
-                if (e.type === 'shield_bearer') {
-                    const angleToHit = Math.atan2(prevY - e.y, prevX - e.x);
-                    let diff = Math.abs(angleToHit - (e.facingAngle || 0));
-                    while (diff > Math.PI) diff -= Math.PI * 2;
-                    diff = Math.abs(diff);
-                    if (diff <= (e.shieldHalfArc || Math.PI * 0.5)) {
-                        this.alive = false;
-                        spawnHitParticles(this.x, this.y, '#ff8f00');
-                        return;
+                if (distSq <= er * er) {
+                    // If the enemy itself is a shield bearer, check if hit is in front arc
+                    if (e.type === 'shield_bearer') {
+                        const angleToHit = Math.atan2(
+                            prevY - e.y,
+                            prevX - e.x,
+                        );
+                        let diff = Math.abs(
+                            angleToHit - (e.facingAngle || 0),
+                        );
+                        while (diff > Math.PI) diff -= Math.PI * 2;
+                        diff = Math.abs(diff);
+                        if (diff <= (e.shieldHalfArc || Math.PI * 0.5)) {
+                            this.alive = false;
+                            spawnHitParticles(this.x, this.y, '#ff8f00');
+                            return false; // early out of queryBox
+                        }
                     }
+                    this.hitEnemies.add(e);
+                    e.hp -= this.damage;
+                    if (
+                        this.player?.projectileLifedrainEnabled &&
+                        this.sourceUnitType === 'player'
+                    ) {
+                        this.player.heal(PROJECTILE_HEAL * this.damage);
+                        this.player.triggerLifestealVisual(e.x, e.y);
+                    }
+                    if (this.player?.freezeEnabled && !e.isBoss()) {
+                        const dur = e.type === 'meteor' ? 125 : 250;
+                        e.freeze(dur, now);
+                    }
+                    const particleColor = this.player
+                        ? this.player.color
+                        : '#00ffff';
+                    spawnHitParticles(e.x, e.y, particleColor);
                 }
-                this.hitEnemies.add(e);
-                e.hp -= this.damage;
-                if (
-                    this.player?.projectileLifedrainEnabled &&
-                    this.sourceUnitType === 'player'
-                ) {
-                    this.player.heal(PROJECTILE_HEAL * this.damage);
-                    this.player.triggerLifestealVisual(e.x, e.y);
-                }
-                if (this.player?.freezeEnabled && !e.isBoss()) {
-                    const dur = e.type === 'meteor' ? 125 : 250;
-                    e.freeze(dur, now);
-                }
-                const particleColor = this.player
-                    ? this.player.color
-                    : '#00ffff';
-                spawnHitParticles(e.x, e.y, particleColor);
-            }
-        }
+            },
+        );
     }
     draw() {
         const length = 120;

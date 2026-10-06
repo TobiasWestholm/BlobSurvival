@@ -1020,7 +1020,7 @@ class NetworkManager {
                 break;
 
             case 'WORLD_SNAPSHOT':
-                // Authoritative game world state from host
+                // Authoritative game world state from host (binary only: raw stream or base64)
                 if (typeof window.onWorldSnapshotReceived === 'function') {
                     if (data.b) {
                         try {
@@ -1036,7 +1036,9 @@ class NetworkManager {
                             );
                         }
                     } else {
-                        window.onWorldSnapshotReceived(data);
+                        console.warn(
+                            '[Net] Ignoring non-binary WORLD_SNAPSHOT (JSON path removed)',
+                        );
                     }
                 }
                 break;
@@ -1385,52 +1387,41 @@ class NetworkManager {
         }, delay);
     }
 
-    // Host sends authoritative game world snapshot to all connected clients (prioritizing binary stream channel)
+    // Host sends authoritative game world snapshot to all connected clients (binary only)
     broadcastWorldSnapshot(snapshot = null) {
         if (!this.isHost || this.connections.size === 0) return;
 
         let binBuffer = null;
-        if (
-            snapshot instanceof ArrayBuffer ||
-            (snapshot && snapshot.buffer instanceof ArrayBuffer)
-        ) {
-            binBuffer =
-                snapshot instanceof ArrayBuffer ? snapshot : snapshot.buffer;
-        } else if (typeof packWorldSnapshotBinary === 'function') {
+        if (snapshot instanceof ArrayBuffer) {
+            binBuffer = snapshot;
+        } else if (ArrayBuffer.isView(snapshot)) {
+            // Keep TypedArray views (byteOffset/byteLength) — do not widen to the full backing store
+            binBuffer = snapshot;
+        } else {
             binBuffer = packWorldSnapshotBinary();
         }
+        if (!binBuffer) return;
 
-        let jsonPayload = null;
         let base64Payload = null;
 
         for (const [peerId, conn] of this.connections.entries()) {
             const streamConn = this.streamConnections.get(peerId);
-            if (streamConn?.open && binBuffer) {
+            if (streamConn?.open) {
                 // Primary: stream raw binary ArrayBuffer over unreliable stream channel
                 this.sendConn(streamConn, binBuffer, 65536);
             } else if (conn?.open) {
-                // Fallback: send base64-packed snapshot over reliable RPC channel if binary available
-                if (binBuffer && typeof uint8ToBase64 === 'function') {
-                    if (!base64Payload) {
-                        base64Payload = {
-                            type: 'WORLD_SNAPSHOT',
-                            b: uint8ToBase64(new Uint8Array(binBuffer)),
-                        };
-                    }
-                    this.sendConn(conn, base64Payload, 65536);
-                } else {
-                    if (!jsonPayload) {
-                        jsonPayload = snapshot?.players
-                            ? { type: 'WORLD_SNAPSHOT', ...snapshot }
-                            : typeof serializeWorldForNetworkJSON === 'function'
-                              ? {
-                                    type: 'WORLD_SNAPSHOT',
-                                    ...serializeWorldForNetworkJSON(),
-                                }
-                              : { type: 'WORLD_SNAPSHOT', ...snapshot };
-                    }
-                    this.sendConn(conn, jsonPayload, 65536);
+                // Fallback: same binary, base64-wrapped over reliable RPC channel
+                if (!base64Payload) {
+                    const bytes =
+                        binBuffer instanceof Uint8Array
+                            ? binBuffer
+                            : new Uint8Array(binBuffer);
+                    base64Payload = {
+                        type: 'WORLD_SNAPSHOT',
+                        b: uint8ToBase64(bytes),
+                    };
                 }
+                this.sendConn(conn, base64Payload, 65536);
             }
         }
     }
@@ -1597,11 +1588,14 @@ function despawnPlayerEntities(playerIndex) {
 
     // 4. Remove magnetic mines tracking
     if (GAME_STATE.magneticMines) {
-        GAME_STATE.magneticMines = GAME_STATE.magneticMines.filter(
-            (m) =>
-                m.player !== player &&
-                (!m.player || m.player.index !== playerIndex),
-        );
+        if (typeof compactAlive === 'function') {
+            compactAlive(
+                GAME_STATE.magneticMines,
+                (m) =>
+                    m.player !== player &&
+                    (!m.player || m.player.index !== playerIndex),
+            );
+        }
     }
 
     // 5. Despawn projectiles fired by this player
@@ -2015,17 +2009,17 @@ window.onRemoteInputReceived = (
             p.dashVy = (my || Math.sin(p.facingAngle)) * 14;
             p.dashing = true;
             p.dashBurstFired = false;
-            p.dashUntil =
-                hostClock +
-                (typeof PLAYER_DASH_MS !== 'undefined' ? PLAYER_DASH_MS : 300);
+            const dashMs =
+                typeof PLAYER_DASH_MS !== 'undefined' ? PLAYER_DASH_MS : 90;
+            p.dashUntil = hostClock + dashMs;
             const dAngle = Math.atan2(p.dashVy, p.dashVx);
             p.dashLaunchEffect = {
                 startX: p.x,
                 startY: p.y,
                 angle: dAngle,
                 startTime: hostClock,
-                duration: 600,
-                dashDuration: 200,
+                duration: dashMs + 220,
+                dashDuration: dashMs,
             };
             if (typeof SoundEngine !== 'undefined' && SoundEngine.phaseDash) {
                 SoundEngine.phaseDash();
@@ -2409,6 +2403,41 @@ function netStaticFieldsDue(holder, sig, staggerId = 0) {
     );
 }
 
+/** Enemy dyn-block dirty check without string template allocations. */
+function netEnemyDynDue(
+    holder,
+    airborne,
+    landY,
+    landAt,
+    isFrozen,
+    vState,
+    vParam,
+    staggerId = 0,
+) {
+    if (
+        holder._netDynAir !== airborne ||
+        holder._netDynLandY !== landY ||
+        holder._netDynLandAt !== landAt ||
+        holder._netDynFrozen !== isFrozen ||
+        holder._netDynVState !== vState ||
+        holder._netDynVParam !== vParam
+    ) {
+        holder._netDynAir = airborne;
+        holder._netDynLandY = landY;
+        holder._netDynLandAt = landAt;
+        holder._netDynFrozen = isFrozen;
+        holder._netDynVState = vState;
+        holder._netDynVParam = vParam;
+        holder._netDynSeq = snapshotSeq;
+    }
+    const since = snapshotSeq - holder._netDynSeq;
+    return (
+        netForceFullSyncTicks > 0 ||
+        (since >= 0 && since < STATIC_CHANGE_REPEATS) ||
+        (snapshotSeq + staggerId) % STATIC_SYNC_REFRESH_TICKS === 0
+    );
+}
+
 // Dedicated counter keeps hazard ids contiguous so the alive-id list compresses into few ranges
 function assignHazardNid(h) {
     if (!h._nid) {
@@ -2529,6 +2558,8 @@ window.NET_SOUND_NAMES = NET_SOUND_NAMES;
 /** Sound IDs that clients play via local prediction; suppress host echo briefly. */
 const NET_SOUND_GEM_PICKUP = 37;
 window.NET_SOUND_GEM_PICKUP = NET_SOUND_GEM_PICKUP;
+const NET_SOUND_HEAL = 31;
+window.NET_SOUND_HEAL = NET_SOUND_HEAL;
 
 /**
  * SFX played by entity constructors when clients reconstruct entities from
@@ -2677,28 +2708,47 @@ function applyNetworkBlobDeform(playerIndex, deformType, angleRad) {
               : Date.now();
 
     switch (deformType) {
-        case 1: // ROCKET_LAUNCH
+        case 1: // ROCKET_LAUNCH — match host MagicMissile rocketAnimation duration
             p.rocketAnimation = {
                 startTime: nowTime,
-                duration: 400,
+                duration: 650,
                 angle: angleRad,
             };
             break;
-        case 2: // MINE_LAUNCH
+        case 2: {
+            // MINE_LAUNCH — match host volatile oviposition (380ms); stacks from upgrades
             p.mineLaunchAnimation = {
                 startTime: nowTime,
-                duration: 400,
+                duration: 380,
                 angle: angleRad,
-                stacks: 0,
+                stacks: p.mineAoeCount || 0,
             };
             break;
-        case 3: // TURRET_HATCH
+        }
+        case 3: {
+            // TURRET_HATCH — match host Rapid Deployment–scaled duration + bud ripple
+            const rc = p.turretCooldownCount || 0;
+            const hatchDuration = 520 * Math.pow(0.85, rc);
             p.hatchAnimation = {
                 startTime: nowTime,
-                duration: 500,
+                duration: hatchDuration,
                 angle: angleRad,
             };
+            p.mitosisBuds = p.mitosisBuds || [];
+            p.mitosisBuds.push({
+                angle: angleRad,
+                time: nowTime,
+                duration: hatchDuration,
+            });
+            // Clients don't run TurretWeapon.update; reset lastFire so the Rapid
+            // Deployment charge ring animates from empty instead of staying full
+            if (!p.weapons?.some((w) => w.id === 'turret')) {
+                p.unlockWeapon('turret');
+            }
+            const turretW = p.weapons?.find((w) => w.id === 'turret');
+            if (turretW) turretW.lastFire = nowTime;
             break;
+        }
         case 4: // SNIPER_CHARGE
             // fired:true — host already spawned the shot; keep deform only
             p.sniperCharge = {
@@ -2709,12 +2759,15 @@ function applyNetworkBlobDeform(playerIndex, deformType, angleRad) {
                 fired: true,
             };
             break;
-        case 5: // DASH_LAUNCH
+        case 5: {
+            // DASH_LAUNCH — match host input.js (dashMs thrust + 220ms settle)
+            const dashMs =
+                typeof PLAYER_DASH_MS !== 'undefined' ? PLAYER_DASH_MS : 90;
             if (isRemote || !p.dashLaunchEffect) {
                 p.dashLaunchEffect = {
                     startTime: nowTime,
-                    duration: 600,
-                    dashDuration: 200,
+                    duration: dashMs + 220,
+                    dashDuration: dashMs,
                     angle: angleRad,
                     startX: p.x,
                     startY: p.y,
@@ -2722,7 +2775,7 @@ function applyNetworkBlobDeform(playerIndex, deformType, angleRad) {
             }
             if (isRemote) {
                 p.dashing = true;
-                p.dashUntil = nowTime + 200;
+                p.dashUntil = nowTime + dashMs;
                 if (
                     typeof GAME_STATE !== 'undefined' &&
                     GAME_STATE.particles &&
@@ -2734,6 +2787,7 @@ function applyNetworkBlobDeform(playerIndex, deformType, angleRad) {
                 }
             }
             break;
+        }
         case 6: // MITOSIS_BUD
             p.mitosisBuds = p.mitosisBuds || [];
             p.mitosisBuds.push({
@@ -2907,6 +2961,14 @@ function getEnemyVisualState(e, hostClock) {
             );
             return { vState: 12, vParam: rem };
         }
+    } else if (e.type === 'felhound') {
+        if (e.killPauseUntil && e.killPauseUntil > hostClock) {
+            const rem = Math.min(
+                65535,
+                Math.max(0, Math.round(e.killPauseUntil - hostClock)),
+            );
+            return { vState: 22, vParam: rem };
+        }
     }
     return { vState: 0, vParam: 0 };
 }
@@ -2965,6 +3027,8 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
             e.healTargets = [];
         } else if (e.type === 'stalker') {
             e.blinkFlashUntil = 0;
+        } else if (e.type === 'felhound') {
+            e.killPauseUntil = 0;
         }
         return;
     }
@@ -3167,17 +3231,15 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
                 e.wallPieceY = e.tongueTipY;
             }
         } else if (vs === 13) {
+            const wasTraveling = e.behemothState === 'subterranean_travel';
             e.nydusEmerging = false;
             e.burrowed = true;
             e.behemothState = 'subterranean_travel';
-            if (!e.burrowTrail) {
+            // Reset trail on enter; further pearls are densified in draw() each frame
+            if (!wasTraveling || !e.burrowTrail) {
                 e.burrowTrail = [{ x: e.x, y: e.y }];
-            } else {
-                const last = e.burrowTrail[e.burrowTrail.length - 1];
-                if (!last || Math.hypot(e.x - last.x, e.y - last.y) > 20) {
-                    e.burrowTrail.push({ x: e.x, y: e.y });
-                    if (e.burrowTrail.length > 25) e.burrowTrail.shift();
-                }
+            } else if (typeof e.appendBurrowTrailPoint === 'function') {
+                e.appendBurrowTrailPoint(e.x, e.y);
             }
         }
     } else if (e.type === 'marauder') {
@@ -3207,6 +3269,10 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
     } else if (e.type === 'stalker') {
         if (vs === 12) {
             e.blinkFlashUntil = nowTime + (vp || 350);
+        }
+    } else if (e.type === 'felhound') {
+        if (vs === 22) {
+            e.killPauseUntil = nowTime + (vp || 0);
         }
     }
 }
@@ -3277,6 +3343,8 @@ function spawnNetworkCombatVfx(type, x, y, param, playerIndex = 0) {
             if (typeof InstantMuzzleFlash !== 'undefined') {
                 const ang = uint8ToAngle(param);
                 const shotColor = owner ? owner.color : '#00ffff';
+                // World-anchor at packet x/y — attaching to owner re-homes turret
+                // shots onto the blob (host already baked muzzle offset into x/y)
                 GAME_STATE.particles.push(
                     new InstantMuzzleFlash(
                         x,
@@ -3284,7 +3352,7 @@ function spawnNetworkCombatVfx(type, x, y, param, playerIndex = 0) {
                         ang,
                         shotColor,
                         nowTime,
-                        owner,
+                        null,
                         14,
                         true,
                     ),
@@ -3366,18 +3434,57 @@ window.spawnNetworkCombatVfx = spawnNetworkCombatVfx;
 const BINARY_MAGIC = 0xbf; // 'Blob Format' identifier
 const BINARY_VERSION = 6;
 
-let sharedBinaryBuffer = new ArrayBuffer(131072); // Pre-allocated 128 KB buffer
-let sharedDataView = new DataView(sharedBinaryBuffer);
-let sharedUint8 = new Uint8Array(sharedBinaryBuffer);
+// Double-buffered pack targets: fill one while the previous snapshot may still be in-flight.
+const BINARY_BUFFER_COUNT = 2;
+const sharedBinaryBuffers = [
+    new ArrayBuffer(131072),
+    new ArrayBuffer(131072),
+];
+const sharedDataViews = [
+    new DataView(sharedBinaryBuffers[0]),
+    new DataView(sharedBinaryBuffers[1]),
+];
+const sharedUint8s = [
+    new Uint8Array(sharedBinaryBuffers[0]),
+    new Uint8Array(sharedBinaryBuffers[1]),
+];
+let sharedBinaryWriteIndex = 0;
+let sharedBinaryBuffer = sharedBinaryBuffers[0];
+let sharedDataView = sharedDataViews[0];
+let sharedUint8 = sharedUint8s[0];
+
+// Reused scratch for dead-enemy ids (avoids Array.from + slice each snapshot)
+const netDeadEnemyIdsScratch = new Array(32);
+let netDeadEnemyIdCount = 0;
+
+// Reused scratch buffers for hazard packing (avoids filter/new Array each snapshot)
+const netHazardUpdatesScratch = [];
+const netHazardAliveIdsScratch = [];
+let netHazardAliveIdCount = 0;
 
 function ensureBinaryBufferSize(neededBytes) {
-    if (sharedBinaryBuffer.byteLength < neededBytes) {
-        let newSize = sharedBinaryBuffer.byteLength * 2;
+    for (let i = 0; i < BINARY_BUFFER_COUNT; i++) {
+        if (sharedBinaryBuffers[i].byteLength >= neededBytes) continue;
+        let newSize = sharedBinaryBuffers[i].byteLength * 2;
         while (newSize < neededBytes) newSize *= 2;
-        sharedBinaryBuffer = new ArrayBuffer(newSize);
-        sharedDataView = new DataView(sharedBinaryBuffer);
-        sharedUint8 = new Uint8Array(sharedBinaryBuffer);
+        sharedBinaryBuffers[i] = new ArrayBuffer(newSize);
+        sharedDataViews[i] = new DataView(sharedBinaryBuffers[i]);
+        sharedUint8s[i] = new Uint8Array(sharedBinaryBuffers[i]);
     }
+    sharedBinaryBuffer = sharedBinaryBuffers[sharedBinaryWriteIndex];
+    sharedDataView = sharedDataViews[sharedBinaryWriteIndex];
+    sharedUint8 = sharedUint8s[sharedBinaryWriteIndex];
+}
+
+function beginBinaryPack(neededBytes = 65536) {
+    sharedBinaryWriteIndex = 1 - sharedBinaryWriteIndex;
+    ensureBinaryBufferSize(neededBytes);
+    return sharedDataView;
+}
+
+function finishBinaryPack(byteLength) {
+    // View only — no copy. Safe because the next pack swaps to the other buffer.
+    return new Uint8Array(sharedBinaryBuffer, 0, byteLength);
 }
 
 const ENEMY_TYPE_TO_ID = {
@@ -3638,8 +3745,7 @@ function base64ToUint8(base64) {
 }
 
 function packWorldSnapshotBinary() {
-    ensureBinaryBufferSize(65536);
-    const view = sharedDataView;
+    const view = beginBinaryPack(65536);
     let offset = 0;
 
     // Header (40 bytes)
@@ -3670,7 +3776,11 @@ function packWorldSnapshotBinary() {
     for (const [nid, expiry] of netDeadEnemyMap.entries()) {
         if (curTimeForDead >= expiry) netDeadEnemyMap.delete(nid);
     }
-    const deadEnemyIds = Array.from(netDeadEnemyMap.keys()).slice(0, 32);
+    netDeadEnemyIdCount = 0;
+    for (const nid of netDeadEnemyMap.keys()) {
+        if (netDeadEnemyIdCount >= 32) break;
+        netDeadEnemyIdsScratch[netDeadEnemyIdCount++] = nid;
+    }
 
     let flags = 0;
     if (includeGems) flags |= 1 << 0;
@@ -3678,7 +3788,7 @@ function packWorldSnapshotBinary() {
     if (netSoundEvents.length > 0) flags |= 1 << 2;
     if (netVfxEvents.length > 0) flags |= 1 << 3;
     if (netBlobDeforms.length > 0) flags |= 1 << 4;
-    if (deadEnemyIds.length > 0) flags |= 1 << 5;
+    if (netDeadEnemyIdCount > 0) flags |= 1 << 5;
     const flagsOffset = offset;
     view.setUint8(offset, flags);
     offset += 1;
@@ -3765,12 +3875,16 @@ function packWorldSnapshotBinary() {
     // 1. Players
     const players =
         typeof GAME_STATE !== 'undefined' && GAME_STATE.players
-            ? GAME_STATE.players.filter(Boolean)
+            ? GAME_STATE.players
             : [];
-    view.setUint8(offset, players.length);
+    const playerCountOffset = offset;
+    view.setUint8(offset, 0);
     offset += 1;
+    let packedPlayerCount = 0;
     for (let i = 0; i < players.length; i++) {
         const p = players[i];
+        if (!p) continue;
+        packedPlayerCount++;
         const flail = p.weapons
             ? p.weapons.find((w) => w.id === 'player_flail')
             : null;
@@ -3913,14 +4027,17 @@ function packWorldSnapshotBinary() {
             offset += 4;
         }
     }
+    view.setUint8(playerCountOffset, packedPlayerCount);
 
-    // 2. Enemies
-    const aliveEnemies =
+    // 2. Enemies (pack in place — no filter() allocation)
+    const allEnemies =
         typeof GAME_STATE !== 'undefined' && GAME_STATE.enemies
-            ? GAME_STATE.enemies.filter((e) => e.alive && e.hp > 0)
+            ? GAME_STATE.enemies
             : [];
-    view.setUint16(offset, aliveEnemies.length, true);
+    const enemyCountOffset = offset;
+    view.setUint16(offset, 0, true);
     offset += 2;
+    let aliveEnemyCount = 0;
     const hostClock =
         typeof gameClock !== 'undefined' && gameClock > 0
             ? gameClock
@@ -3928,8 +4045,10 @@ function packWorldSnapshotBinary() {
                 GAME_STATE.elapsed !== undefined
               ? GAME_STATE.elapsed
               : 0;
-    for (let i = 0; i < aliveEnemies.length; i++) {
-        const e = aliveEnemies[i];
+    for (let i = 0; i < allEnemies.length; i++) {
+        const e = allEnemies[i];
+        if (!e?.alive || e.hp <= 0) continue;
+        aliveEnemyCount++;
         if (!e._nid) e._nid = ++netEntityCounter;
 
         // Motion is always sent; hp / static / dyn extras are gated separately
@@ -3942,9 +4061,20 @@ function packWorldSnapshotBinary() {
         view.setUint8(offset, angleToUint8(e.facingAngle));
         offset += 1;
 
-        const eHp = Math.min(65535, Math.max(1, Math.round(e.hp || 0)));
+        // HP as 16-bit fraction of maxHp so bosses >65535 still update every damage tick
+        const eMaxHpAbs = e.maxHp > 0 ? e.maxHp : 100;
+        const eHpFrac = Math.min(
+            65535,
+            Math.max(
+                1,
+                Math.round(
+                    (Math.max(0, Math.min(e.hp || 0, eMaxHpAbs)) / eMaxHpAbs) *
+                        65535,
+                ),
+            ),
+        );
         const typeId = ENEMY_TYPE_TO_ID[e.type] || 1;
-        const eMaxHp = Math.min(65535, Math.round(e.maxHp || 100));
+        const eMaxHp = Math.min(65535, Math.round(eMaxHpAbs));
         const eR = e.r && e.r !== 15 ? Math.min(255, Math.round(e.r)) : 0;
         const eSr = e.shieldRadius
             ? Math.min(255, Math.round(e.shieldRadius))
@@ -3960,7 +4090,7 @@ function packWorldSnapshotBinary() {
             e,
             '_netHpSig',
             '_netHpSeq',
-            eHp,
+            eHpFrac,
             e._nid + 17,
         );
 
@@ -3970,11 +4100,14 @@ function packWorldSnapshotBinary() {
         const { vState, vParam } = getEnemyVisualState(e, hostClock);
         // Freeze uses a boolean in the signature so countdown ticks don't force a dyn resend;
         // client keeps counting down locally from the last remaining-ms value it received
-        const hasDyn = netBlockDue(
+        const hasDyn = netEnemyDynDue(
             e,
-            '_netDynSig',
-            '_netDynSeq',
-            `${e.airborne ? 1 : 0}|${landY}|${landAt}|${isFrozen ? 1 : 0}|${vState}|${vParam}`,
+            e.airborne ? 1 : 0,
+            landY,
+            landAt,
+            isFrozen ? 1 : 0,
+            vState,
+            vParam,
             e._nid + 31,
         );
 
@@ -3989,7 +4122,7 @@ function packWorldSnapshotBinary() {
         offset += 1;
 
         if (hasHp) {
-            view.setUint16(offset, eHp, true);
+            view.setUint16(offset, eHpFrac, true);
             offset += 2;
         }
         if (hasStatic) {
@@ -4039,13 +4172,17 @@ function packWorldSnapshotBinary() {
             }
         }
     }
+    view.setUint16(enemyCountOffset, aliveEnemyCount, true);
 
     // 3. Projectiles (omit inactive mine-ring orbiters so clients hide them like host draw)
     const allProjectiles =
         typeof GAME_STATE !== 'undefined' && GAME_STATE.projectiles
             ? GAME_STATE.projectiles
             : [];
-    const projectiles = [];
+    const projectileCountOffset = offset;
+    view.setUint16(offset, 0, true);
+    offset += 2;
+    let packedProjectileCount = 0;
     for (let i = 0; i < allProjectiles.length; i++) {
         const p = allProjectiles[i];
         if (
@@ -4055,12 +4192,7 @@ function packWorldSnapshotBinary() {
         ) {
             continue;
         }
-        projectiles.push(p);
-    }
-    view.setUint16(offset, projectiles.length, true);
-    offset += 2;
-    for (let i = 0; i < projectiles.length; i++) {
-        const p = projectiles[i];
+        packedProjectileCount++;
         if (!p._nid) p._nid = ++netEntityCounter;
         const t =
             p instanceof OrbitProjectile
@@ -4149,6 +4281,7 @@ function packWorldSnapshotBinary() {
             }
         }
     }
+    view.setUint16(projectileCountOffset, packedProjectileCount, true);
 
     // 4. Enemy Projectiles
     const enemyProjectiles =
@@ -4249,10 +4382,18 @@ function packWorldSnapshotBinary() {
         if (t.turretSawEnabled || t.player?.turretSawEnabled)
             tFlags |= 1 << 6;
 
-        const validConns = (t.connections || []).filter(
-            (c) => c?.alive && c._nid,
-        );
-        const connCount = Math.min(2, validConns.length);
+        const conns = t.connections || [];
+        let connCount = 0;
+        let connNid0 = 0;
+        let connNid1 = 0;
+        for (let ci = 0; ci < conns.length && connCount < 2; ci++) {
+            const c = conns[ci];
+            if (c?.alive && c._nid) {
+                if (connCount === 0) connNid0 = c._nid;
+                else connNid1 = c._nid;
+                connCount++;
+            }
+        }
         tFlags |= (connCount & 3) << 4;
 
         view.setUint8(offset, tFlags);
@@ -4273,8 +4414,12 @@ function packWorldSnapshotBinary() {
             offset += 1;
         }
 
-        for (let cIdx = 0; cIdx < connCount; cIdx++) {
-            view.setUint16(offset, validConns[cIdx]._nid, true);
+        if (connCount > 0) {
+            view.setUint16(offset, connNid0, true);
+            offset += 2;
+        }
+        if (connCount > 1) {
+            view.setUint16(offset, connNid1, true);
             offset += 2;
         }
     }
@@ -4285,17 +4430,18 @@ function packWorldSnapshotBinary() {
         typeof GAME_STATE !== 'undefined' && GAME_STATE.hazards
             ? GAME_STATE.hazards
             : [];
-    const hazards = allHazards.filter(
-        (h) => !(typeof CombatVFX !== 'undefined' && h instanceof CombatVFX),
-    );
     const forceFullSync = netForceFullSyncTicks > 0;
-    const hazardUpdates = [];
+    netHazardUpdatesScratch.length = 0;
+    netHazardAliveIdCount = 0;
     const fullCountOffset = offset;
     let fullHazardCount = 0;
     offset += 2;
-    for (let i = 0; i < hazards.length; i++) {
-        const h = hazards[i];
+    for (let i = 0; i < allHazards.length; i++) {
+        const h = allHazards[i];
+        if (typeof CombatVFX !== 'undefined' && h instanceof CombatVFX)
+            continue;
         assignHazardNid(h);
+        netHazardAliveIdsScratch[netHazardAliveIdCount++] = h._nid;
 
         // Segment hazards (trails) carry their start point in x1/y1; x/y is only the midpoint
         const hx = Math.round(h.x1 !== undefined ? h.x1 : h.x || 0);
@@ -4328,7 +4474,7 @@ function packWorldSnapshotBinary() {
             (snapshotSeq + h._nid) % STATIC_SYNC_REFRESH_TICKS === 0;
         if (!sendFull) {
             if (snapshotSeq - h._netChangedSeq < HAZARD_UPDATE_REPEATS) {
-                hazardUpdates.push(h);
+                netHazardUpdatesScratch.push(h);
             }
             continue;
         }
@@ -4444,10 +4590,10 @@ function packWorldSnapshotBinary() {
     }
     view.setUint16(fullCountOffset, fullHazardCount, true);
 
-    view.setUint16(offset, hazardUpdates.length, true);
+    view.setUint16(offset, netHazardUpdatesScratch.length, true);
     offset += 2;
-    for (let i = 0; i < hazardUpdates.length; i++) {
-        const h = hazardUpdates[i];
+    for (let i = 0; i < netHazardUpdatesScratch.length; i++) {
+        const h = netHazardUpdatesScratch[i];
         view.setUint16(offset, h._nid, true);
         offset += 2;
         view.setUint8(offset, h._netTr);
@@ -4459,20 +4605,19 @@ function packWorldSnapshotBinary() {
     }
 
     // Alive ids as (start uint16, extra uint8) ranges covering start..start+extra
-    const aliveIds = new Array(hazards.length);
-    for (let i = 0; i < hazards.length; i++) aliveIds[i] = hazards[i]._nid;
-    aliveIds.sort((a, b) => a - b);
+    netHazardAliveIdsScratch.length = netHazardAliveIdCount;
+    netHazardAliveIdsScratch.sort((a, b) => a - b);
     const rangeCountOffset = offset;
     let rangeCount = 0;
     offset += 2;
-    for (let i = 0; i < aliveIds.length; ) {
-        const start = aliveIds[i];
+    for (let i = 0; i < netHazardAliveIdCount; ) {
+        const start = netHazardAliveIdsScratch[i];
         let extra = 0;
         i++;
         while (
-            i < aliveIds.length &&
+            i < netHazardAliveIdCount &&
             extra < 255 &&
-            aliveIds[i] === start + extra + 1
+            netHazardAliveIdsScratch[i] === start + extra + 1
         ) {
             extra++;
             i++;
@@ -4609,16 +4754,16 @@ function packWorldSnapshotBinary() {
 
     // 13. Dead Enemies (if flag bit 5)
     if (flags & (1 << 5)) {
-        const deadCount = Math.min(deadEnemyIds.length, 32);
+        const deadCount = netDeadEnemyIdCount;
         view.setUint8(offset, deadCount);
         offset += 1;
         for (let i = 0; i < deadCount; i++) {
-            view.setUint16(offset, deadEnemyIds[i], true);
+            view.setUint16(offset, netDeadEnemyIdsScratch[i], true);
             offset += 2;
         }
     }
 
-    return sharedBinaryBuffer.slice(0, offset);
+    return finishBinaryPack(offset);
 }
 
 function unpackWorldSnapshotBinary(buffer) {
@@ -4830,6 +4975,7 @@ function unpackWorldSnapshotBinary(buffer) {
         }
 
         // 2. Enemies (motion always; hp/static/dyn optional via header bits)
+        // hp Uint16 is a fraction of maxHp in 1..65535, not absolute HP
         const enemyCount = view.getUint16(offset, true);
         offset += 2;
         const enemies = [];
@@ -5372,446 +5518,7 @@ function unpackWorldSnapshotBinary(buffer) {
 }
 
 function serializeWorldForNetwork() {
-    if (typeof packWorldSnapshotBinary === 'function') {
-        return packWorldSnapshotBinary();
-    }
-    return serializeWorldForNetworkJSON();
-}
-
-function serializeWorldForNetworkJSON() {
-    // 1. Players
-    const players = (GAME_STATE.players || [])
-        .filter(Boolean)
-        .map((p) => {
-        const flail = p.weapons
-            ? p.weapons.find((w) => w.id === 'player_flail')
-            : null;
-        const melee = p.weapons
-            ? p.weapons.find((w) => w.id === 'melee_sweep')
-            : null;
-        return {
-            i: p.index,
-            nm: p.name || '',
-            x: Math.round(p.x),
-            y: Math.round(p.y),
-            hp: Math.round(p.hp * 10) / 10,
-            mhp: p.maxHp,
-            al:
-                (typeof p.isAlive === 'function' ? p.isAlive() : p.alive) &&
-                p.hp > 0
-                    ? 1
-                    : 0,
-            da:
-                !(typeof p.isAlive === 'function' ? p.isAlive() : p.alive) &&
-                p.deadAt
-                    ? Math.round(p.deadAt)
-                    : 0,
-            fa: Math.round(p.facingAngle * 100) / 100,
-            mv: p.isMoving ? 1 : 0,
-            w: p.selectedWeapon || '',
-            wl: p.selectedWeaponLabel || '',
-            up: p.currentLevelUpgradeName || '',
-            cv:
-                p.campervanUntil >
-                (typeof gameClock !== 'undefined'
-                    ? gameClock
-                    : typeof performance !== 'undefined'
-                      ? performance.now()
-                      : 0)
-                    ? Math.round(p.campervanUntil)
-                    : 0,
-            iv:
-                p.invuln > 0
-                    ? Math.round(p.invuln)
-                    : p.spawnInvuln > 0
-                      ? Math.round(p.spawnInvuln)
-                      : 0,
-            ma: p.martyrdomAuraEnabled ? 1 : 0,
-            mp: p.martyrsPresenceEnabled ? 1 : 0,
-            dc: p.disconnected || p.kicked ? 1 : 0,
-            fx: flail ? Math.round(flail.x) : undefined,
-            fy: flail ? Math.round(flail.y) : undefined,
-            mf: melee && melee.lastFire > 0 ? Math.round(melee.lastFire) : 0,
-            mrm: p.meleeRangeModifier || 1.0,
-            sh: p.sledgeHammerAnimation
-                ? {
-                      st: Math.round(p.sledgeHammerAnimation.startTime),
-                      du: Math.round(p.sledgeHammerAnimation.duration),
-                      a: Math.round(p.sledgeHammerAnimation.angle * 100) / 100,
-                  }
-                : undefined,
-        };
-    });
-
-    // 2. Enemies: compact flat tuples [id, type, x, y, hp, mhp, fa, r, color, state, shieldRadius, airborne, landY, landAt]
-    const hostClock =
-        typeof gameClock !== 'undefined' && gameClock > 0
-            ? gameClock
-            : typeof GAME_STATE !== 'undefined' &&
-                GAME_STATE.elapsed !== undefined
-              ? GAME_STATE.elapsed
-              : 0;
-    const enemies = GAME_STATE.enemies
-        .filter((e) => e.alive && e.hp > 0)
-        .map((e) => {
-            if (!e._nid) e._nid = ++netEntityCounter;
-            const fa = Math.round((e.facingAngle || 0) * 100) / 100;
-            const r = e.r || 0;
-            const c = e.color || '';
-            const st = e.viperState || e.stalkerState || '';
-            const sr = e.shieldRadius || 0;
-            const ab = e.airborne ? 1 : 0;
-            const ly = Math.round(e.landY || 0);
-            const la = Math.round(e.landAt || 0);
-
-            const fz = Boolean(e.frozenUntil && e.frozenUntil > hostClock)
-                ? Math.max(0, Math.round(e.frozenUntil - hostClock))
-                : 0;
-
-            const { vState, vParam } = getEnemyVisualState(e, hostClock);
-            const hp = Math.max(1, Math.round(e.hp));
-            if (
-                !r &&
-                !c &&
-                !st &&
-                !sr &&
-                !ab &&
-                !ly &&
-                !la &&
-                !fz &&
-                !vState
-            ) {
-                return [
-                    e._nid,
-                    e.type,
-                    Math.round(e.x),
-                    Math.round(e.y),
-                    hp,
-                    e.maxHp,
-                    fa,
-                ];
-            }
-            return [
-                e._nid,
-                e.type,
-                Math.round(e.x),
-                Math.round(e.y),
-                hp,
-                e.maxHp,
-                fa,
-                r,
-                c,
-                st,
-                sr,
-                ab,
-                ly,
-                la,
-                fz,
-                vState,
-                vParam,
-            ];
-        });
-
-    // 3. Projectiles: compact flat tuples [id, type, x, y, r, color, angle, tx, ty, sx, sy, mr, pi]
-    const projectiles = GAME_STATE.projectiles
-        .filter(
-            (p) =>
-                !(
-                    p instanceof OrbitProjectile &&
-                    p.player?.mineRingEnabled &&
-                    p.active === false
-                ),
-        )
-        .map((p) => {
-        if (!p._nid) p._nid = ++netEntityCounter;
-        const t =
-            p instanceof OrbitProjectile
-                ? 'fire_ring'
-                : p instanceof DeflectorOrbiter
-                  ? 'deflector_shield'
-                  : p instanceof RocketProjectile || p.isRocket
-                    ? 'rocket'
-                    : p instanceof SniperProjectile
-                      ? 'sniper'
-                      : p instanceof ShrapnelProjectile ||
-                          p.kind === 'shrapnel'
-                        ? p.isExplosive
-                            ? 'explosive_shrapnel'
-                            : 'shrapnel'
-                        : p instanceof MagicMissileProjectile
-                          ? p.kind === 'laser'
-                              ? 'laser'
-                              : 'magic_missile'
-                          : p.type || '';
-        const owner =
-            p.player ||
-            (typeof GAME_STATE !== 'undefined' && GAME_STATE.players
-                ? GAME_STATE.players[p.player?.index ?? 0]
-                : null);
-        const c =
-            p instanceof OrbitProjectile
-                ? '#ff6600'
-                : p instanceof DeflectorOrbiter
-                  ? '#00e5ff'
-                  : owner?.color || p.color || '#00ffcc';
-        const r = p.r || (p instanceof OrbitProjectile ? 10 : 3);
-        // Orbiters keep phase in `angle` with vx/vy=0; atan2(0,0) would falsely lock them east
-        const speed2 = (p.vx || 0) ** 2 + (p.vy || 0) ** 2;
-        const facing = speed2 > 1e-6 ? Math.atan2(p.vy, p.vx) : p.angle || 0;
-        const a = Math.round(facing * 100) / 100;
-        const tx = p.targetX !== undefined ? Math.round(p.targetX) : 0;
-        const ty = p.targetY !== undefined ? Math.round(p.targetY) : 0;
-        const sx = p.startX !== undefined ? Math.round(p.startX) : 0;
-        const sy = p.startY !== undefined ? Math.round(p.startY) : 0;
-        const mr =
-            p instanceof OrbitProjectile &&
-            p.player &&
-            p.player.mineRingEnabled &&
-            p.active !== false
-                ? 1
-                : p instanceof DeflectorOrbiter &&
-                    (p.growth === undefined || p.growth > 0.05)
-                  ? 1
-                  : 0;
-        const pi =
-            p.player && p.player.index !== undefined ? p.player.index : 0;
-
-        if (!tx && !ty && !sx && !sy && !mr && !pi) {
-            return [p._nid, t, Math.round(p.x), Math.round(p.y), r, c, a];
-        }
-        return [
-            p._nid,
-            t,
-            Math.round(p.x),
-            Math.round(p.y),
-            r,
-            c,
-            a,
-            tx,
-            ty,
-            sx,
-            sy,
-            mr,
-            pi,
-        ];
-    });
-
-    // 4. Enemy Projectiles: compact flat tuples [id, x, y, r, color, angle]
-    const enemyProjectiles = GAME_STATE.enemyProjectiles.map((ep) => {
-        if (!ep._nid) ep._nid = ++netEntityCounter;
-        return [
-            ep._nid,
-            Math.round(ep.x),
-            Math.round(ep.y),
-            ep.r || 4,
-            ep.color || '#ff3344',
-            Math.round((ep.angle || 0) * 100) / 100,
-        ];
-    });
-
-    // 5. Gems, Health Packs & Supply Drops (sync every 6 network ticks to save 80%+ bandwidth on static gems)
-    let gems = undefined;
-    netGemSyncTick = (netGemSyncTick + 1) % 6;
-    if (netGemSyncTick === 0) {
-        gems = GAME_STATE.gems.map((g) => {
-            if (!g._nid) g._nid = ++netEntityCounter;
-            const isHp = g instanceof HealthPack ? 1 : 0;
-            const isSd = g instanceof SupplyDrop ? g.type : 0;
-            return [
-                Math.round(g.x),
-                Math.round(g.y),
-                g.value || 5,
-                isHp,
-                isSd,
-                g._nid,
-                g.attracted ? 1 : 0,
-            ];
-        });
-    }
-
-    // 6. Turrets
-    const turrets = GAME_STATE.turrets.map((t) => {
-        if (!t._nid) t._nid = ++netEntityCounter;
-        return {
-            id: t._nid,
-            x: Math.round(t.x),
-            y: Math.round(t.y),
-            a: Math.round((t.angle || 0) * 100) / 100,
-            fa: Math.round((t.flameAngle || 0) * 100) / 100,
-            hp: Math.round(t.hp),
-            mhp: t.maxHp,
-            pi:
-                t.player && t.player.index !== undefined
-                    ? t.player.index
-                    : t.playerIndex || 0,
-            st: t.spawnTime || 0,
-            fl: t.isFlamethrower ? 1 : 0,
-            lw: t.laserWallsEnabled || t.player?.laserWallsEnabled ? 1 : 0,
-            sw: t.slowWallsEnabled || t.player?.slowWallsEnabled ? 1 : 0,
-            ts: t.turretSawEnabled || t.player?.turretSawEnabled ? 1 : 0,
-            faU: t.flameActiveUntil ? Math.round(t.flameActiveUntil) : 0,
-            fcA: t.flameCenterAngle
-                ? Math.round(t.flameCenterAngle * 100) / 100
-                : 0,
-            conns: (t.connections || [])
-                .filter((c) => c?.alive && c._nid)
-                .map((c) => c._nid),
-        };
-    });
-
-    // 7. Hazards, Mines & Visual Explosion FX (excluding transient CombatVFX sent via 1-shot vfx)
-    const hazards = GAME_STATE.hazards
-        .filter(
-            (h) => !(typeof CombatVFX !== 'undefined' && h instanceof CombatVFX),
-        )
-        .map((h) => {
-        assignHazardNid(h);
-        let type = 'hazard';
-        if (h instanceof PlayerMine) type = 'mine';
-        else if (h instanceof MineExplosion) type = 'mine_explosion';
-        else if (h instanceof NukeExplosion) type = 'nuke_explosion';
-        else if (h instanceof FreezeBlastVisual) type = 'freeze_explosion';
-        else if (h instanceof SledgeHitVisual) type = 'sledge_hit';
-        else if (h instanceof InstantMuzzleFlash) type = 'muzzle_flash';
-        else if (h instanceof InstantHitImpact) type = 'hit_impact';
-        else if (h instanceof BurningSurface) type = 'burning_surface';
-        else if (h instanceof BurningTrailSegment) type = 'burning_trail';
-        else if (h instanceof LaserTrailSegment) type = 'laser_trail';
-        else if (h instanceof IceTrailSegment) type = 'ice_trail';
-        else if (h instanceof BileMortarPod) type = 'bile_mortar';
-        else if (h instanceof AcidPoolHazard) type = 'acid_pool';
-        else if (h instanceof WhiteHolePush) type = 'white_hole';
-        else if (h instanceof BlackHolePull) type = 'black_hole';
-        else if (h.type) type = h.type;
-
-        return {
-            id: h._nid,
-            t: type,
-            x: Math.round(h.x1 !== undefined ? h.x1 : h.x || 0),
-            y: Math.round(h.y1 !== undefined ? h.y1 : h.y || 0),
-            x2:
-                h.x2 !== undefined
-                    ? Math.round(h.x2)
-                    : h.targetX !== undefined
-                      ? Math.round(h.targetX)
-                      : undefined,
-            y2:
-                h.y2 !== undefined
-                    ? Math.round(h.y2)
-                    : h.targetY !== undefined
-                      ? Math.round(h.targetY)
-                      : undefined,
-            r: Math.round(h.r || h.radius || 15),
-            a: Math.round((h.angle || h.facingAngle || 0) * 100) / 100,
-            ca:
-                h.coneAngle !== undefined
-                    ? Math.round(h.coneAngle * 100) / 100
-                    : undefined,
-            c: h.color || undefined,
-            st: h.spawnTime || 0,
-            dur: h.duration || undefined,
-            lt: h.landTime || undefined,
-            tr: h.triggeredTime ? 1 : 0,
-            at: h.attractsEnemies ? 1 : 0,
-            pi: h.player && h.player.index !== undefined ? h.player.index : 0,
-        };
-    });
-
-    const terrains = (GAME_STATE.terrains || []).map((t) => {
-        const isWall = !!(t.isWallObstacle || t.obstacleType === 'wall');
-        if (isWall) {
-            return {
-                type: 'wall',
-                x: Math.round(t.x || 0),
-                y: Math.round(t.y || 0),
-                hw: Math.round(t.halfW || 95),
-                hh: Math.round(t.halfH || 22),
-                ang: Math.round((t.angle || 0) * 100) / 100,
-            };
-        }
-        return {
-            type: 'shield',
-            x: Math.round(t.x || 0),
-            y: Math.round(t.y || 0),
-            r: Math.round(t.radius || t.r || 0),
-            fa: Math.round((t.facingAngle || 0) * 100) / 100,
-        };
-    });
-
-    const hits =
-        netHitEvents.length > 0
-            ? netHitEvents
-                  .slice(0, 24)
-                  .map((h) => [h[0], h[1], byteToColor(h[2])])
-            : undefined;
-    netHitEvents.length = 0;
-
-    const sounds =
-        netSoundEvents.length > 0 ? netSoundEvents.slice(0, 16) : undefined;
-    netSoundEvents.length = 0;
-
-    const vfx =
-        netVfxEvents.length > 0
-            ? netVfxEvents.slice(0, 32).map((v) => ({
-                  type: v[0] & 0x0f,
-                  playerIndex: (v[0] >> 4) & 0x03,
-                  x: v[1],
-                  y: v[2],
-                  param: v[3],
-              }))
-            : undefined;
-    netVfxEvents.length = 0;
-
-    const blobDeforms =
-        netBlobDeforms.length > 0
-            ? netBlobDeforms.slice(0, 16).map((d) => ({
-                  playerIndex: d[0],
-                  deformType: d[1],
-                  angle: uint8ToAngle(d[2]),
-              }))
-            : undefined;
-    netBlobDeforms.length = 0;
-
-    const curTimeForDead =
-        typeof performance !== 'undefined' ? performance.now() : Date.now();
-    for (const [nid, expiry] of netDeadEnemyMap.entries()) {
-        if (curTimeForDead >= expiry) netDeadEnemyMap.delete(nid);
-    }
-    const deadEnemies = Array.from(netDeadEnemyMap.keys()).slice(0, 32);
-
-    return {
-        serverTime:
-            typeof performance !== 'undefined' ? performance.now() : Date.now(),
-        seq: ++snapshotSeq,
-        players,
-        enemies,
-        deadEnemies,
-        projectiles,
-        enemyProjectiles,
-        gems,
-        turrets,
-        hazards,
-        terrains,
-        hits,
-        sounds,
-        vfx,
-        blobDeforms,
-        elapsed: GAME_STATE.elapsed,
-        level: GAME_STATE.level,
-        xp: GAME_STATE.xp,
-        nextXp: GAME_STATE.nextXp,
-        kills: GAME_STATE.kills,
-        activeBoss: GAME_STATE.activeBoss,
-        activeBossStartTime: GAME_STATE.activeBossStartTime,
-        hordeStartTime: GAME_STATE.hordeStartTime,
-        hostW: W,
-        hostH: H,
-        currentGameState: GAME_STATE.current,
-        difficulty:
-            typeof GAME_STATE !== 'undefined' && GAME_STATE.difficulty
-                ? GAME_STATE.difficulty.name.toLowerCase()
-                : 'normal',
-    };
+    return packWorldSnapshotBinary();
 }
 
 const NetworkProjectileProto = {
@@ -6441,12 +6148,15 @@ window.onWorldSnapshotReceived = (snapshot) => {
             p.martyrdomAuraEnabled = sp.ma === 1;
             p.martyrsPresenceEnabled = sp.mp === 1;
             p.disconnected = sp.dc === 1;
+            // Host-authoritative coords from this snapshot (for orbit-radius growth, etc.)
+            p._netX = sp.x;
+            p._netY = sp.y;
 
             if (sp.i === netManager.localPlayerIndex) {
-                // Client's own player: trust local joystick prediction while moving
+                // Local player: predict with joystick, gently reconcile toward host to limit drift
                 const dist2 = (p.x - sp.x) ** 2 + (p.y - sp.y) ** 2;
-                if (dist2 > 10000) {
-                    // Hard snap only if severely desynced (> 100px, e.g. teleport / respawn / massive knockback)
+                if (dist2 > 2500) {
+                    // Hard snap if severely desynced (> 50px, e.g. teleport / respawn / knockback)
                     p.x = sp.x;
                     p.y = sp.y;
                     const myFlail = p.weapons
@@ -6456,10 +6166,14 @@ window.onWorldSnapshotReceived = (snapshot) => {
                         myFlail.x = sp.fx;
                         myFlail.y = sp.fy;
                     }
-                } else if (!p.isMoving && dist2 > 100) {
-                    // Smooth exponential decay towards authoritative position only when stationary
-                    p.x += (sp.x - p.x) * 0.15;
-                    p.y += (sp.y - p.y) * 0.15;
+                } else if (dist2 > 9) {
+                    // Soft-correct above ~3px; stronger as error grows / when stationary
+                    const dist = Math.sqrt(dist2);
+                    const t = p.isMoving
+                        ? 0.06 + 0.14 * Math.min(1, dist / 50)
+                        : 0.15;
+                    p.x += (sp.x - p.x) * t;
+                    p.y += (sp.y - p.y) * t;
                 }
             } else {
                 // Remote player: update target position and state for smooth 60fps interpolation
@@ -6481,7 +6195,8 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 p.isMoving = sp.mv === 1;
             }
 
-            // Sync Melee Sweep and Sledgehammer animations for ALL players (local & remote)
+            // Sync Melee Sweep and Sledgehammer animations for ALL players (local & remote).
+            // Re-anchor start times to client nowTime so host clock skew doesn't truncate the deform.
             if (sp.mf !== undefined && sp.mf > 0) {
                 let melee = p.weapons
                     ? p.weapons.find((w) => w.id === 'melee_sweep')
@@ -6492,17 +6207,22 @@ window.onWorldSnapshotReceived = (snapshot) => {
                         ? p.weapons.find((w) => w.id === 'melee_sweep')
                         : null;
                 }
-                if (melee) {
-                    melee.lastFire = sp.mf;
+                if (melee && melee._netMf !== sp.mf) {
+                    melee._netMf = sp.mf;
+                    melee.lastFire = nowTime;
                 }
             }
             if (sp.mrm !== undefined) p.meleeRangeModifier = sp.mrm;
             if (sp.sh) {
-                p.sledgeHammerAnimation = {
-                    startTime: sp.sh.st,
-                    duration: sp.sh.du,
-                    angle: sp.sh.a,
-                };
+                const shKey = `${sp.sh.st}|${sp.sh.du}|${sp.sh.a}`;
+                if (p._netShKey !== shKey) {
+                    p._netShKey = shKey;
+                    p.sledgeHammerAnimation = {
+                        startTime: nowTime,
+                        duration: sp.sh.du,
+                        angle: sp.sh.a,
+                    };
+                }
             }
         }
     }
@@ -6591,7 +6311,6 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 e.targetX = x;
                 e.targetY = y;
                 e.facingAngle = fa;
-                if (hp !== undefined) e.hp = hp;
                 clientEnemyCache.set(id, e);
             } else {
                 e.targetX = x;
@@ -6610,8 +6329,13 @@ window.onWorldSnapshotReceived = (snapshot) => {
             }
             e.lastSeenNetTime = nowTime;
             e.alive = true;
-            if (hp !== undefined) e.hp = hp;
-            if (mhp !== undefined) e.maxHp = mhp;
+            // Wire maxHp is Uint16-clamped; never overwrite constructor maxHp with the ceiling
+            if (mhp !== undefined && mhp < 65535) e.maxHp = mhp;
+            // Binary HP field is a 16-bit fraction of maxHp (not absolute HP)
+            if (hp !== undefined) {
+                const maxHp = e.maxHp > 0 ? e.maxHp : 1;
+                e.hp = (hp / 65535) * maxHp;
+            }
             if (r) e.r = r;
             if (c) e.color = c;
             if (st) {
@@ -7004,8 +6728,10 @@ window.onWorldSnapshotReceived = (snapshot) => {
             activeGems.push(g);
         }
 
-        for (const [id] of clientGemCache.entries()) {
+        for (const [id, gem] of clientGemCache.entries()) {
             if (!seenGems.has(id)) {
+                // Mark dead so firstXpGem tutorial arrow clears when host removes the gem
+                if (gem) gem.alive = false;
                 clientGemCache.delete(id);
                 clientCollectedGems.delete(id);
             }
@@ -7186,14 +6912,16 @@ window.onWorldSnapshotReceived = (snapshot) => {
                         hazard.spawnTime = sh.st || nowTime;
                         break;
                     case 'muzzle_flash':
+                        // null source: keep flash at synced muzzle point (turret or player)
                         hazard = new InstantMuzzleFlash(
                             sh.x,
                             sh.y,
                             sh.a || 0,
                             sh.c || (owner ? owner.color : '#00ffcc'),
                             sh.st || nowTime,
-                            owner,
+                            null,
                             sh.r || 16,
+                            true,
                         );
                         hazard.spawnTime = sh.st || nowTime;
                         break;
@@ -7395,7 +7123,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
             }
         }
 
-        // Binary snapshots list every alive hazard id; legacy JSON snapshots list full records only
+        // Binary snapshots list every alive hazard id; full records only on spawn/change/refresh
         const aliveIds = snapshot.hazardAlive
             ? snapshot.hazardAlive
             : snapshot.hazards.map((sh) => sh.id);
@@ -7483,8 +7211,27 @@ window.onWorldSnapshotReceived = (snapshot) => {
     if (snapshot.xp !== undefined) GAME_STATE.xp = snapshot.xp;
     if (snapshot.nextXp !== undefined) GAME_STATE.nextXp = snapshot.nextXp;
     if (snapshot.kills !== undefined) GAME_STATE.kills = snapshot.kills;
-    if (snapshot.activeBoss !== undefined)
+    if (snapshot.activeBoss !== undefined) {
+        const prevBoss = GAME_STATE.activeBoss;
         GAME_STATE.activeBoss = snapshot.activeBoss;
+        // Horde clear: host grants +300 max HP; clients only get the numbers via
+        // player sync — recreate the local HUD pulse / pillar FX here
+        if (prevBoss === 'horde' && !snapshot.activeBoss) {
+            if (
+                typeof GAME_STATE.completedBosses !== 'undefined' &&
+                GAME_STATE.completedBosses
+            ) {
+                GAME_STATE.completedBosses.add('horde');
+            }
+            for (const p of GAME_STATE.players || []) {
+                if (!p) continue;
+                p.hpPulseUntil = nowTime + 3000;
+                if (typeof triggerReviveAnimation === 'function') {
+                    triggerReviveAnimation(p, nowTime);
+                }
+            }
+        }
+    }
     if (snapshot.activeBossStartTime !== undefined)
         GAME_STATE.activeBossStartTime = snapshot.activeBossStartTime;
     if (snapshot.hordeStartTime !== undefined)
@@ -7898,7 +7645,6 @@ if (typeof window !== 'undefined') {
     window.NetworkManager = NetworkManager;
     window.netManager = netManager;
     window.serializeWorldForNetwork = serializeWorldForNetwork;
-    window.serializeWorldForNetworkJSON = serializeWorldForNetworkJSON;
     window.packWorldSnapshotBinary = packWorldSnapshotBinary;
     window.unpackWorldSnapshotBinary = unpackWorldSnapshotBinary;
     window.netRateDue = netRateDue;

@@ -26,6 +26,8 @@ class Enemy extends Unit {
         this.attackPauseUntil = 0;
         this.turretTarget = null;
         this.inLaserFence = false;
+        this._iceStamp = 0;
+        this._laserFenceStamp = 0;
         this.lastLaserFenceParticle = 0;
         this.lunging = false;
         this.lungeUntil = 0;
@@ -133,40 +135,21 @@ class Enemy extends Unit {
     }
 
     isOnIce() {
-        if (!GAME_STATE.iceTrails || GAME_STATE.iceTrails.length === 0)
-            return false;
-        const numTrails = GAME_STATE.iceTrails.length;
-        for (let i = 0; i < numTrails; i++) {
-            const hz = GAME_STATE.iceTrails[i];
-            if (!hz.alive) continue;
-            if (
-                this.x < hz.minX - this.r ||
-                this.x > hz.maxX + this.r ||
-                this.y < hz.minY - this.r ||
-                this.y > hz.maxY + this.r
-            )
-                continue;
-            const dx = hz.x2 - hz.x1;
-            const dy = hz.y2 - hz.y1;
-            const len2 = dx * dx + dy * dy;
-            let t = 0;
-            if (len2 > 0) {
-                t = ((this.x - hz.x1) * dx + (this.y - hz.y1) * dy) / len2;
-                t = Math.max(0, Math.min(1, t));
-            }
-            const closestX = hz.x1 + t * dx;
-            const closestY = hz.y1 + t * dy;
-            const edx = this.x - closestX;
-            const edy = this.y - closestY;
-            if (edx * edx + edy * edy < (this.r + 22) * (this.r + 22)) {
-                return true;
-            }
-        }
-        return false;
+        // Stamp set once/frame by markEnemiesOnIce() via SPATIAL_GRID
+        return (
+            typeof SPATIAL_GRID !== 'undefined' &&
+            this._iceStamp === SPATIAL_GRID.iceStamp &&
+            SPATIAL_GRID.iceStamp !== 0
+        );
     }
 
     isPassingThroughLaserFence() {
-        return this.inLaserFence;
+        // Stamp set by updateLaserFences() via SPATIAL_GRID (no O(n) clear)
+        return (
+            typeof SPATIAL_GRID !== 'undefined' &&
+            this._laserFenceStamp === SPATIAL_GRID.laserFenceStamp &&
+            SPATIAL_GRID.laserFenceStamp !== 0
+        );
     }
 
     isTargetable() {
@@ -1057,7 +1040,8 @@ class BanelingEnemy extends Enemy {
             }
         }
 
-        // Damage turrets in radius
+        // Damage turrets in radius (3x player blast — turrets are soft vs acid)
+        const turretBlastDamage = blastDamage * 3;
         for (const t of GAME_STATE.turrets) {
             if (!t.alive) continue;
             const dx = t.x - this.x;
@@ -1066,7 +1050,7 @@ class BanelingEnemy extends Enemy {
                 dx * dx + dy * dy <=
                 (blastRadius + t.r) * (blastRadius + t.r)
             ) {
-                t.takeDamage(blastDamage, now, this);
+                t.takeDamage(turretBlastDamage, now, this);
             }
         }
 
@@ -1127,7 +1111,58 @@ class BanelingEnemy extends Enemy {
             }
             return;
         }
-        super.update(dtFactor, now);
+
+        // Unburrowed: chase like Enemy.update, but explode on player contact
+        // (do not soft-chip with this.damage — that delayed detonation until death).
+        if (now < (this.attackPauseUntil || 0) && !this.lunging) {
+            this.vx = 0;
+            this.vy = 0;
+            return;
+        }
+        if (this.airborne) {
+            if (
+                now >= (this['landAt'] || 0) &&
+                typeof this['land'] === 'function'
+            )
+                this['land'](now);
+            return;
+        }
+
+        const info = this.getTarget(now);
+        const target = info.target;
+        if (!target) return;
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+
+        if (info.isViper) {
+            const stopDist = target.r + this.r + 28;
+            if (d > stopDist) {
+                const nx = dx / d,
+                    ny = dy / d;
+                const spd = this.getSpeed(now);
+                this.x += nx * spd * dtFactor;
+                this.y += ny * spd * dtFactor;
+            }
+            return;
+        }
+
+        const nx = d > 0.001 ? dx / d : 0;
+        const ny = d > 0.001 ? dy / d : 0;
+        const spd = this.getSpeed(now);
+        this.x += nx * spd * dtFactor;
+        this.y += ny * spd * dtFactor;
+
+        if (this.checkTurretContact(now)) return;
+
+        for (const p of GAME_STATE.players) {
+            if (!p?.isActive()) continue;
+            const touch = this.r + p.r;
+            if (this.distanceToSq(p) <= touch * touch) {
+                this.detonateBaneling(now);
+                return;
+            }
+        }
     }
 
     draw(now) {
@@ -3900,14 +3935,23 @@ class OctopusBoss extends BossEnemy {
                 }
 
                 // Check all other enemy units caught in the tentacle lash segment
-                for (const e of GAME_STATE.enemies) {
+                const tentPad = 25 + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+                const tMinX =
+                    Math.min(t.startX, currentEndX) - tentPad;
+                const tMaxX =
+                    Math.max(t.startX, currentEndX) + tentPad;
+                const tMinY =
+                    Math.min(t.startY, currentEndY) - tentPad;
+                const tMaxY =
+                    Math.max(t.startY, currentEndY) + tentPad;
+                SPATIAL_GRID.queryBox(tMinX, tMaxX, tMinY, tMaxY, (e) => {
                     if (
                         e === this ||
                         e.hp <= 0 ||
                         e.airborne ||
                         t.hitUnits.has(e)
                     )
-                        continue;
+                        return;
                     const dist = distToSeg(
                         e.x,
                         e.y,
@@ -3921,7 +3965,7 @@ class OctopusBoss extends BossEnemy {
                         e.hp -= 60;
                         spawnHitParticles(e.x, e.y, '#ff00aa');
                     }
-                }
+                });
 
                 if (now >= t.timer) {
                     t.state = 'done';
@@ -3930,8 +3974,8 @@ class OctopusBoss extends BossEnemy {
             }
         }
 
-        // Clear finished tentacles
-        this.tentacles = this.tentacles.filter((t) => t.state !== 'done');
+        // Clear finished tentacles in place
+        compactAlive(this.tentacles, (t) => t.state !== 'done');
 
         // Contact damage with the boss body (deals damage to all units)
         // 1. Players
@@ -3953,15 +3997,22 @@ class OctopusBoss extends BossEnemy {
             }
         }
         // 3. Other Enemies
-        for (const e of GAME_STATE.enemies) {
-            if (e === this || e.hp <= 0 || e.airborne) continue;
-            const edx = e.x - this.x,
-                edy = e.y - this.y;
-            if (edx * edx + edy * edy < (e.r + this.r) * (e.r + this.r)) {
-                e.hp -= this.damage;
-                spawnHitParticles(e.x, e.y, '#ff00aa');
-            }
-        }
+        const bodyPad = this.r + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+        SPATIAL_GRID.queryBox(
+            this.x - bodyPad,
+            this.x + bodyPad,
+            this.y - bodyPad,
+            this.y + bodyPad,
+            (e) => {
+                if (e === this || e.hp <= 0 || e.airborne) return;
+                const edx = e.x - this.x,
+                    edy = e.y - this.y;
+                if (edx * edx + edy * edy < (e.r + this.r) * (e.r + this.r)) {
+                    e.hp -= this.damage;
+                    spawnHitParticles(e.x, e.y, '#ff00aa');
+                }
+            },
+        );
     }
 
     update(dtFactor = 1.0, now) {
@@ -4081,9 +4132,7 @@ class OctopusBoss extends BossEnemy {
                         }
                     }
                 }
-                this.tentacles = this.tentacles.filter(
-                    (t) => t.state !== 'done',
-                );
+                compactAlive(this.tentacles, (t) => t.state !== 'done');
             }
 
             // Draw tentacle states
@@ -4192,6 +4241,8 @@ class FelhoundBoss extends BossEnemy {
         if (!this.targetPlayer) return;
 
         const target = this.targetPlayer;
+        // Authoritative hunt facing — synced to clients via snapshot facingAngle
+        this.facingAngle = Math.atan2(target.y - this.y, target.x - this.x);
 
         // --- Wave progress: 0 at start -> 1 at 2 minutes ---
         const WAVE_DURATION = 120000;
@@ -4201,8 +4252,8 @@ class FelhoundBoss extends BossEnemy {
         );
         const waveFrac = Math.min(1, elapsed / WAVE_DURATION);
 
-        // Max speed ramps: very slow start, threatening by the end
-        const maxSpeed = 2.0 + waveFrac * 3.0; // 2.0 -> 5.0 px/frame
+        // Max speed ramps: slow start, threatening by the end (easier to kite than 2→5)
+        const maxSpeed = 1.7 + waveFrac * 2.5; // 1.7 -> 4.2 px/frame
 
         // Steering acceleration toward target — low relative to speed so orbits form
         const accel = 0.02 + waveFrac * 0.3; // 0.08 -> 0.22 px/frame²
@@ -4217,14 +4268,14 @@ class FelhoundBoss extends BossEnemy {
         }
 
         // Radial collapse force: bleed tangential momentum inward, proportional to current speed.
-        // This guarantees the orbit is ALWAYS unstable — the faster it goes, the faster it spirals in.
+        // Softened ~25–30% so circling is more viable while orbits still eventually decay.
         const spd0 = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
         const collapseMult =
             1 /
             (GAME_STATE.difficulty
                 ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
                 : 1.0);
-        const collapseRate = (0.0005 + waveFrac * 0.045) * spd0 * collapseMult; // grows with both waveFrac and speed, scaled by difficulty
+        const collapseRate = (0.0004 + waveFrac * 0.032) * spd0 * collapseMult;
         if (d > 0.001 && spd0 > 0.001) {
             this.vx += (dx / d) * collapseRate * dtFactor;
             this.vy += (dy / d) * collapseRate * dtFactor;
@@ -4297,15 +4348,22 @@ class FelhoundBoss extends BossEnemy {
             }
         }
         // Contact damage to all other enemy units
-        for (const e of GAME_STATE.enemies) {
-            if (e === this || e.hp <= 0 || e.airborne) continue;
-            const edx = e.x - this.x,
-                edy = e.y - this.y;
-            if (edx * edx + edy * edy < (e.r + this.r) * (e.r + this.r)) {
-                e.hp -= this.damage;
-                spawnHitParticles(e.x, e.y, '#6a0dad');
-            }
-        }
+        const fPad = this.r + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+        SPATIAL_GRID.queryBox(
+            this.x - fPad,
+            this.x + fPad,
+            this.y - fPad,
+            this.y + fPad,
+            (e) => {
+                if (e === this || e.hp <= 0 || e.airborne) return;
+                const edx = e.x - this.x,
+                    edy = e.y - this.y;
+                if (edx * edx + edy * edy < (e.r + this.r) * (e.r + this.r)) {
+                    e.hp -= this.damage;
+                    spawnHitParticles(e.x, e.y, '#6a0dad');
+                }
+            },
+        );
 
         // Trailing energy particle emitted during update
         if (Math.random() < 0.45 + waveFrac * 0.3) {
@@ -4372,13 +4430,8 @@ class FelhoundBoss extends BossEnemy {
             ctx.fill();
             ctx.stroke();
 
-            // Target hunting direction
-            const targetP = this.targetPlayer?.isTargetable()
-                ? this.targetPlayer
-                : GAME_STATE.players.find((p) => p?.isTargetable());
-            const huntAngle = targetP
-                ? Math.atan2(targetP.y - this.y, targetP.x - this.x)
-                : Math.atan2(this.vy, this.vx) || 0;
+            // Hunt facing from host update (facingAngle); do not recompute from local targetPlayer
+            const huntAngle = this.facingAngle || 0;
 
             // --- Rotated Creature Features (Horns/Ears, Snake Hairs, Jaws, Eyes) ---
             ctx.save();
@@ -4643,9 +4696,14 @@ class BehemothBoss extends BossEnemy {
 
     launchBileMortars(now) {
         // Launches 12 acid mortar pods with broad spread across players and arena
-        const alivePlayers = GAME_STATE.players.filter((p) =>
-            p?.isTargetable(),
-        );
+        const alivePlayers =
+            this._alivePlayerScratch || (this._alivePlayerScratch = []);
+        alivePlayers.length = 0;
+        const allPlayers = GAME_STATE.players || [];
+        for (let pi = 0; pi < allPlayers.length; pi++) {
+            const pl = allPlayers[pi];
+            if (pl?.isTargetable()) alivePlayers.push(pl);
+        }
         if (alivePlayers.length === 0) return;
 
         const podCount = 12;
@@ -5118,15 +5176,7 @@ class BehemothBoss extends BossEnemy {
             }
 
             // Append trail points along underground path
-            if (!this.burrowTrail) this.burrowTrail = [];
-            const lastPt = this.burrowTrail[this.burrowTrail.length - 1];
-            const d2 = lastPt
-                ? (this.x - lastPt.x) ** 2 + (this.y - lastPt.y) ** 2
-                : 0;
-            if (!lastPt || d2 >= 324) {
-                this.burrowTrail.push({ x: this.x, y: this.y });
-                if (this.burrowTrail.length > 60) this.burrowTrail.shift();
-            }
+            this.appendBurrowTrailPoint(this.x, this.y);
 
             // Dirt churning particles
             if (Math.random() < 0.6) {
@@ -5514,6 +5564,17 @@ class BehemothBoss extends BossEnemy {
 
                 this.behemothState = 'pursuit';
             }
+        }
+    }
+
+    /** Dense "pearl" samples along the burrow path (~18px spacing, max 60). */
+    appendBurrowTrailPoint(x, y) {
+        if (!this.burrowTrail) this.burrowTrail = [];
+        const lastPt = this.burrowTrail[this.burrowTrail.length - 1];
+        const d2 = lastPt ? (x - lastPt.x) ** 2 + (y - lastPt.y) ** 2 : 0;
+        if (!lastPt || d2 >= 324) {
+            this.burrowTrail.push({ x, y });
+            if (this.burrowTrail.length > 60) this.burrowTrail.shift();
         }
     }
 
@@ -6024,6 +6085,8 @@ class BehemothBoss extends BossEnemy {
 
         // --- 3. Subterranean Pursuit Visual (Wide Tunnel & Churned Mound) ---
         if (this.behemothState === 'subterranean_travel') {
+            // Clients don't run update(); densify trail here from interpolated position
+            this.appendBurrowTrailPoint(this.x, this.y);
             this.drawSubterraneanTunnel(
                 this.burrowTrail || [{ x: this.x, y: this.y }],
                 this.x,

@@ -8,6 +8,17 @@ function compactAlive(arr, keepFn) {
     arr.length = write;
 }
 
+/** Keep only the last maxLen entries in place (avoids Array#slice allocation). */
+function trimKeepLast(arr, maxLen) {
+    if (!arr || arr.length <= maxLen) return;
+    const drop = arr.length - maxLen;
+    let write = 0;
+    for (let read = drop; read < arr.length; read++) {
+        arr[write++] = arr[read];
+    }
+    arr.length = maxLen;
+}
+
 // ---------------- State control ----------------
 function startGame(playerCount, difficultyKey) {
     const n = Math.max(1, Math.min(4, playerCount));
@@ -199,12 +210,15 @@ function update(dt, dtFactor, now) {
 
     GAME_STATE.elapsed = now;
 
-    // Filter expired terrains
+    // Drop expired terrains in place
     if (GAME_STATE.terrains) {
-        GAME_STATE.terrains = GAME_STATE.terrains.filter(
-            (t) => !t.isExpired(now),
-        );
+        compactAlive(GAME_STATE.terrains, (t) => !t.isExpired(now));
     }
+
+    // Rebuild before player/aura/fence/ice queries (positions unchanged since last post-enemy rebuild).
+    // A second rebuild after enemy movement keeps projectile/turret queries exact.
+    SPATIAL_GRID.rebuild();
+    if (typeof markEnemiesOnIce === 'function') markEnemiesOnIce();
 
     for (const p of GAME_STATE.players) {
         if (!p || p.kicked || p.disconnected) continue;
@@ -252,22 +266,30 @@ function update(dt, dtFactor, now) {
             }
             // 2. Damage enemies standing in it (10% of player max HP per second)
             const dmg = p.maxHp * 0.1 * (dt / 1000);
-            for (const e of GAME_STATE.enemies) {
-                if (
-                    e.hp > 0 &&
-                    !e.airborne &&
-                    e.x >= 0 &&
-                    e.x <= W &&
-                    e.y >= 0 &&
-                    e.y <= H
-                ) {
+            const auraR2 = auraRadius * auraRadius;
+            const auraPad = auraRadius + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+            SPATIAL_GRID.queryBox(
+                p.x - auraPad,
+                p.x + auraPad,
+                p.y - auraPad,
+                p.y + auraPad,
+                (e) => {
+                    if (
+                        e.hp <= 0 ||
+                        e.airborne ||
+                        e.x < 0 ||
+                        e.x > W ||
+                        e.y < 0 ||
+                        e.y > H
+                    )
+                        return;
                     const dx = e.x - p.x;
                     const dy = e.y - p.y;
-                    if (dx * dx + dy * dy < auraRadius * auraRadius) {
+                    if (dx * dx + dy * dy < auraR2) {
                         e.hp -= dmg;
                     }
-                }
-            }
+                },
+            );
         }
     }
 
@@ -345,13 +367,16 @@ function update(dt, dtFactor, now) {
     }
 
     // Process dead enemies -> drop gems & trigger death abilities
-    const validPlayers = (GAME_STATE.players || []).filter(
-        (p) => p && !p.disconnected,
-    );
-    const hasHealPackUpgrade = validPlayers.some(
-        (p) => p.isAlive() && p.healPackEnabled,
-    );
-    const healPackChance = 0.005 + 0.005 * validPlayers.length;
+    let validPlayerCount = 0;
+    let hasHealPackUpgrade = false;
+    const players = GAME_STATE.players || [];
+    for (let pi = 0; pi < players.length; pi++) {
+        const p = players[pi];
+        if (!p || p.disconnected) continue;
+        validPlayerCount++;
+        if (p.isAlive() && p.healPackEnabled) hasHealPackUpgrade = true;
+    }
+    const healPackChance = 0.005 + 0.005 * validPlayerCount;
     let anyEnemyDied = false;
 
     for (let i = 0; i < GAME_STATE.enemies.length; i++) {
@@ -368,6 +393,21 @@ function update(dt, dtFactor, now) {
             }
             if (e.type === 'spiky') {
                 e.triggerSpikeExplosion(now);
+            }
+            if (e.type === 'shield_bearer') {
+                // Leave the frontal energy arc as impassable terrain for a short time
+                if (!GAME_STATE.terrains) GAME_STATE.terrains = [];
+                if (typeof ShieldTerrain !== 'undefined') {
+                    GAME_STATE.terrains.push(
+                        new ShieldTerrain(
+                            e.x,
+                            e.y,
+                            e.shieldRadius || 100,
+                            e.facingAngle || 0,
+                            now + 10000,
+                        ),
+                    );
+                }
             }
             if (e.type === 'baneling') {
                 e.detonateBaneling(now); // explode on death from weapon damage
@@ -419,21 +459,22 @@ function update(dt, dtFactor, now) {
         }
     }
     if (anyEnemyDied) {
-        GAME_STATE.enemies = GAME_STATE.enemies.filter(
-            (e) => e.hp > 0 && e.alive,
-        );
+        compactAlive(GAME_STATE.enemies, (e) => e.hp > 0 && e.alive);
         if (GAME_STATE.activeSentries.length > 0) {
-            GAME_STATE.activeSentries = GAME_STATE.activeSentries.filter(
+            compactAlive(
+                GAME_STATE.activeSentries,
                 (e) => e.hp > 0 && e.alive,
             );
         }
         if (GAME_STATE.shieldBearers.length > 0) {
-            GAME_STATE.shieldBearers = GAME_STATE.shieldBearers.filter(
+            compactAlive(
+                GAME_STATE.shieldBearers,
                 (e) => e.hp > 0 && e.alive,
             );
         }
         if (GAME_STATE.attractingVipers.length > 0) {
-            GAME_STATE.attractingVipers = GAME_STATE.attractingVipers.filter(
+            compactAlive(
+                GAME_STATE.attractingVipers,
                 (e) =>
                     e.hp > 0 &&
                     e.alive &&
@@ -451,9 +492,7 @@ function update(dt, dtFactor, now) {
 
     compactAlive(GAME_STATE.particles, (p) => p.alive);
     // Cap particles to avoid drawing overhead (450 leaves room for golden pillar revive rings)
-    if (GAME_STATE.particles.length > 450) {
-        GAME_STATE.particles = GAME_STATE.particles.slice(-450);
-    }
+    trimKeepLast(GAME_STATE.particles, 450);
 }
 
 function addXp(amount) {
@@ -598,10 +637,24 @@ function loop(now) {
                             p.targetX !== undefined &&
                             p.targetY !== undefined
                         ) {
-                            // Derive growth from host orbit radius (synced via target x/y)
+                            // Orbit radius must use host player+plate from the same tick.
+                            // Mixing plate targetX with interpolated/predicted owner.x makes
+                            // growth collapse/expand whenever the player moves.
+                            const ox =
+                                owner._netX !== undefined
+                                    ? owner._netX
+                                    : owner.targetX !== undefined
+                                      ? owner.targetX
+                                      : owner.x;
+                            const oy =
+                                owner._netY !== undefined
+                                    ? owner._netY
+                                    : owner.targetY !== undefined
+                                      ? owner.targetY
+                                      : owner.y;
                             const dist = Math.hypot(
-                                p.targetX - owner.x,
-                                p.targetY - owner.y,
+                                p.targetX - ox,
+                                p.targetY - oy,
                             );
                             const maxExt = 14;
                             const nextGrowth = Math.max(
@@ -670,8 +723,14 @@ function loop(now) {
                 const g = GAME_STATE.gems[i];
                 if (!g || g.alive === false) continue;
 
-                // Predict magnetic pull towards closest active player
-                const collectedPlayer = g.pullTowardsPlayer(dtFactor);
+                // Match host rules: health packs only collect when a player is damaged
+                const collectedPlayer =
+                    typeof HealthPack !== 'undefined' && g instanceof HealthPack
+                        ? g.pullTowardsPlayer(
+                              dtFactor,
+                              (p) => p.hp < p.maxHp,
+                          )
+                        : g.pullTowardsPlayer(dtFactor);
                 if (collectedPlayer) {
                     g.despawn();
                     if (
@@ -681,19 +740,36 @@ function loop(now) {
                         clientCollectedGems.add(g._nid);
                     }
                     if (collectedPlayer.index === netManager.localPlayerIndex) {
-                        if (
+                        const isHealthPack =
+                            typeof HealthPack !== 'undefined' &&
+                            g instanceof HealthPack;
+                        if (isHealthPack) {
+                            if (
+                                typeof SoundEngine !== 'undefined' &&
+                                SoundEngine.heal
+                            ) {
+                                SoundEngine.heal('low');
+                            }
+                            if (typeof suppressNetworkSound === 'function') {
+                                suppressNetworkSound(
+                                    typeof NET_SOUND_HEAL !== 'undefined'
+                                        ? NET_SOUND_HEAL
+                                        : 31,
+                                );
+                            }
+                        } else if (
                             typeof SoundEngine !== 'undefined' &&
                             SoundEngine.gemPickup
                         ) {
                             SoundEngine.gemPickup();
-                        }
-                        // Suppress host echo of the same predictive pickup
-                        if (typeof suppressNetworkSound === 'function') {
-                            suppressNetworkSound(
-                                typeof NET_SOUND_GEM_PICKUP !== 'undefined'
-                                    ? NET_SOUND_GEM_PICKUP
-                                    : 37,
-                            );
+                            // Suppress host echo of the same predictive pickup
+                            if (typeof suppressNetworkSound === 'function') {
+                                suppressNetworkSound(
+                                    typeof NET_SOUND_GEM_PICKUP !== 'undefined'
+                                        ? NET_SOUND_GEM_PICKUP
+                                        : 37,
+                                );
+                            }
                         }
                     }
                 } else if (!g.attracted) {
@@ -755,9 +831,7 @@ function loop(now) {
                 pa.update(dt, dtFactor, gameClock);
             }
             compactAlive(GAME_STATE.particles, (p) => p.alive);
-            if (GAME_STATE.particles.length > 450) {
-                GAME_STATE.particles = GAME_STATE.particles.slice(-450);
-            }
+            trimKeepLast(GAME_STATE.particles, 450);
 
             // 8. Render authoritative world snapshot from host
             if (!isHidden) {
@@ -971,6 +1045,7 @@ if (typeof window !== 'undefined') {
     window.getGameWinCondition = getGameWinCondition;
     window.isLastBossCleared = isLastBossCleared;
     window.compactAlive = compactAlive;
+    window.trimKeepLast = trimKeepLast;
     window.setupHostBackgroundKeepAlive = setupHostBackgroundKeepAlive;
 
     // Start main game loop on document load

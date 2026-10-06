@@ -1367,6 +1367,8 @@ function gameOver() {
 
     if (s) s.innerHTML = buildStatsHTML('Survived', GAME_STATE, bestScore);
     if (m) m.classList.add('show');
+    // GAME_OVER loop skips updateUI; refresh HUD so last deaths aren't stuck mid-HP
+    if (typeof updateUI === 'function') updateUI();
 }
 
 function showVictory() {
@@ -1415,6 +1417,7 @@ function showVictory() {
 
     if (s) s.innerHTML = buildStatsHTML('Completed', GAME_STATE, bestScore);
     if (m) m.classList.add('show');
+    if (typeof updateUI === 'function') updateUI();
 }
 
 function formatTime(ms) {

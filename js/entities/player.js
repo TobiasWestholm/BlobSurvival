@@ -280,30 +280,37 @@ class Player extends Unit {
 
         if (this.campervanUntil > now) {
             // Invulnerable campervan: kills everything it touches
-            for (const e of GAME_STATE.enemies) {
-                if (e.airborne || e.hp <= 0) continue;
-                const dx = e.x - this.x;
-                const dy = e.y - this.y;
-                const touchRange = this.r + e.r + 15;
-                if (dx * dx + dy * dy < touchRange * touchRange) {
-                    e.hp = 0; // crushed!
-                    spawnHitParticles(e.x, e.y, e.color);
-                    for (let i = 0; i < 4; i++) {
-                        const a = Math.random() * Math.PI * 2,
-                            s = 1.0 + Math.random() * 2;
-                        GAME_STATE.particles.push(
-                            new Particle(
-                                e.x,
-                                e.y,
-                                Math.cos(a) * s,
-                                Math.sin(a) * s,
-                                '#ffaa00',
-                                300,
-                            ),
-                        );
+            const crushPad = this.r + 15 + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+            SPATIAL_GRID.queryBox(
+                this.x - crushPad,
+                this.x + crushPad,
+                this.y - crushPad,
+                this.y + crushPad,
+                (e) => {
+                    if (e.airborne || e.hp <= 0) return;
+                    const dx = e.x - this.x;
+                    const dy = e.y - this.y;
+                    const touchRange = this.r + e.r + 15;
+                    if (dx * dx + dy * dy < touchRange * touchRange) {
+                        e.hp = 0; // crushed!
+                        spawnHitParticles(e.x, e.y, e.color);
+                        for (let i = 0; i < 4; i++) {
+                            const a = Math.random() * Math.PI * 2,
+                                s = 1.0 + Math.random() * 2;
+                            GAME_STATE.particles.push(
+                                new Particle(
+                                    e.x,
+                                    e.y,
+                                    Math.cos(a) * s,
+                                    Math.sin(a) * s,
+                                    '#ffaa00',
+                                    300,
+                                ),
+                            );
+                        }
                     }
-                }
-            }
+                },
+            );
         }
 
         if (this.dashing) {
@@ -1032,29 +1039,37 @@ class Player extends Unit {
             );
             let totalDashExpDmg = 0;
             const dashHitEnemies = [];
-            for (const e of GAME_STATE.enemies) {
-                if (!isDamageable(e)) continue;
-                const dx = e.x - this.x;
-                const dy = e.y - this.y;
-                if (
-                    dx * dx + dy * dy <=
-                    (mineRadius + e.r) * (mineRadius + e.r)
-                ) {
-                    e.hp -= mineDmg;
-                    totalDashExpDmg += mineDmg;
-                    dashHitEnemies.push(e);
-                    if (this.freezeEnabled && !e.isBoss()) {
-                        const dur =
-                            e.type === 'meteor'
-                                ? GAME_CONFIG.UPGRADES
-                                      .FREEZE_PROJECTILE_DURATION_SEC * 500
-                                : GAME_CONFIG.UPGRADES
-                                      .FREEZE_PROJECTILE_DURATION_SEC * 1000;
-                        e.freeze(dur, now);
+            const dashPad = mineRadius + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+            SPATIAL_GRID.queryBox(
+                this.x - dashPad,
+                this.x + dashPad,
+                this.y - dashPad,
+                this.y + dashPad,
+                (e) => {
+                    if (!isDamageable(e)) return;
+                    const dx = e.x - this.x;
+                    const dy = e.y - this.y;
+                    if (
+                        dx * dx + dy * dy <=
+                        (mineRadius + e.r) * (mineRadius + e.r)
+                    ) {
+                        e.hp -= mineDmg;
+                        totalDashExpDmg += mineDmg;
+                        dashHitEnemies.push(e);
+                        if (this.freezeEnabled && !e.isBoss()) {
+                            const dur =
+                                e.type === 'meteor'
+                                    ? GAME_CONFIG.UPGRADES
+                                          .FREEZE_PROJECTILE_DURATION_SEC * 500
+                                    : GAME_CONFIG.UPGRADES
+                                          .FREEZE_PROJECTILE_DURATION_SEC *
+                                      1000;
+                            e.freeze(dur, now);
+                        }
+                        spawnHitParticles(e.x, e.y, '#ffaa00');
                     }
-                    spawnHitParticles(e.x, e.y, '#ffaa00');
-                }
-            }
+                },
+            );
             applyExplosionHealing(
                 this.x,
                 this.y,
@@ -1349,42 +1364,59 @@ class Player extends Unit {
                 1 + GAME_CONFIG.UPGRADES.MARTYRDOM_AOE_BOOST_PCT / 100,
                 this.mineAoeCount,
             );
-        for (const e of GAME_STATE.enemies) {
-            if (!isDamageable(e)) continue;
-            const dx = e.x - this.x;
-            const dy = e.y - this.y;
-            if (dx * dx + dy * dy <= radius * radius) {
-                e.hp -= dmg;
-                spawnHitParticles(e.x, e.y, '#ff3300');
-                if (e.hp > 0 && this.martyrsPresenceEnabled && !e['burrowed']) {
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    const nx =
-                        dist > 0.001 ? dx / dist : Math.random() < 0.5 ? -1 : 1;
-                    const ny = dist > 0.001 ? dy / dist : 0;
-                    const knockbackDist =
-                        Math.max(110, radius - dist + 60) *
-                        ((GAME_STATE.difficulty
-                            ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
-                            : 1.0) /
-                            2 +
-                            0.5);
-                    e.airborne = true;
-                    e.isKnockbackAirborne = true;
-                    e.knockbackStartX = e.x;
-                    e.knockbackStartY = e.y;
-                    e.knockbackTargetX = Math.max(
-                        10,
-                        Math.min(W - 10, e.x + nx * knockbackDist),
-                    );
-                    e.knockbackTargetY = Math.max(
-                        10,
-                        Math.min(H - 10, e.y + ny * knockbackDist),
-                    );
-                    e.knockbackStart = now;
-                    e.knockbackDuration = 600;
+        const blastR2 = radius * radius;
+        const blastPad = radius + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+        SPATIAL_GRID.queryBox(
+            this.x - blastPad,
+            this.x + blastPad,
+            this.y - blastPad,
+            this.y + blastPad,
+            (e) => {
+                if (!isDamageable(e)) return;
+                const dx = e.x - this.x;
+                const dy = e.y - this.y;
+                if (dx * dx + dy * dy <= blastR2) {
+                    e.hp -= dmg;
+                    spawnHitParticles(e.x, e.y, '#ff3300');
+                    if (
+                        e.hp > 0 &&
+                        this.martyrsPresenceEnabled &&
+                        !e['burrowed']
+                    ) {
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const nx =
+                            dist > 0.001
+                                ? dx / dist
+                                : Math.random() < 0.5
+                                  ? -1
+                                  : 1;
+                        const ny = dist > 0.001 ? dy / dist : 0;
+                        const knockbackDist =
+                            Math.max(110, radius - dist + 60) *
+                            ((GAME_STATE.difficulty
+                                ? GAME_STATE.difficulty.difficultyMultiplier ||
+                                  1.0
+                                : 1.0) /
+                                2 +
+                                0.5);
+                        e.airborne = true;
+                        e.isKnockbackAirborne = true;
+                        e.knockbackStartX = e.x;
+                        e.knockbackStartY = e.y;
+                        e.knockbackTargetX = Math.max(
+                            10,
+                            Math.min(W - 10, e.x + nx * knockbackDist),
+                        );
+                        e.knockbackTargetY = Math.max(
+                            10,
+                            Math.min(H - 10, e.y + ny * knockbackDist),
+                        );
+                        e.knockbackStart = now;
+                        e.knockbackDuration = 600;
+                    }
                 }
-            }
-        }
+            },
+        );
         GAME_STATE.hazards.push(new NukeExplosion(this.x, this.y, radius, now));
 
         // Spawn massive fire debris particles (white, orange, yellow)

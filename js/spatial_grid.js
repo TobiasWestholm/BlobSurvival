@@ -105,7 +105,50 @@ const SPATIAL_GRID = {
             }
         });
     },
+
+    // Frame stamps for occupancy tags (avoids O(n) clears each frame)
+    iceStamp: 0,
+    laserFenceStamp: 0,
 };
+
+/**
+ * Tag enemies overlapping any live ice trail via the spatial grid.
+ * Enemy.isOnIce() then becomes an O(1) stamp check instead of O(trails).
+ */
+function markEnemiesOnIce() {
+    SPATIAL_GRID.iceStamp = (SPATIAL_GRID.iceStamp + 1) | 0;
+    if (SPATIAL_GRID.iceStamp > 1000000000) SPATIAL_GRID.iceStamp = 1;
+    if (typeof GAME_STATE === 'undefined' || !GAME_STATE.iceTrails) return;
+    const trails = GAME_STATE.iceTrails;
+    const numTrails = trails.length;
+    if (numTrails === 0) return;
+    const stamp = SPATIAL_GRID.iceStamp;
+
+    for (let i = 0; i < numTrails; i++) {
+        const hz = trails[i];
+        if (!hz?.alive) continue;
+        SPATIAL_GRID.queryBox(hz.minX, hz.maxX, hz.minY, hz.maxY, (e) => {
+            if (!e || e.hp <= 0) return;
+            const dx = hz.x2 - hz.x1;
+            const dy = hz.y2 - hz.y1;
+            const len2 = dx * dx + dy * dy;
+            let t = 0;
+            if (len2 > 0) {
+                t = ((e.x - hz.x1) * dx + (e.y - hz.y1) * dy) / len2;
+                if (t < 0) t = 0;
+                else if (t > 1) t = 1;
+            }
+            const closestX = hz.x1 + t * dx;
+            const closestY = hz.y1 + t * dy;
+            const edx = e.x - closestX;
+            const edy = e.y - closestY;
+            const hitR = e.r + 22;
+            if (edx * edx + edy * edy < hitR * hitR) {
+                e._iceStamp = stamp;
+            }
+        });
+    }
+}
 
 // ---------------- 2D Spatial & Geometric Intersection Helpers ----------------
 
@@ -457,6 +500,7 @@ function findShieldArcIntersection(x1, y1, x2, y2, targetEnemy) {
 if (typeof window !== 'undefined') {
     window.SPATIAL_GRID_CELL_SIZE = SPATIAL_GRID_CELL_SIZE;
     window.SPATIAL_GRID = SPATIAL_GRID;
+    window.markEnemiesOnIce = markEnemiesOnIce;
     window.isOnPlayableArea = isOnPlayableArea;
     window.pointToSegmentDistance = pointToSegmentDistance;
     window.testShieldArcHit = testShieldArcHit;

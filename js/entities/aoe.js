@@ -1474,12 +1474,19 @@ function applyExplosionHealing(
         if (!Array.isArray(sources) || sources.length === 0) {
             const blastR2 = radius * radius;
             sources = [];
-            if (GAME_STATE.enemies) {
-                for (const e of GAME_STATE.enemies) {
-                    const edx = e.x - x;
-                    const edy = e.y - y;
-                    if (edx * edx + edy * edy <= blastR2) sources.push(e);
-                }
+            if (GAME_STATE.enemies && typeof SPATIAL_GRID !== 'undefined') {
+                const pad = radius + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+                SPATIAL_GRID.queryBox(
+                    x - pad,
+                    x + pad,
+                    y - pad,
+                    y + pad,
+                    (e) => {
+                        const edx = e.x - x;
+                        const edy = e.y - y;
+                        if (edx * edx + edy * edy <= blastR2) sources.push(e);
+                    },
+                );
             }
         }
         const wispCap = 28;
@@ -1711,14 +1718,7 @@ function triggerFullBoardMineExplosion(now) {
                 spawnHitParticles(e.x, e.y, '#ffffff');
         }
     }
-
-    if (typeof GAME_STATE !== 'undefined' && GAME_STATE.hazards) {
-        for (const h of GAME_STATE.hazards) {
-            if (h instanceof PlayerMine && h.alive) {
-                h.despawn();
-            }
-        }
-    }
+    // Keep player-placed mines; board wipe only clears enemies + VFX.
 }
 
 // ---------------- Global Window / Module Exports ----------------

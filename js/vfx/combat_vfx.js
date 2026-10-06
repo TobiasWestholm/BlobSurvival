@@ -644,13 +644,18 @@ class InstantMuzzleFlash extends CombatVFX {
         this.shooterRadius = shooterRadius;
         if (!fromNetwork && typeof queueNetworkCombatVfx === 'function') {
             const src = /** @type {any} */ (source);
-            const pIndex = src
-                ? src.player && src.player.index !== undefined
-                    ? src.player.index
-                    : src.index !== undefined
-                      ? src.index
-                      : 0
-                : 0;
+            // Color owner only — clients world-anchor at x/y (turret sources must
+            // not resolve to the owning player or flashes appear on the blob)
+            const ownerPlayer =
+                src && src.player && src.player.index !== undefined
+                    ? src.player
+                    : src && src.index !== undefined
+                      ? src
+                      : null;
+            const pIndex =
+                ownerPlayer && ownerPlayer.index !== undefined
+                    ? ownerPlayer.index
+                    : 0;
             queueNetworkCombatVfx(
                 5,
                 x,

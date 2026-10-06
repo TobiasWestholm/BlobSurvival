@@ -298,19 +298,26 @@ class SupplyDrop extends Collectible {
             const px = player.x,
                 py = player.y;
             GAME_STATE.hazards.push(new NukeExplosion(px, py, rad, curTime));
-            for (const e of GAME_STATE.enemies) {
-                if (e.hp > 0) {
+            const nukeR2 = rad * rad;
+            const nukePad = rad + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+            SPATIAL_GRID.queryBox(
+                px - nukePad,
+                px + nukePad,
+                py - nukePad,
+                py + nukePad,
+                (e) => {
+                    if (e.hp <= 0) return;
                     const edx = e.x - px,
                         edy = e.y - py;
                     const ed2 = edx * edx + edy * edy;
-                    if (ed2 <= rad * rad) {
+                    if (ed2 <= nukeR2) {
                         e.hp -= dmg;
                         const dist = Math.sqrt(ed2) || 1;
                         e.x += (edx / dist) * 45;
                         e.y += (edy / dist) * 45;
                     }
-                }
-            }
+                },
+            );
             spawnHitParticles(px, py, '#ff3300');
         } else if (this.type === 'freeze') {
             // Freeze centered at player
@@ -321,15 +328,22 @@ class SupplyDrop extends Collectible {
             GAME_STATE.hazards.push(
                 new FreezeBlastVisual(px, py, rad, curTime),
             );
-            for (const e of GAME_STATE.enemies) {
-                if (e.hp > 0 && !e.isBoss()) {
+            const freezeR2 = rad * rad;
+            const freezePad = rad + SPATIAL_GRID.MAX_ENEMY_RADIUS;
+            SPATIAL_GRID.queryBox(
+                px - freezePad,
+                px + freezePad,
+                py - freezePad,
+                py + freezePad,
+                (e) => {
+                    if (e.hp <= 0 || e.isBoss()) return;
                     const edx = e.x - px,
                         edy = e.y - py;
-                    if (edx * edx + edy * edy <= rad * rad) {
+                    if (edx * edx + edy * edy <= freezeR2) {
                         e.freeze(dur, curTime);
                     }
-                }
-            }
+                },
+            );
             spawnHitParticles(px, py, '#00ffcc');
         } else if (this.type === 'overclock') {
             // Double attack speed of all active turrets
