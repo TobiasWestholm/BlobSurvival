@@ -532,13 +532,13 @@ function pickThreeFor(player) {
             return false;
         if (
             u.id === 'turret_dispenser_upgrade' &&
-            !taken.has('building_duration_upgrade')
+            !(player.buildingDurationCount > 0)
         )
             return false;
         if (
             u.id === 'turret_network_upgrade' &&
             (!taken.has('laser_walls_upgrade') ||
-                !taken.has('building_duration_upgrade'))
+                !(player.buildingDurationCount > 0))
         )
             return false;
         if (
@@ -591,8 +591,7 @@ function pickThreeFor(player) {
             return false;
         if (
             u.id === 'explosion_heal_upgrade' &&
-            (!taken.has('mine_aoe_upgrade') ||
-                !taken.has('mine_scatter_upgrade'))
+            (!(player.mineAoeCount > 0) || !taken.has('mine_scatter_upgrade'))
         )
             return false;
         if (
