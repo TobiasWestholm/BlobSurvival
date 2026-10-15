@@ -406,6 +406,15 @@ function initInputSystem() {
                     return;
                 }
             } else {
+                const howToPlayModal = document.getElementById('howToPlayModal');
+                if (howToPlayModal?.classList.contains('show')) {
+                    if (typeof closeHowToPlayModal === 'function') {
+                        closeHowToPlayModal();
+                    } else {
+                        howToPlayModal.classList.remove('show');
+                    }
+                    return;
+                }
                 const expModal = document.getElementById('expectedLevelsModal');
                 const fxModal = document.getElementById('fxSoundsModal');
                 const cfgModal = document.getElementById('testingConfigModal');

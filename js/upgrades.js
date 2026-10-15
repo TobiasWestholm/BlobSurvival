@@ -53,7 +53,7 @@ const UPGRADE_POOL = [
     {
         id: 'instant_missile_upgrade',
         name: 'Instant Precision',
-        desc: 'Magic Missile, Laser, and Cluster Shot travel with infinite velocity, hitting monsters instantly without a traveling projectile.',
+        desc: 'Magic Missile, Laser, and Cluster Shot travel with infinite velocity, hitting blobs instantly without a traveling projectile.',
         oneShot: true,
         effect: (p) => (p.instantMissileEnabled = true),
     },
@@ -140,7 +140,7 @@ const UPGRADE_POOL = [
     {
         id: 'laser_walls_upgrade',
         name: 'Laser Fences',
-        desc: `Turrets create high-energy laser barriers between them that deal ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage/sec to monsters passing through, while slowing them by ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%.`,
+        desc: `Turrets create high-energy laser barriers between them that deal ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage/sec to blobs passing through, while slowing them by ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%.`,
         oneShot: true,
         effect: (p) => {
             p.laserWallsEnabled = true;
@@ -197,7 +197,7 @@ const UPGRADE_POOL = [
     {
         id: 'turret_saw_upgrade',
         name: 'Sawblade Turrets',
-        desc: `Equips turrets with rotating sawblades dealing continuous ${GAME_CONFIG.TURRET.SAW_DPS} damage/sec to all nearby monsters within ${GAME_CONFIG.TURRET.SAW_RADIUS}px.`,
+        desc: `Equips turrets with rotating sawblades dealing continuous ${GAME_CONFIG.TURRET.SAW_DPS} damage/sec to all nearby blobs within ${GAME_CONFIG.TURRET.SAW_RADIUS}px.`,
         oneShot: true,
         effect: (p) => (p.turretSawEnabled = true),
     },
@@ -270,7 +270,7 @@ const UPGRADE_POOL = [
     {
         id: 'heal_pack_upgrade',
         name: 'Siphon Cells',
-        desc: `Slaying monsters has a chance to drop a health pack that heals ${GAME_CONFIG.UPGRADES.SIPHON_CELLS_HEAL_HP} HP.`,
+        desc: `Slaying blobs has a chance to drop a health pack that heals ${GAME_CONFIG.UPGRADES.SIPHON_CELLS_HEAL_HP} HP.`,
         oneShot: true,
         effect: (p) => {
             p.healPackEnabled = true;
@@ -311,7 +311,7 @@ const UPGRADE_POOL = [
     {
         id: 'melee_reflect_upgrade',
         name: 'Barbed Carapace',
-        desc: `Deals ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT}% of your Max HP back as damage to any monster that damages you, and turrets reflect ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_TURRET_MAX_HP_PCT}% max HP.`,
+        desc: `Deals ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_PLAYER_MAX_HP_PCT}% of your Max HP back as damage to any blob that damages you, and turrets reflect ${GAME_CONFIG.UPGRADES.REFLECT_DAMAGE_TURRET_MAX_HP_PCT}% max HP.`,
         oneShot: true,
         effect: (p) => (p.reflectDamageEnabled = true),
     },
@@ -822,13 +822,13 @@ const UPGRADE_DETAILS = {
     },
     instant_missile_upgrade: {
         stacking: 'One-shot permanent unlock.',
-        how: 'Magic Missiles, Lasers, and Cluster Shots travel with infinite velocity, hitting target monsters instantaneously upon firing with no projectile transit delay. Turrets also gain this instant hit mechanic.',
+        how: 'Magic Missiles, Lasers, and Cluster Shots travel with infinite velocity, hitting target blobs instantaneously upon firing with no projectile transit delay. Turrets also gain this instant hit mechanic.',
         caveats:
-            'Shield Bearer energy barriers can still block line-of-fire between the shooter and the monster.',
+            'Shield Bearer energy barriers can still block line-of-fire between the shooter and the blob.',
     },
     sniper_shot_upgrade: {
         stacking: 'One-shot permanent unlock.',
-        how: `Every ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL === 3 ? '3rd' : GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL + 'th'} Magic Missile volley fires a high-velocity piercing beam at the monster with the highest maximum HP within range, dealing ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_DAMAGE_MULT}x damage to everything in its path.`,
+        how: `Every ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL === 3 ? '3rd' : GAME_CONFIG.UPGRADES.SNIPER_SHOT_INTERVAL + 'th'} Magic Missile volley fires a high-velocity piercing beam at the blob with the highest maximum HP within range, dealing ${GAME_CONFIG.UPGRADES.SNIPER_SHOT_DAMAGE_MULT}x damage to everything in its path.`,
         caveats:
             'Prioritizes the highest-HP target rather than the closest target.',
     },
@@ -867,34 +867,34 @@ const UPGRADE_DETAILS = {
     },
     unlock_missile: {
         stacking: 'One-shot permanent unlock.',
-        how: 'Unlocks the automated Magic Missile weapon that continuously fires homing energy darts at nearby monsters.',
+        how: 'Unlocks the automated Magic Missile weapon that continuously fires homing energy darts at nearby blobs.',
         caveats: 'Fires automatically without manual aim required.',
     },
     unlock_melee: {
         stacking: 'One-shot permanent unlock.',
         how: 'Unlocks the close-range Melee Sweep attack that hits all enemies in a broad arc in front of the player.',
-        caveats: 'Requires being in close proximity to monsters.',
+        caveats: 'Requires being in close proximity to blobs.',
     },
     unlock_mine: {
         stacking: 'One-shot permanent unlock.',
-        how: 'Unlocks deployable proximity mines dropped periodically behind you that arm and explode when monsters step on them.',
+        how: 'Unlocks deployable proximity mines dropped periodically behind you that arm and explode when blobs step on them.',
         caveats:
             'Mines have a 500ms arming delay before they become triggerable.',
     },
     unlock_turret: {
         stacking: 'One-shot permanent unlock.',
-        how: `Unlocks deployable automated defense turrets dropped every ${GAME_CONFIG.TURRET.PLACEMENT_INTERVAL_SEC} seconds. Each turret lasts ${GAME_CONFIG.TURRET.LIFETIME_SEC} seconds and shoots high-speed missiles at nearby monsters.`,
+        how: `Unlocks deployable automated defense turrets dropped every ${GAME_CONFIG.TURRET.PLACEMENT_INTERVAL_SEC} seconds. Each turret lasts ${GAME_CONFIG.TURRET.LIFETIME_SEC} seconds and shoots high-speed missiles at nearby blobs.`,
         caveats:
             'Turrets have their own HP and can be damaged or destroyed by enemy attacks.',
     },
     laser_walls_upgrade: {
         stacking: 'One-shot permanent unlock.',
-        how: `Turrets establish high-energy laser barriers between each other dealing ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage per second to monsters passing through, while slowing them by ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%.`,
+        how: `Turrets establish high-energy laser barriers between each other dealing ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage per second to blobs passing through, while slowing them by ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%.`,
         caveats: 'Requires at least 2 active turrets within link range.',
     },
     building_duration_upgrade: {
         stacking: `Can be selected multiple times. Each selection adds +${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% turret duration and +${GAME_CONFIG.TURRET.FORTIFIED_HP_BOOST_PCT}% turret HP.`,
-        how: 'Extends how long turrets stay alive before expiring and increases their maximum health to survive heavy monster swarms.',
+        how: 'Extends how long turrets stay alive before expiring and increases their maximum health to survive heavy blob swarms.',
         caveats: 'Applies to all currently placed and future turrets.',
     },
     turret_cooldown_upgrade: {
@@ -920,8 +920,8 @@ const UPGRADE_DETAILS = {
     },
     turret_saw_upgrade: {
         stacking: 'One-shot permanent unlock.',
-        how: `Equips all turrets with spinning circular sawblades dealing ${GAME_CONFIG.TURRET.SAW_DPS} damage/sec to all nearby monsters within ${GAME_CONFIG.TURRET.SAW_RADIUS}px (reach scales with Extended Joints).`,
-        caveats: 'Deals continuous damage to any monster entering close range.',
+        how: `Equips all turrets with spinning circular sawblades dealing ${GAME_CONFIG.TURRET.SAW_DPS} damage/sec to all nearby blobs within ${GAME_CONFIG.TURRET.SAW_RADIUS}px (reach scales with Extended Joints).`,
+        caveats: 'Deals continuous damage to any blob entering close range.',
     },
     turret_dispenser_upgrade: {
         stacking: 'One-shot permanent unlock.',
@@ -933,7 +933,7 @@ const UPGRADE_DETAILS = {
             `• <b>Nitro</b> (⚡): +${GAME_CONFIG.SUPPLIES.NITRO_SPEED_BOOST_PCT}% movement speed for ${GAME_CONFIG.SUPPLIES.NITRO_DURATION_SEC} seconds.<br>` +
             `• <b>Magnet</b> (🧲): Vacuums all XP gems within a ${GAME_CONFIG.SUPPLIES.MAGNET_RADIUS}px radius.<br>` +
             `• <b>Nuke</b> (💣): Detonates a ${GAME_CONFIG.SUPPLIES.NUKE_RADIUS}px blast dealing ${GAME_CONFIG.SUPPLIES.NUKE_DAMAGE} damage with knockback.<br>` +
-            `• <b>Freeze</b> (❄️): Freezes all non-boss monsters in a ${GAME_CONFIG.SUPPLIES.FREEZE_RADIUS}px radius for ${GAME_CONFIG.SUPPLIES.FREEZE_DURATION_SEC} seconds.<br>` +
+            `• <b>Freeze</b> (❄️): Freezes all non-boss blobs in a ${GAME_CONFIG.SUPPLIES.FREEZE_RADIUS}px radius for ${GAME_CONFIG.SUPPLIES.FREEZE_DURATION_SEC} seconds.<br>` +
             `• <b>Overclock</b> (⚙️): Doubles the attack speed of all active turrets for ${GAME_CONFIG.SUPPLIES.OVERCLOCK_DURATION_SEC} seconds.`,
         caveats:
             'More active turrets on the field provide more dispensing opportunities.',
@@ -985,7 +985,7 @@ const UPGRADE_DETAILS = {
     },
     heal_pack_upgrade: {
         stacking: 'One-shot permanent unlock (one player per match).',
-        how: `Enemies slain by any player have a chance to drop pickup health packs (drop chance scales higher on beefier monsters). Collecting a pack restores ${GAME_CONFIG.UPGRADES.SIPHON_CELLS_HEAL_HP} HP.`,
+        how: `Enemies slain by any player have a chance to drop pickup health packs (drop chance scales higher on beefier blobs). Collecting a pack restores ${GAME_CONFIG.UPGRADES.SIPHON_CELLS_HEAL_HP} HP.`,
         caveats:
             'Available starting at Minute 3; only one player in a co-op match can take this upgrade.',
     },
@@ -1051,7 +1051,7 @@ const UPGRADE_DETAILS = {
     },
     final_blast: {
         stacking: 'One-shot permanent unlock.',
-        how: 'Upon dying, detonate in a massive nuclear explosion that obliterates nearby monsters, and permanently halves your respawn time.',
+        how: 'Upon dying, detonate in a massive nuclear explosion that obliterates nearby blobs, and permanently halves your respawn time.',
         caveats: 'Only available in co-op games (2+ players).',
     },
     projectile_shield: {
@@ -1072,8 +1072,8 @@ const UPGRADE_DETAILS = {
     },
     martyrs_presence_upgrade: {
         stacking: 'One-shot permanent unlock.',
-        how: `Enlarges Martyr's Aura radius by +${GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT}%, adds a knockback blast upon death, and constantly provokes monsters within proximity mine radius to target you.`,
-        caveats: 'Provokes monsters away from allies towards you.',
+        how: `Enlarges Martyr's Aura radius by +${GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT}%, adds a knockback blast upon death, and constantly provokes blobs within proximity mine radius to target you.`,
+        caveats: 'Provokes blobs away from allies towards you.',
     },
     sacrificial_aegis_upgrade: {
         stacking: 'One-shot permanent unlock.',

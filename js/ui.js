@@ -61,11 +61,13 @@ function renderLobbyWeaponPanels() {
 
     const lobbyStartBtn = document.getElementById('lobbyStartBtn');
     const inviteBanner = document.getElementById('inviteCodeBanner');
+    const howToPlayBanner = document.getElementById('howToPlayBanner');
     const tipEl = document.getElementById('tipText');
 
     if (isSingle) {
         if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
         if (inviteBanner) inviteBanner.style.display = 'none';
+        if (howToPlayBanner) howToPlayBanner.style.display = 'none';
         const player = GAME_STATE.players?.[0] ? GAME_STATE.players[0] : null;
         if (player)
             layer.appendChild(buildStartingWeaponPanel(player, 1, true));
@@ -77,12 +79,14 @@ function renderLobbyWeaponPanels() {
             );
             lobbyStartBtn.onclick = () => {
                 lobbyStartBtn.style.display = 'none';
+                if (howToPlayBanner) howToPlayBanner.style.display = 'none';
                 layer.classList.remove('show');
                 if (tipEl) tipEl.style.display = 'none';
                 startCountdown(true);
             };
         }
         if (inviteBanner) inviteBanner.style.display = 'none';
+        if (howToPlayBanner) howToPlayBanner.style.display = 'block';
         const count = GAME_STATE.players.length;
         for (const player of GAME_STATE.players) {
             if (player)
@@ -99,6 +103,7 @@ function renderLobbyWeaponPanels() {
                     ? netManager.roomCode
                     : 'XXXX';
         }
+        if (howToPlayBanner) howToPlayBanner.style.display = 'none';
         if (lobbyStartBtn) {
             lobbyStartBtn.style.display = 'block';
             const activePlayers = (GAME_STATE.players || []).filter(
@@ -111,6 +116,7 @@ function renderLobbyWeaponPanels() {
             lobbyStartBtn.onclick = () => {
                 lobbyStartBtn.style.display = 'none';
                 if (inviteBanner) inviteBanner.style.display = 'none';
+                if (howToPlayBanner) howToPlayBanner.style.display = 'none';
                 layer.classList.remove('show');
                 if (tipEl) tipEl.style.display = 'none';
                 if (typeof netManager !== 'undefined' && netManager) {
@@ -143,6 +149,7 @@ function renderLobbyWeaponPanels() {
     } else if (isOnlineClient) {
         if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
         if (inviteBanner) inviteBanner.style.display = 'none';
+        if (howToPlayBanner) howToPlayBanner.style.display = 'block';
         const myIndex = netManager ? netManager.localPlayerIndex : 0;
         if (typeof isMobile !== 'undefined' && isMobile) {
             const player =
@@ -266,9 +273,15 @@ function buildStartingWeaponPanel(player, count, isInteractive) {
         panel.classList.add('chosen');
     }
 
+    const isMobileDevice =
+        typeof isMobile !== 'undefined'
+            ? isMobile
+            : (typeof window !== 'undefined' && window.isMobile) || false;
     const showDialogKeys =
-        GAME_STATE.gameMode === 'local' ||
-        (GAME_STATE.gameMode === 'online' && isInteractive);
+        !isMobileDevice &&
+        (GAME_STATE.gameMode === 'single' ||
+            GAME_STATE.gameMode === 'local' ||
+            (GAME_STATE.gameMode === 'online' && isInteractive));
     if (showDialogKeys) {
         const keyCluster = createKeyClusterDOM(player.index, player.color);
         panel.appendChild(keyCluster);
@@ -1073,6 +1086,9 @@ function startCountdown(isNewGame = false) {
     if (tipEl) tipEl.style.display = 'none';
     const hostOverlay = document.getElementById('hostPauseOverlay');
     if (hostOverlay) hostOverlay.style.display = 'none';
+    const howToPlayBanner = document.getElementById('howToPlayBanner');
+    if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+    closeHowToPlayModal();
     stopTipRotation();
     const uiLayer = document.querySelector('.ui-layer');
     if (uiLayer) uiLayer.style.display = 'block';
@@ -1091,6 +1107,7 @@ function startCountdown(isNewGame = false) {
 
     const pauseBtn = document.getElementById('pauseMenuBtn');
     if (pauseBtn) pauseBtn.style.display = 'flex';
+    updatePauseMenuButtonIcon(false);
 
     const isMobileDevice =
         typeof isMobile !== 'undefined'
@@ -1189,7 +1206,7 @@ const tips = [
     'When a player dies in multiplayer, they respawn after 20 seconds unless all players die during those 20 seconds - then the game is over.',
     'Cryo Freeze will freeze enemies in place early on, but later on it will only slow them down.',
     'All players level up together in multiplayer, but select upgrades individually.',
-    'XP needs to be collected from the ground after killing monsters in order to level up.',
+    'XP needs to be collected from the ground after killing blobs in order to level up.',
     'The game progression is based on time, not player level.',
     'Explosives and the melee Sledge Hammer and Flail can destroy burrowed enemies.',
     'Harder difficulties also give you less time to dodge enemy projectiles, dashes, and other hazards.',
@@ -1643,6 +1660,7 @@ function showStartMenu() {
 
     const pauseBtn2 = document.getElementById('pauseMenuBtn');
     if (pauseBtn2) pauseBtn2.style.display = 'none';
+    updatePauseMenuButtonIcon(false);
 
     const hideModal = (id) => {
         const el = document.getElementById(id);
@@ -1681,6 +1699,9 @@ function showStartMenu() {
 
     const inviteBanner = document.getElementById('inviteCodeBanner');
     if (inviteBanner) inviteBanner.style.display = 'none';
+    const howToPlayBanner = document.getElementById('howToPlayBanner');
+    if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+    closeHowToPlayModal();
     const rotateHint = document.getElementById('rotateHint');
     if (rotateHint) rotateHint.style.display = 'none';
     if (typeof window !== 'undefined') window._rotateHintDismissed = false;
@@ -1705,6 +1726,28 @@ function updateFpsToggleBtn() {
     } else {
         btn.classList.add('disabled-state');
     }
+}
+
+const PAUSE_MENU_ICON_PAUSE =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>';
+const PAUSE_MENU_ICON_PLAY =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>';
+
+function updatePauseMenuButtonIcon(forcePlay = null) {
+    const btn = document.getElementById('pauseMenuBtn');
+    if (!btn) return;
+    let showPlay = forcePlay;
+    if (showPlay === null) {
+        const modal = document.getElementById('pauseModal');
+        const menuOpen = Boolean(modal?.classList.contains('show'));
+        const paused =
+            typeof GAME_STATE !== 'undefined' &&
+            GAME_STATE.current === STATES.PAUSED;
+        showPlay = menuOpen || paused;
+    }
+    btn.innerHTML = showPlay ? PAUSE_MENU_ICON_PLAY : PAUSE_MENU_ICON_PAUSE;
+    btn.title = showPlay ? 'Resume (Esc)' : 'Pause (Esc)';
+    btn.setAttribute('aria-label', showPlay ? 'Resume' : 'Pause');
 }
 
 function togglePause() {
@@ -1735,6 +1778,7 @@ function togglePause() {
                       ? window.joystickZone
                       : null);
             if (isMobileDevice && zone) zone.style.display = 'block';
+            updatePauseMenuButtonIcon(false);
         } else {
             // Configure Esc menu for client:
             // 1. Resume button should not exist
@@ -1768,6 +1812,7 @@ function togglePause() {
             if (zone) zone.style.display = 'none';
 
             modal.classList.add('show');
+            updatePauseMenuButtonIcon(true);
         }
         return;
     }
@@ -1809,6 +1854,7 @@ function togglePause() {
 
             modal.classList.add('show');
         }
+        updatePauseMenuButtonIcon(true);
 
         // Host broadcasts pause event to clients
         if (
@@ -1824,6 +1870,7 @@ function togglePause() {
     } else if (GAME_STATE.current === STATES.PAUSED) {
         const modal = document.getElementById('pauseModal');
         if (modal) modal.classList.remove('show');
+        updatePauseMenuButtonIcon(false);
 
         // Host broadcasts countdown to clients so all resume simultaneously
         if (
@@ -1849,12 +1896,16 @@ function togglePause() {
 function updateUI() {
     if (typeof GAME_STATE === 'undefined') return;
     const xpBarEl = document.getElementById('xpBar');
+    const xpLevelLabelEl = document.getElementById('xpLevelLabel');
     const statsEl = document.getElementById('stats');
     const timerEl = document.getElementById('timer');
     const fpsCounterEl = document.getElementById('fpsCounter');
 
     if (xpBarEl && GAME_STATE.nextXp) {
         xpBarEl.style.width = (GAME_STATE.xp / GAME_STATE.nextXp) * 100 + '%';
+    }
+    if (xpLevelLabelEl) {
+        xpLevelLabelEl.textContent = `Level ${GAME_STATE.level || 1}`;
     }
 
     if (statsEl && GAME_STATE.players) {
@@ -1866,19 +1917,22 @@ function updateUI() {
                     return `<div style="margin-top:2px;"><span style="color:${p.color};opacity:0.65">${pName} (Disconnected)</span></div>`;
                 }
                 if (typeof p.isAlive === 'function' ? p.isAlive() : p.alive) {
-                    return `<div style="margin-top:2px;"><span style="color:${p.color}">${pName} ${Math.ceil(p.hp)}/${p.maxHp}</span></div>`;
+                    return `<div style="margin-top:2px;"><span style="color:${p.color}">HP: ${Math.ceil(p.hp)}</span></div>`;
                 }
+                const reviveClock =
+                    typeof GAME_STATE.elapsed === 'number'
+                        ? GAME_STATE.elapsed
+                        : typeof gameClock !== 'undefined'
+                          ? gameClock
+                          : performance.now();
                 let rem = Math.max(
                     0,
                     Math.ceil(
                         ((typeof REVIVE_MS !== 'undefined'
                             ? REVIVE_MS
-                            : 10000) *
+                            : 20000) *
                             (p.reviveTimeModifier || 1.0) -
-                            ((typeof gameClock !== 'undefined'
-                                ? gameClock
-                                : performance.now()) -
-                                p.deadAt)) /
+                            (reviveClock - (p.deadAt || 0))) /
                             1000,
                     ),
                 );
@@ -1896,10 +1950,12 @@ function updateUI() {
                         );
                     }
                 }
-                return `<div style="margin-top:2px;"><span style="color:${p.color};opacity:0.55">${pName} &#9760;${rem}s</span></div>`;
+                const deadName =
+                    pName.length > 12 ? `${pName.slice(0, 10)}..` : pName;
+                return `<div style="margin-top:2px;"><span style="color:${p.color};opacity:0.55">${deadName} &#9760;${rem}s</span></div>`;
             })
             .join('');
-        statsEl.innerHTML = `Level: ${GAME_STATE.level} | Kills: ${GAME_STATE.kills}${playerRows}`;
+        statsEl.innerHTML = playerRows;
 
         const curClock =
             typeof gameClock !== 'undefined' ? gameClock : performance.now();
@@ -1937,7 +1993,7 @@ function updateUI() {
             const enemyCount = GAME_STATE.enemies
                 ? GAME_STATE.enemies.length
                 : 0;
-            let text = `${GAME_STATE.currentFps || 60} FPS<br>Enemies: ${enemyCount}`;
+            let text = `${GAME_STATE.currentFps || 60} FPS<br>Kills: ${GAME_STATE.kills || 0}<br>Enemies: ${enemyCount}`;
 
             if (
                 typeof netManager !== 'undefined' &&
@@ -1978,6 +2034,44 @@ function updateUI() {
     }
 }
 
+function getApproximateRunMinutes() {
+    let lastBossStart = 0;
+    if (typeof PROGRESSION !== 'undefined' && PROGRESSION?.bossEvents) {
+        for (const b of PROGRESSION.bossEvents) {
+            if (b?.start > lastBossStart) lastBossStart = b.start;
+        }
+    }
+    if (lastBossStart <= 0) return 25;
+    return Math.max(1, Math.round((lastBossStart + 60000) / 60000));
+}
+
+function openHowToPlayModal() {
+    const winItem = document.getElementById('howToPlayWinItem');
+    if (winItem) {
+        const minutes = getApproximateRunMinutes();
+        winItem.innerHTML = `<b style="color: #fff;">Win</b> — defeat the final boss. A full run is around ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+    }
+    const pauseItem = document.getElementById('howToPlayPauseItem');
+    if (pauseItem) {
+        const isOnlineClient =
+            typeof GAME_STATE !== 'undefined' &&
+            GAME_STATE.gameMode === 'online' &&
+            typeof netManager !== 'undefined' &&
+            netManager?.isClient;
+        const hostOnly = isOnlineClient
+            ? ' <span style="color: #aaa;">(host only)</span>'
+            : '';
+        pauseItem.innerHTML = `<b style="color: #fff;">Pause</b> — press <b style="color: #fff;">Esc</b> or the <span class="how-to-play-pause-btn" aria-hidden="true">${PAUSE_MENU_ICON_PAUSE}</span> button in the top right corner${hostOnly}.`;
+    }
+    const modal = document.getElementById('howToPlayModal');
+    if (modal) modal.classList.add('show');
+}
+
+function closeHowToPlayModal() {
+    const modal = document.getElementById('howToPlayModal');
+    if (modal) modal.classList.remove('show');
+}
+
 // ---------------- 7. DOM Event Listeners & Buttons Initialization ----------------
 
 function initUISystem() {
@@ -1998,6 +2092,20 @@ function initUISystem() {
             }
         }
     });
+
+    const bindHowToPlayOpen = (id) => {
+        const btn = document.getElementById(id);
+        if (btn) btn.onclick = () => openHowToPlayModal();
+    };
+    bindHowToPlayOpen('btnHowToPlayMenu');
+    bindHowToPlayOpen('howToPlayBanner');
+    const closeHowToPlayBtn = document.getElementById('closeHowToPlayBtn');
+    if (closeHowToPlayBtn) closeHowToPlayBtn.onclick = () => closeHowToPlayModal();
+    const closeHowToPlayBtnBottom = document.getElementById(
+        'closeHowToPlayBtnBottom',
+    );
+    if (closeHowToPlayBtnBottom)
+        closeHowToPlayBtnBottom.onclick = () => closeHowToPlayModal();
 
     // Start Menu Step Mode Buttons
     const btnSingle = document.getElementById('btnModeSingle');
@@ -2334,7 +2442,10 @@ if (typeof window !== 'undefined') {
     window.joinOnlineRoom = joinOnlineRoom;
     window.updateFpsToggleBtn = updateFpsToggleBtn;
     window.togglePause = togglePause;
+    window.updatePauseMenuButtonIcon = updatePauseMenuButtonIcon;
     window.updateUI = updateUI;
     window.initUISystem = initUISystem;
     window.createKeyClusterDOM = createKeyClusterDOM;
+    window.openHowToPlayModal = openHowToPlayModal;
+    window.closeHowToPlayModal = closeHowToPlayModal;
 }

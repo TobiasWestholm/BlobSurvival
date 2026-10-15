@@ -43,8 +43,29 @@
         pointer-events: none;
         z-index: 50;
     }
-    .xp-bar-container { width: 100%; height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
+    .xp-bar-container {
+        position: relative;
+        width: 100%;
+        height: 18px;
+        background: #333;
+        border-radius: 6px;
+        overflow: hidden;
+    }
     .xp-bar { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s ease; }
+    .xp-level-label {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: clamp(11px, 0.85vw, 14px);
+        font-weight: bold;
+        color: #fff;
+        text-shadow: 0 0 3px #000, 1px 1px 2px #000, -1px 0 2px #000;
+        pointer-events: none;
+        z-index: 1;
+        letter-spacing: 0.3px;
+    }
     #stats { margin-top: 6px; font-size: clamp(13px, 1.0vw, 18px); text-shadow: 1px 1px 2px #000, 0 0 4px #000; }
     @keyframes hpPulse {
         0%   { transform: scale(1);    text-shadow: 1px 1px 2px #000, 0 0 4px #000; }
@@ -673,8 +694,11 @@
     }
     body.mobile-device .xp-bar-container {
         width: 100% !important;
-        height: 6px !important;
-        border-radius: 3px !important;
+        height: 14px !important;
+        border-radius: 4px !important;
+    }
+    body.mobile-device .xp-level-label {
+        font-size: 10px !important;
     }
     body.mobile-device #stats {
         font-size: 11px !important;
@@ -807,6 +831,17 @@
     body.mobile-device #inviteCodeBanner .code-text {
         font-size: 14px !important;
     }
+    body.mobile-device #howToPlayBanner {
+        position: fixed !important;
+        bottom: calc(max(14px, env(safe-area-inset-bottom, 14px)) + 148px) !important;
+        left: 50% !important;
+        right: auto !important;
+        top: auto !important;
+        transform: translateX(-50%) !important;
+        padding: 8px 14px !important;
+        font-size: 13px !important;
+        z-index: 140 !important;
+    }
     body.mobile-device #lobbyStartBtn {
         position: fixed !important;
         bottom: calc(max(14px, env(safe-area-inset-bottom, 14px)) + 92px) !important;
@@ -879,6 +914,16 @@
             transform: none !important;
             padding: 4px 10px !important;
             font-size: 10px !important;
+            z-index: 140 !important;
+        }
+        body.mobile-device #howToPlayBanner {
+            bottom: max(10px, env(safe-area-inset-bottom, 10px)) !important;
+            right: calc(50% + 94px) !important;
+            left: auto !important;
+            top: auto !important;
+            transform: none !important;
+            padding: 6px 12px !important;
+            font-size: 12px !important;
             z-index: 140 !important;
         }
         .modal {
@@ -974,6 +1019,7 @@
         height: 38px;
         min-width: 38px;
         min-height: 38px;
+        padding: 0;
         background: rgba(16, 16, 24, 0.90);
         color: #00ffcc;
         border: 1.5px solid #00ffcc;
@@ -989,8 +1035,36 @@
         -webkit-tap-highlight-color: transparent;
         transition: transform 0.1s ease, background 0.15s ease, box-shadow 0.15s ease;
     }
+    #pauseMenuBtn svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+        flex-shrink: 0;
+    }
     #pauseMenuBtn:hover { background: #00ffcc; color: #000; box-shadow: 0 0 16px rgba(0, 255, 204, 0.7); }
     #pauseMenuBtn:active { transform: scale(0.92); }
+    .how-to-play-pause-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        vertical-align: middle;
+        width: 22px;
+        height: 22px;
+        margin: 0 3px;
+        padding: 0;
+        background: rgba(16, 16, 24, 0.90);
+        color: #00ffcc;
+        border: 1.5px solid #00ffcc;
+        border-radius: 5px;
+        box-shadow: 0 0 8px rgba(0, 255, 204, 0.25);
+        pointer-events: none;
+        box-sizing: border-box;
+    }
+    .how-to-play-pause-btn svg {
+        width: 12px;
+        height: 12px;
+        display: block;
+    }
     
     /* Phone screen: dynamic interaction boxes with double max width & large, legible text */
     @media (max-width: 768px) {
@@ -1165,6 +1239,37 @@
         border-color: #76ff03;
         background: rgba(118, 255, 3, 0.18);
     }
+    #howToPlayBanner {
+        display: none;
+        position: fixed;
+        bottom: calc(max(16px, env(safe-area-inset-bottom, 16px)) + 14px);
+        left: 50%;
+        right: auto;
+        top: auto;
+        transform: translateX(-50%);
+        z-index: 155;
+        background: rgba(14, 14, 22, 0.94);
+        border: 1.5px solid #00ffcc;
+        border-radius: 8px;
+        padding: 10px 20px;
+        color: #00ffcc;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 0 16px rgba(0, 255, 204, 0.25);
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+        pointer-events: auto;
+        font-family: inherit;
+    }
+    #howToPlayBanner:hover {
+        background: rgba(0, 255, 204, 0.15);
+        box-shadow: 0 0 20px rgba(0, 255, 204, 0.45);
+        color: #fff;
+    }
 
     .player-panel.placeholder-panel {
         border-style: dashed !important;
@@ -1235,12 +1340,20 @@
 </div>
 
 <div class="ui-layer" style="display: none;">
-    <div class="xp-bar-container"><div id="xpBar" class="xp-bar"></div></div>
-    <div id="stats">Level: 1 | HP: 100/100</div>
+    <div class="xp-bar-container">
+        <div id="xpBar" class="xp-bar"></div>
+        <div id="xpLevelLabel" class="xp-level-label">Level 1</div>
+    </div>
+    <div id="stats">HP: 100</div>
 </div>
 <div id="timer" style="display: none;">0:00</div>
 <div id="fpsCounter" style="display: none;">60 FPS</div>
-<button type="button" id="pauseMenuBtn" title="Pause (P)" aria-label="Pause">☰</button>
+<button type="button" id="pauseMenuBtn" title="Pause (Esc)" aria-label="Pause">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+        <rect x="6" y="5" width="4" height="14" rx="1"></rect>
+        <rect x="14" y="5" width="4" height="14" rx="1"></rect>
+    </svg>
+</button>
 
 <div id="startMenu" class="modal show">
     <h1>BLOB SURVIVAL</h1>
@@ -1251,7 +1364,7 @@
         <div class="difficulty-list">
             <button type="button" class="upgrade-btn difficulty-card" id="btnModeSingle">
                 <span class="name">SINGLEPLAYER</span>
-                <span class="desc">Survive alone against the relentless monster hordes</span>
+                <span class="desc">Survive alone against the relentless blob hordes</span>
             </button>
             <button type="button" class="upgrade-btn difficulty-card" id="btnModeLocal">
                 <span class="name">LOCAL MULTIPLAYER</span>
@@ -1262,6 +1375,7 @@
                 <span class="desc">Play online together with friends using invite codes</span>
             </button>
         </div>
+        <button type="button" class="upgrade-btn back-btn" id="btnHowToPlayMenu"><span class="name">How to play</span></button>
     </div>
 
     <!-- Step 2: Online Choice (Host or Join) -->
@@ -1346,6 +1460,26 @@
     <div id="inviteCopyHint" style="font-size: 10px; color: #00ffcc; opacity: 0.85; margin-top: 2px;">Click to copy link</div>
 </div>
 
+<!-- Floating How to Play (weapon select lobby — all except online host) -->
+<button type="button" id="howToPlayBanner">How to play</button>
+
+<div id="howToPlayModal" class="modal" style="max-width: 420px; text-align: left; z-index: 520; padding: 22px; box-sizing: border-box;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+        <h2 style="margin: 0; color: #00ffcc;">How to play</h2>
+        <button type="button" id="closeHowToPlayBtn" style="background: none; border: none; color: #aaa; font-size: 22px; cursor: pointer; padding: 0 5px; line-height: 1;" aria-label="Close">✕</button>
+    </div>
+    <ul id="howToPlayList" style="margin: 0; padding-left: 18px; color: #ddd; font-size: 14px; line-height: 1.55;">
+        <li style="margin-bottom: 8px;"><b style="color: #fff;">Weapons fire automatically</b> — no need to click or tap to shoot.</li>
+        <li style="margin-bottom: 8px;"><b style="color: #fff;">Survive</b> — dodge enemies, collect XP gems, level up, and pick upgrades.</li>
+        <li style="margin-bottom: 8px;"><b style="color: #fff;">Upgrade details</b> — tap the <span class="upgrade-help-btn" style="display: inline-flex; vertical-align: middle; pointer-events: none; margin: 0 2px;">?</span> next to a weapon or upgrade for more info.</li>
+        <li id="howToPlayWinItem" style="margin-bottom: 8px;"><b style="color: #fff;">Win</b> — defeat the final boss. A full run is around 25 minutes.</li>
+        <li id="howToPlayPauseItem" style="margin-bottom: 0;"><b style="color: #fff;">Pause</b> — press <b style="color: #fff;">Esc</b> or the <span class="how-to-play-pause-btn" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg></span> button in the top right corner.</li>
+    </ul>
+    <div style="text-align: right; margin-top: 16px;">
+        <button type="button" id="closeHowToPlayBtnBottom" class="upgrade-btn" style="margin: 0; display: inline-block; width: auto; background: #00ffcc; color: #000; font-weight: bold; padding: 8px 20px;">Got It</button>
+    </div>
+</div>
+
 <!-- Floating Lobby Start Button (Host in Local & Online Multiplayer, Centered) -->
 <button type="button" id="lobbyStartBtn" disabled>START GAME</button>
 <button type="button" id="testingBtn" style="display: none; position: fixed; bottom: 20px; left: 20px; z-index: 10; background: #222; color: #00ffcc; border: 1px solid #00ffcc; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 0 10px rgba(0,255,200,0.3); pointer-events: auto;">TESTING</button>
@@ -1386,7 +1520,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 12px; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
         <div>
             <h2 style="margin: 0; color: #00ffcc; font-size: 22px; display: flex; align-items: center; gap: 8px;">📊 EXPECTED LEVEL PER MINUTE</h2>
-            <p style="margin: 4px 0 0 0; color: #888; font-size: 13px;">XP progression calculated from monster spawn rates, wave events & XP gem yields.</p>
+            <p style="margin: 4px 0 0 0; color: #888; font-size: 13px;">XP progression calculated from blob spawn rates, wave events & XP gem yields.</p>
         </div>
         <button type="button" class="upgrade-btn" id="closeExpectedLevelsBtn" style="margin: 0; width: auto; background: #333; border-color: #555; padding: 8px 16px;">Close</button>
     </div>

@@ -685,6 +685,9 @@ class NetworkManager {
                     isReconnection: true,
                     isAlive: recPlayer ? recPlayer.alive : true,
                     deadAt: recPlayer ? recPlayer.deadAt || 0 : 0,
+                    reviveTimeModifier: recPlayer
+                        ? recPlayer.reviveTimeModifier || 1.0
+                        : 1.0,
                     difficulty:
                         typeof GAME_STATE !== 'undefined' &&
                         GAME_STATE.difficulty
@@ -986,6 +989,7 @@ class NetworkManager {
                         data.pendingLevels,
                         data.isAlive,
                         data.deadAt,
+                        data.reviveTimeModifier,
                     );
                 }
                 break;
@@ -1840,6 +1844,7 @@ window.onAssignedSlot = (
     pendingLevels,
     isAlive,
     deadAt,
+    reviveTimeModifier,
 ) => {
     console.log(
         `[Game] Joined room! Assigned Player ${assignedSlot + 1} (Reconnection: ${!!isReconnection})`,
@@ -1892,6 +1897,12 @@ window.onAssignedSlot = (
         }
         if (deadAt !== undefined) {
             myP.deadAt = deadAt;
+        }
+        if (
+            reviveTimeModifier !== undefined &&
+            Number.isFinite(reviveTimeModifier)
+        ) {
+            myP.reviveTimeModifier = reviveTimeModifier;
         }
         if (myP.alive && myP.hp > 0) {
             myP.invuln = 1000;
@@ -4026,6 +4037,24 @@ function packWorldSnapshotBinary() {
             view.setUint32(offset, mf, true);
             offset += 4;
         }
+        // Dead players: sync death timestamp + revive duration modifier for client countdowns
+        const isAlive =
+            typeof p.isAlive === 'function' ? p.isAlive() : p.alive;
+        if (!isAlive) {
+            view.setUint32(offset, Math.round(p.deadAt || 0), true);
+            offset += 4;
+            view.setUint8(
+                offset,
+                Math.min(
+                    255,
+                    Math.max(
+                        1,
+                        Math.round((p.reviveTimeModifier || 1.0) * 100),
+                    ),
+                ),
+            );
+            offset += 1;
+        }
     }
     view.setUint8(playerCountOffset, packedPlayerCount);
 
@@ -4949,6 +4978,15 @@ function unpackWorldSnapshotBinary(buffer) {
                 offset += 4;
             }
 
+            let da;
+            let rtm;
+            if (!al) {
+                da = view.getUint32(offset, true);
+                offset += 4;
+                rtm = view.getUint8(offset) / 100;
+                offset += 1;
+            }
+
             players.push({
                 i: idx,
                 x,
@@ -4971,6 +5009,8 @@ function unpackWorldSnapshotBinary(buffer) {
                 mf,
                 mrm,
                 sh,
+                da,
+                rtm,
             });
         }
 
@@ -6072,8 +6112,19 @@ window.onWorldSnapshotReceived = (snapshot) => {
             if (sp.mhp !== undefined) p.maxHp = sp.mhp;
             const nowAlive = sp.al === 1 && sp.hp > 0;
             p.alive = nowAlive;
-            if (sp.da !== undefined && !nowAlive) {
-                p.deadAt = sp.da;
+            if (!nowAlive) {
+                if (sp.da !== undefined) {
+                    p.deadAt = sp.da;
+                } else if (wasAlive) {
+                    // Fallback if an older host omitted da
+                    p.deadAt =
+                        typeof gameClock !== 'undefined' && gameClock
+                            ? gameClock
+                            : GAME_STATE.elapsed || 0;
+                }
+                if (sp.rtm !== undefined && Number.isFinite(sp.rtm)) {
+                    p.reviveTimeModifier = sp.rtm;
+                }
             }
 
             // Sync death & revive sound and visual effects on client
@@ -7295,8 +7346,14 @@ window.onOnlinePauseSynced = (paused) => {
                   : null);
         if (zone) zone.style.display = 'none';
         if (hostOverlay) hostOverlay.style.display = 'block';
+        if (typeof updatePauseMenuButtonIcon === 'function') {
+            updatePauseMenuButtonIcon(true);
+        }
     } else {
         if (hostOverlay) hostOverlay.style.display = 'none';
+        if (typeof updatePauseMenuButtonIcon === 'function') {
+            updatePauseMenuButtonIcon(false);
+        }
     }
 };
 

@@ -210,7 +210,7 @@ const TREE_BRANCHES = [
             {
                 id: 'laser_walls_upgrade',
                 name: 'Laser Fences',
-                desc: `Turret laser fences deal ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage/sec to monsters passing through, while slowing them ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%`,
+                desc: `Turret laser fences deal ${GAME_CONFIG.TURRET.LASER_WALL_DPS} damage/sec to blobs passing through, while slowing them ${GAME_CONFIG.TURRET.SLOW_WALL_SLOW_PCT}%`,
             },
             {
                 id: 'building_duration_upgrade',
@@ -240,7 +240,7 @@ const TREE_BRANCHES = [
             {
                 id: 'turret_saw_upgrade',
                 name: 'Sawblade Turrets',
-                desc: `Turrets gain rotating sawblades dealing continuous ${GAME_CONFIG.TURRET.SAW_DPS} dmg/s to monsters within ${GAME_CONFIG.TURRET.SAW_RADIUS}px (scales with Extended Joints)`,
+                desc: `Turrets gain rotating sawblades dealing continuous ${GAME_CONFIG.TURRET.SAW_DPS} dmg/s to blobs within ${GAME_CONFIG.TURRET.SAW_RADIUS}px (scales with Extended Joints)`,
             },
             {
                 id: 'turret_network_upgrade',

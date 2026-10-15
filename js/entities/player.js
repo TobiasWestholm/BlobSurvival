@@ -590,6 +590,13 @@ class Player extends Unit {
         const isMovingNow = moveX !== 0 || moveY !== 0;
         this.isMoving = isMovingNow;
         this.moveSpeed = isMovingNow ? 1.0 : 0.0;
+        if (
+            isMovingNow &&
+            typeof window !== 'undefined' &&
+            typeof window.noteMovementHintFirstMove === 'function'
+        ) {
+            window.noteMovementHintFirstMove(this);
+        }
         if (isMovingNow) {
             this.agilityFade = Math.min(
                 1.0,
@@ -4427,10 +4434,16 @@ class Player extends Unit {
         }
     }
     drawDeadMarker(now) {
+        const reviveClock =
+            typeof GAME_STATE !== 'undefined' &&
+            typeof GAME_STATE.elapsed === 'number'
+                ? GAME_STATE.elapsed
+                : now;
         let remaining = Math.max(
             0,
             Math.ceil(
-                (REVIVE_MS * this.reviveTimeModifier - (now - this.deadAt)) /
+                (REVIVE_MS * (this.reviveTimeModifier || 1.0) -
+                    (reviveClock - (this.deadAt || 0))) /
                     1000,
             ),
         );

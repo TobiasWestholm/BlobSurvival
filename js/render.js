@@ -666,44 +666,159 @@ function draw(now) {
     }
 
     // 3. Upgrade menu, countdown & pause menu focus: darken canvas background and highlight active players with fat arrows
-    if (
+    const showMenuFocusOverlay =
         GAME_STATE.current === STATES.LEVEL_UP ||
         GAME_STATE.current === STATES.WEAPON_SELECT ||
         GAME_STATE.current === STATES.COUNTDOWN ||
-        GAME_STATE.current === STATES.PAUSED
-    ) {
-        ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-        ctx.fillRect(0, 0, W, H);
-        ctx.restore();
+        GAME_STATE.current === STATES.PAUSED;
+    // Singleplayer: keep controls/arrow/name into gameplay until first move + 2s (no dark overlay)
+    const showGameplayMovementHints =
+        GAME_STATE.current === STATES.GAMEPLAY &&
+        GAME_STATE.gameMode === 'single' &&
+        getMovementHintAlpha() > 0;
+
+    if (showMenuFocusOverlay || showGameplayMovementHints) {
+        if (showMenuFocusOverlay) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+            ctx.fillRect(0, 0, W, H);
+            ctx.restore();
+        }
 
         for (const p of GAME_STATE.players) {
             if (!p?.alive || p.disconnected || p.kicked) continue;
 
-            // Soft radial spotlight behind player
-            ctx.save();
-            const glowR = Math.max(40, p.r * 3.0);
-            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR);
-            grad.addColorStop(0, p.color + '55');
-            grad.addColorStop(0.45, p.color + '22');
-            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
+            if (showMenuFocusOverlay) {
+                // Soft radial spotlight behind player
+                ctx.save();
+                const glowR = Math.max(40, p.r * 3.0);
+                const grad = ctx.createRadialGradient(
+                    p.x,
+                    p.y,
+                    0,
+                    p.x,
+                    p.y,
+                    glowR,
+                );
+                grad.addColorStop(0, p.color + '55');
+                grad.addColorStop(0.45, p.color + '22');
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
 
-            // Redraw active player with full brightness above the dark overlay
-            p.draw(now);
+                // Redraw active player with full brightness above the dark overlay
+                p.draw(now);
+            }
 
             // Draw animated fat focus arrow pointing at player
-            drawPlayerFocusArrow(p, now);
+            if (shouldDrawPlayerFocusArrow(p)) {
+                drawPlayerFocusArrow(p, now);
+            }
         }
     }
 }
 
+const MOVEMENT_HINT_HOLD_MS = 2000;
+const MOVEMENT_HINT_FADE_MS = 400;
+
+function noteMovementHintFirstMove(player) {
+    if (!player || typeof GAME_STATE === 'undefined') return;
+    if (GAME_STATE.gameMode !== 'single') return;
+    if (GAME_STATE.movementHintsDone) return;
+    if (GAME_STATE.movementHintFirstMoveAt != null) return;
+    const state = GAME_STATE.current;
+    if (
+        state !== STATES.WEAPON_SELECT &&
+        state !== STATES.COUNTDOWN &&
+        state !== STATES.GAMEPLAY
+    ) {
+        return;
+    }
+    GAME_STATE.movementHintFirstMoveAt = performance.now();
+}
+
+function getMovementHintAlpha() {
+    if (typeof GAME_STATE === 'undefined') return 0;
+    if (GAME_STATE.gameMode !== 'single') return 1;
+    if (GAME_STATE.movementHintsDone) return 0;
+    const firstMoveAt = GAME_STATE.movementHintFirstMoveAt;
+    if (firstMoveAt == null) return 1;
+    // Wall-clock timing — draw() passes gameClock, which must not be used here
+    const elapsed = performance.now() - firstMoveAt;
+    if (elapsed < MOVEMENT_HINT_HOLD_MS) return 1;
+    const fadeT = (elapsed - MOVEMENT_HINT_HOLD_MS) / MOVEMENT_HINT_FADE_MS;
+    if (fadeT >= 1) {
+        GAME_STATE.movementHintsDone = true;
+        return 0;
+    }
+    return 1 - fadeT;
+}
+
+function shouldDrawPlayerFocusArrow(p) {
+    if (!p?.alive || p.disconnected || p.kicked) return false;
+    const state = GAME_STATE.current;
+    if (state === STATES.LEVEL_UP || state === STATES.PAUSED) return true;
+    if (state === STATES.WEAPON_SELECT || state === STATES.COUNTDOWN) {
+        if (GAME_STATE.gameMode === 'single') {
+            return getMovementHintAlpha() > 0;
+        }
+        return true;
+    }
+    if (state === STATES.GAMEPLAY && GAME_STATE.gameMode === 'single') {
+        return getMovementHintAlpha() > 0;
+    }
+    return false;
+}
+
+function shouldShowSteerKeyCluster(p) {
+    if (!p) return false;
+    const isMobileDevice =
+        typeof isMobile !== 'undefined'
+            ? isMobile
+            : (typeof window !== 'undefined' && window.isMobile) || false;
+    if (isMobileDevice) return false;
+    const isLocalControllingPlayer =
+        GAME_STATE.gameMode === 'online' &&
+        (typeof netManager !== 'undefined' &&
+        netManager &&
+        netManager.localPlayerIndex !== undefined
+            ? p.index === netManager.localPlayerIndex
+            : p.index === 0);
+    const showForPlayer =
+        GAME_STATE.gameMode === 'single' ||
+        GAME_STATE.gameMode === 'local' ||
+        isLocalControllingPlayer;
+    if (!showForPlayer) return false;
+
+    const state = GAME_STATE.current;
+    if (state === STATES.WEAPON_SELECT) {
+        return GAME_STATE.gameMode !== 'single' || getMovementHintAlpha() > 0;
+    }
+    // Singleplayer: keep steer keys visible with the focus arrow until first-move fade completes
+    if (
+        GAME_STATE.gameMode === 'single' &&
+        (state === STATES.COUNTDOWN || state === STATES.GAMEPLAY)
+    ) {
+        return getMovementHintAlpha() > 0;
+    }
+    return false;
+}
+
 function drawPlayerFocusArrow(p, now) {
-    if (!p?.alive || p.disconnected || p.kicked) return;
+    if (!shouldDrawPlayerFocusArrow(p)) return;
+    const hintAlpha = getMovementHintAlpha();
+    // Level-up / pause always full opacity; SP tutorial uses hint alpha
+    const alpha =
+        GAME_STATE.current === STATES.LEVEL_UP ||
+        GAME_STATE.current === STATES.PAUSED ||
+        GAME_STATE.gameMode !== 'single'
+            ? 1
+            : hintAlpha;
+    if (alpha <= 0) return;
+
     const bob = Math.sin(performance.now() * 0.008) * 6;
     const pointDown = p.y >= 85;
     const headWidth = 32;
@@ -713,6 +828,7 @@ function drawPlayerFocusArrow(p, now) {
     const totalHeight = headHeight + shaftHeight;
 
     ctx.save();
+    ctx.globalAlpha = alpha;
 
     const drawPill = (pillX, pillY, pillW, pillH, r) => {
         ctx.beginPath();
@@ -748,6 +864,8 @@ function drawPlayerFocusArrow(p, now) {
             badgeText = p.currentLevelUpgradeName;
         }
     }
+
+    const showKeyCluster = shouldShowSteerKeyCluster(p);
 
     if (pointDown) {
         const tipX = p.x;
@@ -816,17 +934,6 @@ function drawPlayerFocusArrow(p, now) {
             highestY = wPillY;
         }
 
-        // Steer buttons key cluster during weapon select (all in local co-op, controlling player only in online)
-        const isLocalControllingPlayer =
-            GAME_STATE.gameMode === 'online' &&
-            (typeof netManager !== 'undefined' &&
-            netManager &&
-            netManager.localPlayerIndex !== undefined
-                ? p.index === netManager.localPlayerIndex
-                : p.index === 0);
-        const showKeyCluster =
-            GAME_STATE.current === STATES.WEAPON_SELECT &&
-            (GAME_STATE.gameMode === 'local' || isLocalControllingPlayer);
         if (showKeyCluster) {
             const keySize = 16;
             const gap = 3;
@@ -909,17 +1016,6 @@ function drawPlayerFocusArrow(p, now) {
             lowestY = wPillY + wPillH;
         }
 
-        // Steer buttons key cluster during weapon select (all in local co-op, controlling player only in online)
-        const isLocalControllingPlayer =
-            GAME_STATE.gameMode === 'online' &&
-            (typeof netManager !== 'undefined' &&
-            netManager &&
-            netManager.localPlayerIndex !== undefined
-                ? p.index === netManager.localPlayerIndex
-                : p.index === 0);
-        const showKeyCluster =
-            GAME_STATE.current === STATES.WEAPON_SELECT &&
-            (GAME_STATE.gameMode === 'local' || isLocalControllingPlayer);
         if (showKeyCluster) {
             const keySize = 16;
             const gap = 3;
@@ -1061,5 +1157,7 @@ if (typeof window !== 'undefined') {
     window.drawPlayerFocusArrow = drawPlayerFocusArrow;
     window.drawKeyboardKeyCluster = drawKeyboardKeyCluster;
     window.drawKeyCapCanvas = drawKeyCapCanvas;
+    window.noteMovementHintFirstMove = noteMovementHintFirstMove;
+    window.getMovementHintAlpha = getMovementHintAlpha;
     window.draw = draw;
 }

@@ -75,6 +75,8 @@ function startGame(playerCount, difficultyKey) {
     GAME_STATE.gems = [];
     GAME_STATE.firstXpGem = null; // Track first gem for tutorial arrow
     GAME_STATE.xpArrowDone = false;
+    GAME_STATE.movementHintFirstMoveAt = null;
+    GAME_STATE.movementHintsDone = false;
     GAME_STATE.particles = [];
 
     // Recalculate canvas and reset canvas rendering context
