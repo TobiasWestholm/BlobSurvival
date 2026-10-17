@@ -716,7 +716,7 @@ function pickThreeFor(player) {
         if (u.id === 'cooldown' && player.attackSpeedCount >= 7) return false;
         if (
             u.id === 'campervan' &&
-            (player.hp > player.maxHp * 0.5 || GAME_STATE.enemies.length < 200)
+            (player.hp > player.maxHp * 0.5 || GAME_STATE.enemies.length < 150)
         )
             return false;
         if (

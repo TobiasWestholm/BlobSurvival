@@ -195,7 +195,21 @@ function clampMobileCamera() {
     camY = Math.max(0, Math.min(maxY, camY));
 }
 
-/** Max zoom-in: current default phone framing (narrow world window). */
+/**
+ * Max zoom-out: stop when the first arena edge is matched (cover).
+ * Uses max(viewW/W, viewH/H) so one axis is filled and the camera can
+ * still pan on the other — never a full-battlefield contain fit.
+ */
+function getMobileMaxZoomOut() {
+    if (viewW <= 0 || viewH <= 0 || W <= 0 || H <= 0) return 1;
+    return Math.max(viewW / W, viewH / H);
+}
+
+/**
+ * Max zoom-in: tight phone framing. Always strictly tighter than zoom-out
+ * so portrait phones (where 640-wide would already exceed arena height)
+ * still get a real zoom range and can pan on both axes when zoomed in.
+ */
 function getMobileMaxZoomIn() {
     if (viewW <= 0 || viewH <= 0) return 1;
     const isLandscape = viewW >= viewH;
@@ -204,20 +218,13 @@ function getMobileMaxZoomIn() {
         : MOBILE_VIEW_WORLD_W;
     viewWorldW = Math.min(viewWorldW, W);
     let z = viewW / Math.max(1, viewWorldW);
-    const viewWorldH = viewH / z;
-    if (viewWorldH > H && H > 0) {
-        z = viewH / H;
+    const zOut = getMobileMaxZoomOut();
+    // Portrait / tall aspect: intended width is wider than the cover window,
+    // so bump zoom-in past cover (~45% tighter) instead of matching full height.
+    if (!(z > zOut)) {
+        z = zOut * 1.45;
     }
     return z;
-}
-
-/**
- * Max zoom-out: one phone edge matches the arena (contain) —
- * full board awareness without empty letterboxing beyond that fit.
- */
-function getMobileMaxZoomOut() {
-    if (viewW <= 0 || viewH <= 0 || W <= 0 || H <= 0) return 1;
-    return Math.min(viewW / W, viewH / H);
 }
 
 function getMobileZoomForStep(step) {
@@ -1263,17 +1270,17 @@ function draw(now) {
 }
 
 /**
- * Project a world point onto the phone screen edge (inset by pad).
+ * Project a world point onto the exact phone screen edge (pad = 0).
  * Returns null if the point is already on-screen.
  */
-function worldToScreenEdge(worldX, worldY, pad = 28) {
+function worldToScreenEdge(worldX, worldY, pad = 0) {
     if (!mobileCameraActive || camZoom <= 0) return null;
     const sx = (worldX - camX) * camZoom;
     const sy = (worldY - camY) * camZoom;
     const left = pad;
-    const right = viewW - pad;
+    const right = viewW - 1 - pad;
     const top = pad;
-    const bottom = viewH - pad;
+    const bottom = viewH - 1 - pad;
     if (sx >= left && sx <= right && sy >= top && sy <= bottom) return null;
 
     const cx = viewW * 0.5;
@@ -1312,72 +1319,82 @@ function drawOffscreenPlayerEdgeIndicators(now) {
 
     resetScreenTransform();
     const localIdx = getLocalPlayerIndex();
-    const pad = 26;
-    const bob = Math.sin((now || 0) * 0.008) * 1.5;
+    const arrowLen = 6;
+    const br = 4; // tiny edge blob
 
     for (let i = 0; i < GAME_STATE.players.length; i++) {
         const p = GAME_STATE.players[i];
         if (!p || p.disconnected || p.kicked) continue;
         if (Number(p.index) === localIdx) continue;
 
-        const edge = worldToScreenEdge(p.x, p.y, pad);
+        const edge = worldToScreenEdge(p.x, p.y, 0);
         if (!edge) continue;
 
         const alive = isPlayerAlive(p);
         const color = p.color || '#00ffcc';
+        const ring = p.ring || '#111111';
         const ang = edge.angle;
-        // Nudge slightly inward from the rim so the icon stays fully visible
-        const inward = 10;
-        const ex = edge.x - Math.cos(ang) * inward + Math.cos(ang) * bob * 0.25;
-        const ey = edge.y - Math.sin(ang) * inward + Math.sin(ang) * bob * 0.25;
 
         ctx.save();
-        ctx.translate(ex, ey);
-
-        // Mini blob (live fill vs dead outline+X)
-        const br = 10;
-        if (alive) {
-            ctx.globalAlpha = 0.95;
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(0, 0, br, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = '#111';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-            ctx.globalAlpha = 0.35;
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.arc(-2.5, -2.5, br * 0.35, 0, Math.PI * 2);
-            ctx.fill();
-        } else {
-            ctx.globalAlpha = 0.75;
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2.2;
-            ctx.beginPath();
-            ctx.arc(0, 0, br, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(-5, -5);
-            ctx.lineTo(5, 5);
-            ctx.moveTo(5, -5);
-            ctx.lineTo(-5, 5);
-            ctx.stroke();
-        }
-
-        // Arrow tip outward toward the off-screen player
+        // Tip of the arrow sits exactly on the screen edge (+X = outward)
+        ctx.translate(edge.x, edge.y);
         ctx.rotate(ang);
+
+        // Arrow flush with the bezel
         ctx.beginPath();
-        ctx.moveTo(br + 12, 0);
-        ctx.lineTo(br + 1, -7);
-        ctx.lineTo(br + 1, 7);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-arrowLen, -4.5);
+        ctx.lineTo(-arrowLen, 4.5);
         ctx.closePath();
-        ctx.globalAlpha = alive ? 0.95 : 0.6;
+        ctx.globalAlpha = alive ? 0.95 : 0.55;
         ctx.fillStyle = color;
         ctx.fill();
         ctx.strokeStyle = '#0a0a0f';
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = 1;
         ctx.stroke();
+
+        // Tiny blob just inside the arrow (real organic membrane when alive)
+        const blobX = -(arrowLen + br + 0.5);
+        if (alive && typeof drawOrganicBlobPath === 'function') {
+            ctx.globalAlpha = 1;
+            drawOrganicBlobPath(
+                ctx,
+                blobX,
+                0,
+                br,
+                now,
+                ang,
+                0.35,
+            );
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = ring;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        } else if (alive) {
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(blobX, 0, br, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = ring;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        } else {
+            ctx.globalAlpha = 0.75;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.arc(blobX, 0, br, 0, Math.PI * 2);
+            ctx.stroke();
+            const xArm = br * 0.55;
+            ctx.beginPath();
+            ctx.moveTo(blobX - xArm, -xArm);
+            ctx.lineTo(blobX + xArm, xArm);
+            ctx.moveTo(blobX + xArm, -xArm);
+            ctx.lineTo(blobX - xArm, xArm);
+            ctx.stroke();
+        }
         ctx.restore();
     }
 }
