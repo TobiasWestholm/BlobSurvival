@@ -14,9 +14,13 @@ let H = typeof window !== 'undefined' ? window.innerHeight : 900;
 /** Normal laptop battlefield — used for mobile hosts and as the online sim size. */
 const STANDARD_ARENA_W = 1512;
 const STANDARD_ARENA_H = 900;
-/** World units visible across the phone width (maximum zoomed-in play view). */
-const MOBILE_VIEW_WORLD_W = 640;
-const MOBILE_VIEW_WORLD_W_LANDSCAPE = 860;
+/**
+ * Mobile zoom-in is keyed off blob on-screen size (CSS pixels), not arena size.
+ * Player base radius is 15 world units — keep in sync with Player constructor.
+ */
+const MOBILE_BLOB_WORLD_R = 15;
+/** Target blob radius in CSS pixels at maximum zoom-in (same on every phone). */
+const MOBILE_ZOOM_IN_BLOB_RADIUS_PX = 18;
 /** Soft follow: higher = snappier. Deadzone keeps the blob off strict center. */
 const MOBILE_CAM_FOLLOW = 5.5;
 const MOBILE_CAM_DEADZONE = 0.4; // fraction of view from each edge before camera moves
@@ -206,25 +210,16 @@ function getMobileMaxZoomOut() {
 }
 
 /**
- * Max zoom-in: tight phone framing. Always strictly tighter than zoom-out
- * so portrait phones (where 640-wide would already exceed arena height)
- * still get a real zoom range and can pan on both axes when zoomed in.
+ * Max zoom-in: blob is MOBILE_ZOOM_IN_BLOB_RADIUS_PX CSS pixels in radius on
+ * every phone (independent of arena size / aspect). Always at least slightly
+ * tighter than cover zoom-out so mid/max-in stay distinct.
  */
 function getMobileMaxZoomIn() {
-    if (viewW <= 0 || viewH <= 0) return 1;
-    const isLandscape = viewW >= viewH;
-    let viewWorldW = isLandscape
-        ? MOBILE_VIEW_WORLD_W_LANDSCAPE
-        : MOBILE_VIEW_WORLD_W;
-    viewWorldW = Math.min(viewWorldW, W);
-    let z = viewW / Math.max(1, viewWorldW);
+    const zBlob =
+        MOBILE_ZOOM_IN_BLOB_RADIUS_PX / Math.max(1, MOBILE_BLOB_WORLD_R);
     const zOut = getMobileMaxZoomOut();
-    // Portrait / tall aspect: intended width is wider than the cover window,
-    // so bump zoom-in past cover (~45% tighter) instead of matching full height.
-    if (!(z > zOut)) {
-        z = zOut * 1.45;
-    }
-    return z;
+    // Cover can exceed the blob target on large tablets — stay tighter than out
+    return Math.max(zBlob, zOut * 1.2);
 }
 
 function getMobileZoomForStep(step) {
@@ -1231,34 +1226,35 @@ function draw(now) {
 
         for (const p of GAME_STATE.players) {
             if (!p || p.disconnected || p.kicked) continue;
-            if (!shouldFocusOverlayPlayer(p, showDeathFocusOverlay)) continue;
 
-            if (showMenuFocusOverlay || showDeathFocusOverlay) {
-                // Soft radial spotlight behind player
-                ctx.save();
-                const glowR = Math.max(40, p.r * 3.0);
-                const grad = ctx.createRadialGradient(
-                    p.x,
-                    p.y,
-                    0,
-                    p.x,
-                    p.y,
-                    glowR,
-                );
-                grad.addColorStop(0, p.color + '55');
-                grad.addColorStop(0.45, p.color + '22');
-                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                ctx.fillStyle = grad;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
+            // Full spotlight + redraw only for the focused local blob
+            if (shouldFocusOverlayPlayer(p, showDeathFocusOverlay)) {
+                if (showMenuFocusOverlay || showDeathFocusOverlay) {
+                    ctx.save();
+                    const glowR = Math.max(40, p.r * 3.0);
+                    const grad = ctx.createRadialGradient(
+                        p.x,
+                        p.y,
+                        0,
+                        p.x,
+                        p.y,
+                        glowR,
+                    );
+                    grad.addColorStop(0, p.color + '55');
+                    grad.addColorStop(0.45, p.color + '22');
+                    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
 
-                // Redraw player (or dead marker) above the dark overlay
-                p.draw(now);
+                    // Redraw player (or dead marker) above the dark overlay
+                    p.draw(now);
+                }
             }
 
-            // Draw animated fat focus arrow pointing at player
+            // Names/arrows: local full brightness; other online peers stay visible but faded
             if (shouldDrawPlayerFocusArrow(p)) {
                 drawPlayerFocusArrow(p, now);
             }
@@ -1334,6 +1330,10 @@ function drawOffscreenPlayerEdgeIndicators(now) {
         const color = p.color || '#00ffcc';
         const ring = p.ring || '#111111';
         const ang = edge.angle;
+        const peerFade =
+            isOnlineSoloFocusState() && !isLocalFocusPlayer(p)
+                ? ONLINE_SOLO_PEER_ARROW_ALPHA
+                : 1;
 
         ctx.save();
         // Tip of the arrow sits exactly on the screen edge (+X = outward)
@@ -1346,7 +1346,7 @@ function drawOffscreenPlayerEdgeIndicators(now) {
         ctx.lineTo(-arrowLen, -4.5);
         ctx.lineTo(-arrowLen, 4.5);
         ctx.closePath();
-        ctx.globalAlpha = alive ? 0.95 : 0.55;
+        ctx.globalAlpha = (alive ? 0.95 : 0.55) * peerFade;
         ctx.fillStyle = color;
         ctx.fill();
         ctx.strokeStyle = '#0a0a0f';
@@ -1356,7 +1356,7 @@ function drawOffscreenPlayerEdgeIndicators(now) {
         // Tiny blob just inside the arrow (real organic membrane when alive)
         const blobX = -(arrowLen + br + 0.5);
         if (alive && typeof drawOrganicBlobPath === 'function') {
-            ctx.globalAlpha = 1;
+            ctx.globalAlpha = peerFade;
             drawOrganicBlobPath(
                 ctx,
                 blobX,
@@ -1372,7 +1372,7 @@ function drawOffscreenPlayerEdgeIndicators(now) {
             ctx.lineWidth = 1;
             ctx.stroke();
         } else if (alive) {
-            ctx.globalAlpha = 1;
+            ctx.globalAlpha = peerFade;
             ctx.fillStyle = color;
             ctx.beginPath();
             ctx.arc(blobX, 0, br, 0, Math.PI * 2);
@@ -1381,7 +1381,7 @@ function drawOffscreenPlayerEdgeIndicators(now) {
             ctx.lineWidth = 1;
             ctx.stroke();
         } else {
-            ctx.globalAlpha = 0.75;
+            ctx.globalAlpha = 0.75 * peerFade;
             ctx.strokeStyle = color;
             ctx.lineWidth = 1.4;
             ctx.beginPath();
@@ -1474,11 +1474,17 @@ function isLocalPlayerDead() {
     return !isPlayerAlive(p);
 }
 
-/** Online weapon/upgrade menus: every peer only cares about their own blob. */
+/**
+ * Online menus where the world is dimmed and only the local blob stays bright:
+ * weapon select, upgrades, resume countdown, and pause.
+ */
 function isOnlineSoloFocusState(state = GAME_STATE.current) {
     return (
         isOnlineMultiplayer() &&
-        (state === STATES.LEVEL_UP || state === STATES.WEAPON_SELECT)
+        (state === STATES.LEVEL_UP ||
+            state === STATES.WEAPON_SELECT ||
+            state === STATES.COUNTDOWN ||
+            state === STATES.PAUSED)
     );
 }
 
@@ -1517,12 +1523,14 @@ function shouldDrawPlayerFocusArrow(p) {
             return false;
         }
         if (GAME_STATE.gameMode === 'local') return true;
+        // Online weapon/upgrade: show everyone’s corpse marker (faded if not local)
+        if (isOnlineSoloFocusState(state)) return true;
         return isLocalFocusPlayer(p);
     }
 
-    // Host + every client: only own blob during weapon/upgrade select
+    // Online weapon/upgrade: arrows + names for all peers (non-local drawn faded)
     if (isOnlineSoloFocusState(state)) {
-        return isLocalFocusPlayer(p);
+        return true;
     }
 
     if (state === STATES.LEVEL_UP || state === STATES.PAUSED) return true;
@@ -1536,6 +1544,26 @@ function shouldDrawPlayerFocusArrow(p) {
         return getMovementHintAlpha() > 0;
     }
     return false;
+}
+
+/** Matches the world dim under the menu overlay (~0.35 black veil). */
+const ONLINE_SOLO_PEER_ARROW_ALPHA = 0.55;
+
+function getPlayerFocusArrowAlpha(p) {
+    if (isOnlineSoloFocusState() && !isLocalFocusPlayer(p)) {
+        return ONLINE_SOLO_PEER_ARROW_ALPHA;
+    }
+    const hintAlpha = getMovementHintAlpha();
+    // Level-up / pause / death marker always full opacity; SP tutorial uses hint alpha
+    if (
+        !isPlayerAlive(p) ||
+        GAME_STATE.current === STATES.LEVEL_UP ||
+        GAME_STATE.current === STATES.PAUSED ||
+        GAME_STATE.gameMode !== 'single'
+    ) {
+        return 1;
+    }
+    return hintAlpha;
 }
 
 function shouldShowSteerKeyCluster(p) {
@@ -1574,15 +1602,7 @@ function shouldShowSteerKeyCluster(p) {
 
 function drawPlayerFocusArrow(p, now) {
     if (!shouldDrawPlayerFocusArrow(p)) return;
-    const hintAlpha = getMovementHintAlpha();
-    // Level-up / pause / death marker always full opacity; SP tutorial uses hint alpha
-    const alpha =
-        !isPlayerAlive(p) ||
-        GAME_STATE.current === STATES.LEVEL_UP ||
-        GAME_STATE.current === STATES.PAUSED ||
-        GAME_STATE.gameMode !== 'single'
-            ? 1
-            : hintAlpha;
+    const alpha = getPlayerFocusArrowAlpha(p);
     if (alpha <= 0) return;
 
     const bob = Math.sin(performance.now() * 0.008) * 6;
