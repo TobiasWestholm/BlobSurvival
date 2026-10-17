@@ -19,7 +19,7 @@ const MOBILE_VIEW_WORLD_W = 640;
 const MOBILE_VIEW_WORLD_W_LANDSCAPE = 860;
 /** Soft follow: higher = snappier. Deadzone keeps the blob off strict center. */
 const MOBILE_CAM_FOLLOW = 5.5;
-const MOBILE_CAM_DEADZONE = 0.28; // fraction of view from each edge before camera moves
+const MOBILE_CAM_DEADZONE = 0.4; // fraction of view from each edge before camera moves
 
 /** Canvas buffer size (phone pixels when mobile camera is on; else equals W/H). */
 let viewW = W;
