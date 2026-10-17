@@ -479,6 +479,38 @@ function weightedPickIndex(pool, player) {
     return pool.length - 1;
 }
 
+/** Dash / Phase Dash tree — unavailable on touch clients (no double-tap keys). */
+const MOBILE_BLOCKED_UPGRADE_IDS = new Set([
+    'dash',
+    'dash_lvl2',
+    'phase_detonation_upgrade',
+]);
+
+/** Prefer per-player flag (online seats); fall back to this device's isMobile. */
+function isMobileBlockedForPlayer(player) {
+    if (player && typeof player.isMobileClient === 'boolean') {
+        return player.isMobileClient;
+    }
+    return Boolean(typeof isMobile !== 'undefined' && isMobile);
+}
+
+function isUpgradeBlockedOnMobile(upgradeId, player) {
+    return (
+        MOBILE_BLOCKED_UPGRADE_IDS.has(upgradeId) &&
+        isMobileBlockedForPlayer(player)
+    );
+}
+
+/** Fortified Structures / Rapid Deployment: 3 stacks at ≤4p, 2 stacks at 5+. */
+function getTurretStructureUpgradeMaxStacks() {
+    const active =
+        typeof GAME_STATE !== 'undefined' && GAME_STATE.players
+            ? GAME_STATE.players.filter((p) => p && !p.disconnected && !p.kicked)
+                  .length
+            : 1;
+    return active > 4 ? 2 : 3;
+}
+
 function pickThreeFor(player) {
     if (
         player?.currentUpgradeOptions &&
@@ -493,13 +525,7 @@ function pickThreeFor(player) {
     const hasTurret = player.weapons.some((w) => w.id === 'turret');
     const hasRing = player.weapons.some((w) => w.id === 'fire_ring');
     const pool = UPGRADE_POOL.filter((u) => {
-        if (
-            isMobile &&
-            (u.id === 'dash' ||
-                u.id === 'dash_lvl2' ||
-                u.id === 'phase_detonation_upgrade')
-        )
-            return false;
+        if (isUpgradeBlockedOnMobile(u.id, player)) return false;
         if (
             u.id === 'unlock_ring' &&
             player.weapons.some((w) => w.id === 'fire_ring')
@@ -514,14 +540,16 @@ function pickThreeFor(player) {
         if (u.id === 'unlock_mine' && hasMine) return false;
         if (u.id === 'unlock_turret' && hasTurret) return false;
         if (u.id === 'laser_walls_upgrade' && !hasTurret) return false;
+        const turretStructMax = getTurretStructureUpgradeMaxStacks();
         if (
             u.id === 'building_duration_upgrade' &&
-            (!hasTurret || player.buildingDurationCount >= 4)
+            (!hasTurret ||
+                (player.buildingDurationCount || 0) >= turretStructMax)
         )
             return false;
         if (
             u.id === 'turret_cooldown_upgrade' &&
-            (!hasTurret || player.turretCooldownCount >= 4)
+            (!hasTurret || (player.turretCooldownCount || 0) >= turretStructMax)
         )
             return false;
         if (u.id === 'turret_flamethrower_upgrade' && !hasTurret) return false;
@@ -713,13 +741,7 @@ function pickThreeFor(player) {
     // If pool exhausted, allow duplicates for repeatable stat upgrades
     while (out.length < 3) {
         const base = UPGRADE_POOL.filter((u) => {
-            if (
-                isMobile &&
-                (u.id === 'dash' ||
-                    u.id === 'dash_lvl2' ||
-                    u.id === 'phase_detonation_upgrade')
-            )
-                return false;
+            if (isUpgradeBlockedOnMobile(u.id, player)) return false;
             if (u.oneShot || u.id === 'unlock_ring') return false;
             if (u.id === 'multishot' && !hasMissile) return false;
             if (
@@ -893,12 +915,12 @@ const UPGRADE_DETAILS = {
         caveats: 'Requires at least 2 active turrets within link range.',
     },
     building_duration_upgrade: {
-        stacking: `Can be selected multiple times. Each selection adds +${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% turret duration and +${GAME_CONFIG.TURRET.FORTIFIED_HP_BOOST_PCT}% turret HP.`,
+        stacking: `Can be selected up to 3 times (2 times when more than 4 players). Each selection adds +${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% turret duration and +${GAME_CONFIG.TURRET.FORTIFIED_HP_BOOST_PCT}% turret HP.`,
         how: 'Extends how long turrets stay alive before expiring and increases their maximum health to survive heavy blob swarms.',
         caveats: 'Applies to all currently placed and future turrets.',
     },
     turret_cooldown_upgrade: {
-        stacking: `Can be selected multiple times. Reduces cooldowns by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
+        stacking: `Can be selected up to 3 times (2 times when more than 4 players). Reduces cooldowns by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
         how: `Reduces the placement cooldown between dropping turrets, dispenser drop timers, and Autonomous Network expansion intervals by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
         caveats: 'Multiplies cooldown modifiers down exponentially.',
     },
@@ -1244,6 +1266,8 @@ if (typeof window !== 'undefined') {
     window.upgradeWeight = upgradeWeight;
     window.weightedPickIndex = weightedPickIndex;
     window.pickThreeFor = pickThreeFor;
+    window.isUpgradeBlockedOnMobile = isUpgradeBlockedOnMobile;
+    window.MOBILE_BLOCKED_UPGRADE_IDS = MOBILE_BLOCKED_UPGRADE_IDS;
     window.getUpgradeUnlockInfo = getUpgradeUnlockInfo;
     window.showUpgradeDetailModal = showUpgradeDetailModal;
     window.closeUpgradeDetailModal = closeUpgradeDetailModal;

@@ -21,7 +21,10 @@ function trimKeepLast(arr, maxLen) {
 
 // ---------------- State control ----------------
 function startGame(playerCount, difficultyKey) {
-    const n = Math.max(1, Math.min(4, playerCount));
+    // Local / menu starts stay at MAX_LOCAL_PLAYERS; online lobby grows via net joins.
+    const maxLocal =
+        typeof MAX_LOCAL_PLAYERS === 'number' ? MAX_LOCAL_PLAYERS : 4;
+    const n = Math.max(1, Math.min(maxLocal, playerCount));
     const diff = DIFFICULTIES[difficultyKey] || DIFFICULTIES.normal;
     GAME_STATE.difficulty = diff;
     GAME_STATE.siphonCellsOwner = null;
@@ -34,12 +37,17 @@ function startGame(playerCount, difficultyKey) {
         GAME_STATE.hostH = null;
     }
 
-    // Co-op base movement speed bonus: 1p = +0% (1.00), 2p = +10% (1.10), 3p = +15% (1.15), 4p = +20% (1.20), then difficulty.
+    // Co-op speed: 1p=1.00, 2p=1.10, 3p=1.15, 4p=1.20, … (then × difficulty).
+    // Same formula is used online up to MAX_ONLINE_PLAYERS via recalculateDynamicDifficulty.
     const coopSpeedBonus = n > 1 ? 1 + 0.05 * n : 1.0;
     const speedFactor = coopSpeedBonus * diff.speedMult;
     GAME_STATE.players = [];
     for (let i = 0; i < n; i++) {
-        const p = new Player(i, PLAYER_DEFS[i]);
+        const def =
+            typeof getPlayerDef === 'function'
+                ? getPlayerDef(i)
+                : PLAYER_DEFS[i];
+        const p = new Player(i, def);
         p.speed *= speedFactor;
         p.accuracyModifier = diff.accuracy; // Easy starts with tighter spread; Hard starts shakier
         GAME_STATE.players.push(p);
@@ -61,7 +69,8 @@ function startGame(playerCount, difficultyKey) {
         }
     }
 
-    GAME_STATE.dmgFactor = (1.5 / (n + 0.5)) * diff.dmgMult; // co-op 1.5/(n+0.5) × difficulty damage
+    // Co-op damage scale: 1.5/(n+0.5) × difficulty (identical for 1–4; online uses same via recalculateDynamicDifficulty)
+    GAME_STATE.dmgFactor = (1.5 / (n + 0.5)) * diff.dmgMult;
     GAME_STATE.enemies = [];
     GAME_STATE.activeSentries = [];
     GAME_STATE.shieldBearers = [];
@@ -192,6 +201,9 @@ function startGame(playerCount, difficultyKey) {
 // ---------------- Main loop ----------------
 let lastFrameTime = performance.now();
 let mainRafId = null;
+// Cap both simulation and canvas draws at 60 Hz (ProMotion/120 Hz displays skip surplus frames).
+const TARGET_SIM_DRAW_HZ = 60;
+const TARGET_FRAME_MS = 1000 / TARGET_SIM_DRAW_HZ;
 // Gameplay clock: only advances during GAMEPLAY, so meteor falls, shooter cooldowns,
 // revive timers, weapon/projectile/hazard timing all freeze on the upgrade/countdown screens.
 let gameClock = 0;
@@ -332,6 +344,8 @@ function update(dt, dtFactor, now) {
     // Update and resolve all active Laser Fences once per frame (O(1) enemy tag + bounding box test)
     updateLaserFences(dt, now);
 
+    // Precompute targetable / martyr player lists once for all enemies this frame
+    Enemy.beginTargetFrame(now);
     for (const e of GAME_STATE.enemies) {
         e.update(dtFactor, now);
     }
@@ -550,11 +564,24 @@ function isLastBossCleared(winCond) {
 function loop(now) {
     mainRafId = null;
     const isHidden = typeof document !== 'undefined' && document.hidden;
-    const dt = Math.min(50, now - lastFrameTime);
-    lastFrameTime = now;
-    const dtFactor = dt / (1000 / 120); // 1.0 at 120 Hz (8.333ms per frame)
 
-    // Track frame rate (FPS)
+    // Keep the rAF pump alive while visible; early-exit frames must still re-schedule
+    if (!isHidden) {
+        mainRafId = requestAnimationFrame(loop);
+    }
+
+    // Drop surplus frames above 60 Hz (sim + draw share this gate)
+    const elapsed = now - lastFrameTime;
+    if (elapsed < TARGET_FRAME_MS - 1) {
+        return;
+    }
+
+    const dt = Math.min(50, elapsed);
+    lastFrameTime = now;
+    // Physics baseline remains 120 Hz so real-time speeds stay identical at 60 Hz (dtFactor ≈ 2)
+    const dtFactor = dt / (1000 / 120);
+
+    // Track frame rate (FPS) — count processed sim/draw ticks only
     if (!GAME_STATE.fpsLastUpdate) {
         GAME_STATE.fpsLastUpdate = now;
         GAME_STATE.fpsFrameCount = 0;
@@ -901,9 +928,6 @@ function loop(now) {
             draw(gameClock);
         }
     }
-    if (!isHidden) {
-        mainRafId = requestAnimationFrame(loop);
-    }
 }
 
 function updateLobbyPlayers(dt, dtFactor, now) {
@@ -966,7 +990,7 @@ function setupHostBackgroundKeepAlive() {
                 let timer = null;
                 self.onmessage = function(e) {
                     if (e.data === 'start') {
-                        if (!timer) timer = setInterval(function() { postMessage('tick'); }, 16);
+                        if (!timer) timer = setInterval(function() { postMessage('tick'); }, ${Math.round(TARGET_FRAME_MS)});
                     } else if (e.data === 'stop') {
                         if (timer) { clearInterval(timer); timer = null; }
                     }
@@ -1015,7 +1039,7 @@ function setupHostBackgroundKeepAlive() {
                         ) {
                             loop(performance.now());
                         }
-                    }, 16);
+                    }, TARGET_FRAME_MS);
                 }
             }
         } else {

@@ -2,8 +2,9 @@ function aliveCentroid() {
     let sx = 0,
         sy = 0,
         n = 0;
+    // Players array can be sparse online (holes after disconnects / non-contiguous slots)
     for (const p of GAME_STATE.players) {
-        if (!p.alive) continue;
+        if (!p?.alive || p.disconnected || p.kicked) continue;
         sx += p.x;
         sy += p.y;
         n++;
@@ -439,6 +440,7 @@ function endBossWave(bossId, now, isCleared, enemy = null) {
 
     // Automatically revive all downed players at the end of the boss wave
     for (const p of GAME_STATE.players) {
+        if (!p || p.disconnected || p.kicked) continue;
         if (!p.alive) {
             p.revive();
         }
@@ -448,6 +450,7 @@ function endBossWave(bossId, now, isCleared, enemy = null) {
         // Ensure no more monsters spawn for the rest of Minute 11 (until Minute 12:00 = 720000ms)
         GAME_STATE.resumeNormalSpawnAt = 720000;
         for (const p of GAME_STATE.players) {
+            if (!p || p.disconnected || p.kicked) continue;
             p.maxHp += 300;
             p.hp = p.maxHp;
             if (

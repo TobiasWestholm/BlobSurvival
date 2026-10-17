@@ -44,9 +44,159 @@ function startWeaponSelectFlow() {
     renderLobbyWeaponPanels();
 }
 
+function captureOpenLobbyNameEdits() {
+    /** @type {Map<number, {value: string, selectionStart: number|null, selectionEnd: number|null}>} */
+    const edits = new Map();
+    document.querySelectorAll('.player-name-input').forEach((el) => {
+        const input = /** @type {HTMLInputElement} */ (el);
+        const m = /^playerNameInput_(\d+)$/.exec(input.id || '');
+        if (!m) return;
+        edits.set(Number(m[1]), {
+            value: input.value,
+            selectionStart: input.selectionStart,
+            selectionEnd: input.selectionEnd,
+        });
+    });
+    return edits;
+}
+
+function updateLobbyPlayerNameDisplay(playerIndex, name) {
+    const panel = document.getElementById(`playerPanel_${playerIndex}`);
+    if (!panel) return false;
+    // Don't clobber an in-progress edit on this panel
+    if (panel.querySelector('.player-name-input')) return true;
+    const nameSpan = panel.querySelector('.player-name-text');
+    if (nameSpan) {
+        nameSpan.textContent = name;
+        return true;
+    }
+    return false;
+}
+
+function beginLobbyNameEdit(panel, player, title, n, restoreState = null) {
+    if (!panel || !player || !title) return;
+    if (panel.querySelector('.player-name-input')) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'player-name-input';
+    input.name = `player_name_${player.index}`;
+    input.id = `playerNameInput_${player.index}`;
+    input.autocomplete = 'off';
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('autocapitalize', 'words');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('data-form-type', 'other');
+    input.setAttribute('data-lpignore', 'true');
+    input.setAttribute('data-1p-ignore', 'true');
+    input.setAttribute('aria-label', `Player ${n} Name`);
+    input.value =
+        restoreState?.value != null
+            ? restoreState.value
+            : player.name || `Player ${n}`;
+    input.maxLength = 20;
+    input.style.color = player.color;
+    input.style.borderColor = player.color;
+    input.style.boxShadow = `0 0 10px ${player.color}`;
+
+    title.style.display = 'none';
+    panel.insertBefore(input, title);
+    input.focus();
+    if (
+        restoreState &&
+        typeof restoreState.selectionStart === 'number' &&
+        typeof restoreState.selectionEnd === 'number'
+    ) {
+        try {
+            input.setSelectionRange(
+                restoreState.selectionStart,
+                restoreState.selectionEnd,
+            );
+        } catch {
+            input.select();
+        }
+    } else {
+        input.select();
+    }
+
+    let editFinished = false;
+    const finishEdit = (commit) => {
+        // Enter/blur can fire together; lobby re-renders may already detach the input
+        if (editFinished) return;
+        editFinished = true;
+        // Lobby DOM rebuild abandons the old input; value is restored afterward
+        if (input.dataset.lobbyAbandon === '1') return;
+        if (commit) {
+            const cleaned = input.value
+                .normalize('NFC')
+                .replace(/[^\p{Script=Latin}0-9 ]/gu, '')
+                .slice(0, 20)
+                .trim();
+            player.name = cleaned || `Player ${n}`;
+            if (
+                GAME_STATE.gameMode === 'online' &&
+                typeof netManager !== 'undefined' &&
+                netManager
+            ) {
+                // Event-only: send once when the edit is committed
+                netManager.sendPlayerName(player.name);
+            }
+        }
+        if (input.parentNode) input.remove();
+        if (title.isConnected) {
+            title.style.display = '';
+            const nameSpan = title.querySelector('.player-name-text');
+            if (nameSpan) {
+                nameSpan.textContent = player.name || `Player ${n}`;
+            } else {
+                // title content may need rebuild if structure changed
+                title.dispatchEvent(new CustomEvent('lobby-name-refresh'));
+            }
+        }
+    };
+
+    input.addEventListener('input', () => {
+        input.value = input.value
+            .normalize('NFC')
+            .replace(/[^\p{Script=Latin}0-9 ]/gu, '')
+            .slice(0, 20);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+            finishEdit(true);
+        } else if (e.key === 'Escape') {
+            finishEdit(false);
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        finishEdit(true);
+    });
+}
+
+function restoreOpenLobbyNameEdits(edits) {
+    if (!edits || edits.size === 0) return;
+    for (const [index, state] of edits) {
+        const panel = document.getElementById(`playerPanel_${index}`);
+        const player = GAME_STATE.players?.[index];
+        if (!panel || !player) continue;
+        const title = panel.querySelector('.panel-title.editable-name');
+        if (!title) continue;
+        beginLobbyNameEdit(panel, player, title, index + 1, state);
+    }
+}
+
 function renderLobbyWeaponPanels() {
     const layer = document.getElementById('levelUpLayer');
     if (!layer) return;
+    const openNameEdits = captureOpenLobbyNameEdits();
+    // Mark open inputs so their blur handlers do not commit while we rebuild
+    document.querySelectorAll('.player-name-input').forEach((el) => {
+        el.dataset.lobbyAbandon = '1';
+    });
     layer.innerHTML = '';
     const isSingle = GAME_STATE.gameMode === 'single';
     const isLocal = GAME_STATE.gameMode === 'local';
@@ -133,16 +283,46 @@ function renderLobbyWeaponPanels() {
             if (player)
                 layer.appendChild(buildStartingWeaponPanel(player, 1, true));
         } else {
-            const slotIndices = [0, 1, 2, 3];
-            const orderedSlots = slotIndices.filter((i) => i !== 0).concat([0]);
-            for (const i of orderedSlots) {
+            const maxOnline =
+                typeof MAX_ONLINE_PLAYERS === 'number' ? MAX_ONLINE_PLAYERS : 12;
+            const connected = [];
+            const empty = [];
+            for (let i = 0; i < maxOnline; i++) {
+                const player = GAME_STATE.players[i];
+                if (player && !player.disconnected) connected.push(i);
+                else empty.push(i);
+            }
+            // Classic 4-corner lobby while under 4 players; at 4+ show all
+            // connected seats plus one open seat so more joins stay obvious.
+            const connectedCount = connected.length;
+            const panelCount =
+                connectedCount < 4
+                    ? Math.min(4, maxOnline)
+                    : Math.min(
+                          maxOnline,
+                          connectedCount + (empty.length > 0 ? 1 : 0),
+                      );
+            const others = connected.filter((i) => i !== 0);
+            const displaySlots = others.slice();
+            for (const i of empty) {
+                if (displaySlots.length + 1 >= panelCount) break;
+                displaySlots.push(i);
+            }
+            if (connected.includes(0)) displaySlots.push(0);
+            while (displaySlots.length < panelCount) {
+                const nextEmpty = empty.find((i) => !displaySlots.includes(i));
+                if (nextEmpty === undefined) break;
+                displaySlots.splice(displaySlots.length - 1, 0, nextEmpty);
+            }
+            for (let s = 0; s < displaySlots.length; s++) {
+                const i = displaySlots[s];
                 const player = GAME_STATE.players[i];
                 if (player && !player.disconnected) {
                     layer.appendChild(
-                        buildStartingWeaponPanel(player, 4, i === 0),
+                        buildStartingWeaponPanel(player, panelCount, i === 0, s),
                     );
                 } else {
-                    layer.appendChild(buildPlaceholderPanel(i, 4));
+                    layer.appendChild(buildPlaceholderPanel(i, panelCount, s));
                 }
             }
         }
@@ -152,23 +332,37 @@ function renderLobbyWeaponPanels() {
         if (howToPlayBanner) howToPlayBanner.style.display = 'block';
         const myIndex = netManager ? netManager.localPlayerIndex : 0;
         if (typeof isMobile !== 'undefined' && isMobile) {
+            const def =
+                typeof getPlayerDef === 'function'
+                    ? getPlayerDef(myIndex)
+                    : PLAYER_DEFS[myIndex];
             const player =
-                GAME_STATE.players?.[myIndex] ||
-                new Player(myIndex, PLAYER_DEFS[myIndex]);
+                GAME_STATE.players?.[myIndex] || new Player(myIndex, def);
             layer.appendChild(buildStartingWeaponPanel(player, 1, true));
         } else {
-            const slotIndices = [0, 1, 2, 3];
-            const orderedSlots = slotIndices
+            const connected = (GAME_STATE.players || [])
+                .filter((p) => p && !p.disconnected)
+                .map((p) => p.index)
+                .sort((a, b) => a - b);
+            if (!connected.includes(myIndex)) connected.push(myIndex);
+            const orderedSlots = connected
                 .filter((i) => i !== myIndex)
                 .concat([myIndex]);
-            for (const i of orderedSlots) {
+            const panelCount = Math.max(orderedSlots.length, 1);
+            for (let s = 0; s < orderedSlots.length; s++) {
+                const i = orderedSlots[s];
                 const player = GAME_STATE.players[i];
                 if (player && !player.disconnected) {
                     layer.appendChild(
-                        buildStartingWeaponPanel(player, 4, i === myIndex),
+                        buildStartingWeaponPanel(
+                            player,
+                            panelCount,
+                            i === myIndex,
+                            s,
+                        ),
                     );
                 } else {
-                    layer.appendChild(buildPlaceholderPanel(i, 4));
+                    layer.appendChild(buildPlaceholderPanel(i, panelCount, s));
                 }
             }
         }
@@ -178,12 +372,15 @@ function renderLobbyWeaponPanels() {
     if (typeof requestAnimationFrame !== 'undefined') {
         requestAnimationFrame(() => adjustTipTextLayout());
     }
+    // Keep concurrent name edits alive across lobby re-renders (weapon picks, etc.)
+    restoreOpenLobbyNameEdits(openNameEdits);
 }
 
-function buildPlaceholderPanel(index, count) {
+function buildPlaceholderPanel(index, count, layoutIndex = null) {
     const panel = document.createElement('div');
     panel.className = 'player-panel placeholder-panel chosen';
-    panel.style.cssText = getPanelPosition(index, count);
+    const posIndex = layoutIndex !== null ? layoutIndex : index;
+    panel.style.cssText = getPanelPosition(posIndex, count);
     panel.style.borderColor = '#444';
     panel.style.zIndex = '140';
 
@@ -243,11 +440,17 @@ function createKeyClusterDOM(playerIndex, color) {
     return container;
 }
 
-function buildStartingWeaponPanel(player, count, isInteractive) {
+function buildStartingWeaponPanel(
+    player,
+    count,
+    isInteractive,
+    layoutIndex = null,
+) {
     const panel = document.createElement('div');
     panel.className = 'player-panel weapon-select-grid';
     panel.id = `playerPanel_${player.index}`;
-    panel.style.cssText = getPanelPosition(player.index, count);
+    const posIndex = layoutIndex !== null ? layoutIndex : player.index;
+    panel.style.cssText = getPanelPosition(posIndex, count);
     panel.style.borderColor = player.color;
     const n = player.index + 1;
 
@@ -322,77 +525,11 @@ function buildStartingWeaponPanel(player, count, isInteractive) {
     };
 
     renderTitleContent();
+    title.addEventListener('lobby-name-refresh', renderTitleContent);
 
     if (isEditable) {
         title.addEventListener('click', () => {
-            if (panel.querySelector('.player-name-input')) return;
-
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.className = 'player-name-input';
-            input.name = `player_name_${player.index}`;
-            input.id = `playerNameInput_${player.index}`;
-            input.autocomplete = 'off';
-            input.setAttribute('autocomplete', 'off');
-            input.setAttribute('autocorrect', 'off');
-            input.setAttribute('autocapitalize', 'words');
-            input.setAttribute('spellcheck', 'false');
-            input.setAttribute('data-form-type', 'other');
-            input.setAttribute('data-lpignore', 'true');
-            input.setAttribute('data-1p-ignore', 'true');
-            input.setAttribute('aria-label', `Player ${n} Name`);
-            input.value = player.name || `Player ${n}`;
-            input.maxLength = 20;
-            input.style.color = player.color;
-            input.style.borderColor = player.color;
-            input.style.boxShadow = `0 0 10px ${player.color}`;
-
-            title.style.display = 'none';
-            panel.insertBefore(input, title);
-            input.focus();
-            input.select();
-
-            const finishEdit = (commit) => {
-                if (!input.parentNode) return;
-                if (commit) {
-                    const cleaned = input.value
-                        .normalize('NFC')
-                        .replace(/[^\p{Script=Latin}0-9 ]/gu, '')
-                        .slice(0, 20)
-                        .trim();
-                    player.name = cleaned || `Player ${n}`;
-                    if (
-                        GAME_STATE.gameMode === 'online' &&
-                        typeof netManager !== 'undefined' &&
-                        netManager
-                    ) {
-                        netManager.sendPlayerName(player.name);
-                    }
-                }
-                input.remove();
-                title.style.display = '';
-                renderTitleContent();
-            };
-
-            input.addEventListener('input', () => {
-                input.value = input.value
-                    .normalize('NFC')
-                    .replace(/[^\p{Script=Latin}0-9 ]/gu, '')
-                    .slice(0, 20);
-            });
-
-            input.addEventListener('keydown', (e) => {
-                e.stopPropagation();
-                if (e.key === 'Enter') {
-                    finishEdit(true);
-                } else if (e.key === 'Escape') {
-                    finishEdit(false);
-                }
-            });
-
-            input.addEventListener('blur', () => {
-                finishEdit(true);
-            });
+            beginLobbyNameEdit(panel, player, title, n);
         });
     }
 
@@ -661,12 +798,15 @@ function beginSelectionRound() {
             ? allActive.find((p) => p.index === myIndex)
             : null;
 
+        let layoutIdx = 0;
         for (const player of otherPlayers) {
             const isInteractive = !isOnline || player.index === myIndex;
-            layer.appendChild(buildPlayerPanel(player, count, isInteractive));
+            layer.appendChild(
+                buildPlayerPanel(player, count, isInteractive, layoutIdx++),
+            );
         }
         if (myPlayer) {
-            layer.appendChild(buildPlayerPanel(myPlayer, count, true));
+            layer.appendChild(buildPlayerPanel(myPlayer, count, true, layoutIdx));
         }
     }
     layer.classList.add('show');
@@ -723,10 +863,60 @@ function showKickButtonsForUnpickedPlayers() {
     }
 }
 
+/**
+ * Drop a player's pending level-up pick so the round never stalls on them.
+ * Host advances pendingPicks / finishSelectionRound; clients only update UI.
+ */
+function releaseDisconnectedPlayerPick(
+    playerIndex,
+    statusText = 'Disconnected — skipped',
+) {
+    if (typeof GAME_STATE === 'undefined') return false;
+    if (GAME_STATE.current !== STATES.LEVEL_UP) return false;
+
+    const p = GAME_STATE.players?.[playerIndex];
+    const panel = document.getElementById(`levelPanel_${playerIndex}`);
+    const isHost =
+        !(
+            GAME_STATE.gameMode === 'online' &&
+            typeof netManager !== 'undefined' &&
+            netManager?.isClient
+        );
+
+    let pickWasPending = false;
+    if (panel) {
+        if (panel.dataset.pickDone !== 'true') {
+            panel.dataset.pickDone = 'true';
+            pickWasPending = true;
+        }
+        panel.classList.add('chosen');
+        panel.innerHTML = `<h3 class="panel-title" style="color: #ff4444;">Player ${playerIndex + 1}</h3><div style="color: #ff6666; font-size: 13px; margin-top: 10px; font-weight: bold;">✕ ${statusText}</div>`;
+    } else if (p && !p._virtualPickDone && !p.currentLevelUpgradeName) {
+        pickWasPending = true;
+    }
+
+    if (p) p._virtualPickDone = true;
+
+    if (!pickWasPending) return false;
+
+    if (isHost) {
+        GAME_STATE.pendingPicks--;
+        if (GAME_STATE.pendingPicks <= 0) {
+            finishSelectionRound();
+        }
+    } else {
+        GAME_STATE.pendingPicks--;
+        if (GAME_STATE.pendingPicks <= 0) {
+            const layer = document.getElementById('levelUpLayer');
+            if (layer) layer.classList.remove('show');
+        }
+    }
+    return true;
+}
+
 function kickPlayerByHost(playerIndex) {
     if (typeof GAME_STATE === 'undefined') return;
     const p = GAME_STATE.players[playerIndex];
-    const panel = document.getElementById(`levelPanel_${playerIndex}`);
 
     if (typeof netManager !== 'undefined' && netManager && netManager.isHost) {
         netManager.kickPlayer(playerIndex);
@@ -740,26 +930,7 @@ function kickPlayerByHost(playerIndex) {
     if (typeof recalculateDynamicDifficulty === 'function')
         recalculateDynamicDifficulty();
 
-    let pickWasPending = false;
-    if (panel) {
-        panel.innerHTML = `<h3 class="panel-title" style="color: #ff4444;">Player ${playerIndex + 1}</h3><div style="color: #ff6666; font-size: 13px; margin-top: 10px; font-weight: bold;">✕ Kicked by Host</div>`;
-        panel.classList.add('chosen');
-        if (panel.dataset.pickDone !== 'true') {
-            panel.dataset.pickDone = 'true';
-            pickWasPending = true;
-        }
-    } else if (p && !p._virtualPickDone) {
-        pickWasPending = true;
-    }
-    if (p) p._virtualPickDone = true;
-
-    if (pickWasPending) {
-        GAME_STATE.pendingPicks--;
-    }
-
-    if (GAME_STATE.pendingPicks <= 0) {
-        finishSelectionRound();
-    }
+    releaseDisconnectedPlayerPick(playerIndex, 'Kicked by Host');
 }
 
 function onOnlinePlayerKicked(playerIndex) {
@@ -773,23 +944,7 @@ function onOnlinePlayerKicked(playerIndex) {
     if (typeof recalculateDynamicDifficulty === 'function')
         recalculateDynamicDifficulty();
 
-    const panel = document.getElementById(`levelPanel_${playerIndex}`);
-    if (panel) {
-        panel.innerHTML = `<h3 class="panel-title" style="color: #ff4444;">Player ${playerIndex + 1}</h3><div style="color: #ff6666; font-size: 13px; margin-top: 10px; font-weight: bold;">✕ Removed by Host</div>`;
-        panel.classList.add('chosen');
-        if (panel.dataset.pickDone !== 'true') {
-            panel.dataset.pickDone = 'true';
-            GAME_STATE.pendingPicks--;
-        }
-    }
-
-    if (
-        GAME_STATE.pendingPicks <= 0 &&
-        GAME_STATE.current === STATES.LEVEL_UP
-    ) {
-        const layer = document.getElementById('levelUpLayer');
-        if (layer) layer.classList.remove('show');
-    }
+    releaseDisconnectedPlayerPick(playerIndex, 'Removed by Host');
 }
 
 function getPanelPosition(index, count) {
@@ -811,21 +966,44 @@ function getPanelPosition(index, count) {
         if (index === 1) return `top:${TOP}px; right:${M}px;`;
         return `bottom:${BOTTOM}px; left:${M}px;`;
     }
-    return (
-        [
-            `top:${TOP}px; left:${M}px;`,
-            `top:${TOP}px; right:${M}px;`,
-            `bottom:${BOTTOM}px; left:${M}px;`,
-            `bottom:${BOTTOM}px; right:${M}px;`,
-        ][index] || `top:${TOP}px; left:${M}px;`
-    );
+    // Classic 4-corner layout (unchanged for local / small online lobbies)
+    if (count <= 4) {
+        return (
+            [
+                `top:${TOP}px; left:${M}px;`,
+                `top:${TOP}px; right:${M}px;`,
+                `bottom:${BOTTOM}px; left:${M}px;`,
+                `bottom:${BOTTOM}px; right:${M}px;`,
+            ][index] || `top:${TOP}px; left:${M}px;`
+        );
+    }
+    // 5–12 players: compact grid so every panel fits without overlapping
+    const cols = count <= 6 ? 3 : 4;
+    const rows = Math.ceil(count / cols);
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const widthPct = 100 / cols;
+    const heightPct = 100 / rows;
+    const leftPct = col * widthPct + widthPct / 2;
+    const topPct = row * heightPct + heightPct / 2;
+    const panelW =
+        count <= 6
+            ? 'clamp(200px, 28vw, 360px)'
+            : 'clamp(160px, 22vw, 280px)';
+    return `top:${topPct}%; left:${leftPct}%; transform:translate(-50%,-50%); width:${panelW}; max-height:calc(${heightPct}vh - 16px);`;
 }
 
-function buildPlayerPanel(player, count, isInteractive = true) {
+function buildPlayerPanel(
+    player,
+    count,
+    isInteractive = true,
+    layoutIndex = null,
+) {
     const panel = document.createElement('div');
     panel.className = 'player-panel';
     panel.id = `levelPanel_${player.index}`;
-    panel.style.cssText = getPanelPosition(player.index, count);
+    const posIndex = layoutIndex !== null ? layoutIndex : player.index;
+    panel.style.cssText = getPanelPosition(posIndex, count);
     panel.style.borderColor = player.color;
     const n = player.index + 1;
 
@@ -1265,7 +1443,7 @@ function adjustTipTextLayout() {
         return;
     }
 
-    // Multi-panel layout (2, 3, or 4 players on PC)
+    // Multi-panel layout (2+ players on PC)
     const midX = window.innerWidth / 2;
     const leftPanels = panels.filter((p) => {
         const r = p.getBoundingClientRect();
@@ -1917,7 +2095,9 @@ function updateUI() {
                     return `<div style="margin-top:2px;"><span style="color:${p.color};opacity:0.65">${pName} (Disconnected)</span></div>`;
                 }
                 if (typeof p.isAlive === 'function' ? p.isAlive() : p.alive) {
-                    return `<div style="margin-top:2px;"><span style="color:${p.color}">HP: ${Math.ceil(p.hp)}</span></div>`;
+                    const aliveName =
+                        pName.length > 12 ? `${pName.slice(0, 10)}..` : pName;
+                    return `<div style="margin-top:2px;"><span style="color:${p.color}">${aliveName} HP: ${Math.ceil(p.hp)}</span></div>`;
                 }
                 const reviveClock =
                     typeof GAME_STATE.elapsed === 'number'
@@ -2002,7 +2182,11 @@ function updateUI() {
             ) {
                 if (netManager.isHost) {
                     const pings = [];
-                    for (let i = 1; i <= 3; i++) {
+                    const maxOnline =
+                        typeof MAX_ONLINE_PLAYERS === 'number'
+                            ? MAX_ONLINE_PLAYERS
+                            : 12;
+                    for (let i = 1; i < maxOnline; i++) {
                         const peerId = netManager.playerPeerMap?.get(i);
                         if (peerId) {
                             const ping = netManager.playerPingMap?.get(i);
@@ -2115,6 +2299,7 @@ function initUISystem() {
             pendingPlayerCount = 1;
             if (typeof GAME_STATE !== 'undefined')
                 GAME_STATE.gameMode = 'single';
+            if (typeof resizeCanvas === 'function') resizeCanvas();
             const promptEl = document.getElementById('difficultyPrompt');
             if (promptEl)
                 promptEl.textContent = 'Singleplayer — Select Difficulty';
@@ -2128,6 +2313,7 @@ function initUISystem() {
             selectedGameMode = 'local';
             if (typeof GAME_STATE !== 'undefined')
                 GAME_STATE.gameMode = 'local';
+            if (typeof resizeCanvas === 'function') resizeCanvas();
             showStartStep('players');
         };
     }
@@ -2149,6 +2335,8 @@ function initUISystem() {
                 GAME_STATE.isHost = true;
                 GAME_STATE.isClient = false;
             }
+            // Lock phone hosts to the standard laptop arena before lobby/clients join
+            if (typeof resizeCanvas === 'function') resizeCanvas();
             pendingPlayerCount = 1;
             const promptEl = document.getElementById('difficultyPrompt');
             if (promptEl)
@@ -2411,6 +2599,7 @@ if (typeof window !== 'undefined') {
     window.WEAPON_LABELS = WEAPON_LABELS;
     window.startWeaponSelectFlow = startWeaponSelectFlow;
     window.renderLobbyWeaponPanels = renderLobbyWeaponPanels;
+    window.updateLobbyPlayerNameDisplay = updateLobbyPlayerNameDisplay;
     window.buildPlaceholderPanel = buildPlaceholderPanel;
     window.buildStartingWeaponPanel = buildStartingWeaponPanel;
     window.selectStartingWeapon = selectStartingWeapon;
@@ -2418,6 +2607,7 @@ if (typeof window !== 'undefined') {
     window.beginSelectionRound = beginSelectionRound;
     window.showKickButtonsForUnpickedPlayers =
         showKickButtonsForUnpickedPlayers;
+    window.releaseDisconnectedPlayerPick = releaseDisconnectedPlayerPick;
     window.kickPlayerByHost = kickPlayerByHost;
     window.onOnlinePlayerKicked = onOnlinePlayerKicked;
     window.getPanelPosition = getPanelPosition;

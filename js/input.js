@@ -134,20 +134,34 @@ function tryStartDash(p) {
 }
 
 // ---------------- 2. Virtual Touch Joystick Controller ----------------
+// Floating stick: origin is wherever the finger presses (not a fixed pad).
 
 class JoystickController {
     constructor(zoneElement, thumbElement, maxRange = 45) {
         this.zone = zoneElement;
         this.thumb = thumbElement;
+        this.base =
+            zoneElement?.querySelector?.('#joystickBase') ||
+            (typeof document !== 'undefined'
+                ? document.getElementById('joystickBase')
+                : null);
         this.maxRange = maxRange;
         this.active = false;
         this.pointerId = null;
+        this.originX = 0;
+        this.originY = 0;
         this.vector = { x: 0, y: 0, angle: 0, distance: 0, active: false };
 
         if (!this.zone || !this.thumb) return;
 
-        this.zone.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+        // Zone is visual-only (pointer-events: none); capture presses anywhere
+        // on the play surface so the stick works regardless of press position.
         if (typeof window !== 'undefined') {
+            window.addEventListener(
+                'pointerdown',
+                (e) => this.onPointerDown(e),
+                { passive: false },
+            );
             window.addEventListener('pointermove', (e) =>
                 this.onPointerMove(e),
             );
@@ -156,16 +170,53 @@ class JoystickController {
                 this.onPointerUp(e),
             );
         }
+        this.resetVisualToRest();
+        window.addEventListener('resize', () => {
+            if (!this.active) this.resetVisualToRest();
+        });
+        window.addEventListener('orientationchange', () => {
+            if (!this.active) {
+                setTimeout(() => this.resetVisualToRest(), 50);
+            }
+        });
+    }
+
+    isEnabled() {
+        if (!this.zone) return false;
+        if (this.zone.style.display === 'none') return false;
+        try {
+            return getComputedStyle(this.zone).display !== 'none';
+        } catch {
+            return true;
+        }
+    }
+
+    shouldIgnoreTarget(target) {
+        if (!target || typeof target.closest !== 'function') return false;
+        return Boolean(
+            target.closest(
+                'button, input, select, textarea, a, label, .modal, .player-panel, .upgrade-btn, .kick-player-btn, #pauseMenuBtn, #testingBtn, #relayToggleBtn, #netToast, #startMenu, #howToPlayModal, #upgradeDetailModal',
+            ),
+        );
     }
 
     onPointerDown(e) {
+        if (!this.isEnabled()) return;
+        if (this.active) return;
+        // Touch / pen only — mouse keeps desktop keyboard controls
+        if (e.pointerType === 'mouse') return;
+        if (this.shouldIgnoreTarget(e.target)) return;
+
         this.active = true;
         this.pointerId = e.pointerId;
-        try {
-            this.zone.setPointerCapture(e.pointerId);
-        } catch {}
-        this.cachedRect = this.zone.getBoundingClientRect();
+        this.originX = e.clientX;
+        this.originY = e.clientY;
+        this.placeVisualAt(this.originX, this.originY);
+        this.zone.classList.add('joystick-active');
         this.updatePosition(e);
+        try {
+            e.preventDefault();
+        } catch {}
     }
 
     onPointerMove(e) {
@@ -179,33 +230,71 @@ class JoystickController {
             return;
         this.active = false;
         this.pointerId = null;
-        if (this.thumb?.style) {
-            this.thumb.style.transform = 'translate(0px, 0px)';
-        }
         this.vector = { x: 0, y: 0, angle: 0, distance: 0, active: false };
+        this.zone.classList.remove('joystick-active');
+        this.resetVisualToRest();
+    }
+
+    placeVisualAt(clientX, clientY) {
+        if (!this.base && !this.thumb) return;
+        // Position base + thumb at the press point (zone is full-screen)
+        const apply = (el) => {
+            if (!el?.style) return;
+            el.style.left = `${clientX}px`;
+            el.style.top = `${clientY}px`;
+            el.style.right = 'auto';
+            el.style.bottom = 'auto';
+            el.style.margin = '0';
+        };
+        apply(this.base);
+        apply(this.thumb);
+        if (this.base?.style) {
+            this.base.style.transform = 'translate(-50%, -50%)';
+        }
+        if (this.thumb?.style) {
+            this.thumb.style.transform = 'translate(-50%, -50%)';
+        }
+    }
+
+    resetVisualToRest() {
+        if (typeof window === 'undefined') return;
+        const baseSize = this.base?.offsetWidth || 82;
+        const half = baseSize / 2;
+        const landscape = Boolean(
+            window.matchMedia?.(
+                '(orientation: landscape) and (max-height: 520px)',
+            )?.matches,
+        );
+        let x;
+        let y;
+        if (landscape) {
+            x = window.innerWidth - Math.max(24, half) - half;
+            y = window.innerHeight / 2;
+        } else {
+            x = window.innerWidth / 2;
+            y = window.innerHeight - 16 - half;
+        }
+        this.placeVisualAt(x, y);
     }
 
     updatePosition(e) {
-        const rect =
-            this.cachedRect ||
-            (this.zone
-                ? this.zone.getBoundingClientRect()
-                : { left: 0, top: 0, width: 100, height: 100 });
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const dx = e.clientX - centerX;
-        const dy = e.clientY - centerY;
+        const dx = e.clientX - this.originX;
+        const dy = e.clientY - this.originY;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
 
-        const maxR = this.zone?.clientWidth
-            ? this.zone.clientWidth * 0.32
-            : this.maxRange;
+        const baseSize = this.base?.offsetWidth || 82;
+        const maxR = baseSize * 0.32 || this.maxRange;
         const visualDist = Math.min(dist, maxR);
         const vx = Math.cos(angle) * visualDist;
         const vy = Math.sin(angle) * visualDist;
         if (this.thumb?.style) {
-            this.thumb.style.transform = `translate(${vx}px, ${vy}px)`;
+            this.thumb.style.left = `${this.originX}px`;
+            this.thumb.style.top = `${this.originY}px`;
+            this.thumb.style.right = 'auto';
+            this.thumb.style.bottom = 'auto';
+            this.thumb.style.margin = '0';
+            this.thumb.style.transform = `translate(calc(-50% + ${vx}px), calc(-50% + ${vy}px))`;
         }
 
         // Constant max movement speed along angle when active

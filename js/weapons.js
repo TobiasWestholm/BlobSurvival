@@ -881,19 +881,19 @@ class PlayerFlail extends Weapon {
         this.vy = this.y - oldY;
 
         if (
-            (!GAME_STATE.isOnline || GAME_STATE.isHost) &&
             this.player.flailLaserEnabled &&
-            (oldX !== this.x || oldY !== this.y)
+            (oldX !== this.x || oldY !== this.y) &&
+            typeof spawnMotionTrailSegment === 'function'
         ) {
-            GAME_STATE.hazards.push(
-                new LaserTrailSegment(
-                    oldX,
-                    oldY,
-                    this.x,
-                    this.y,
-                    now,
-                    this.player,
-                ),
+            spawnMotionTrailSegment(
+                LaserTrailSegment,
+                this.player,
+                '_flailLaserAnchor',
+                oldX,
+                oldY,
+                this.x,
+                this.y,
+                now,
             );
         }
 

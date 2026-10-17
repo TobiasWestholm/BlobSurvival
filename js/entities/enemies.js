@@ -38,6 +38,55 @@ class Enemy extends Unit {
         this.knockbackTargetX = 0;
         this.knockbackTargetY = 0;
         this.eventEnemy = false;
+        // Set in Enemy.create after subclass ctor (post-horde co-op HP/damage scale)
+        this.coopHpDmgScale = 1;
+        // Host targeting cache — refreshed ~12 Hz, staggered per enemy
+        this._cachedTargetInfo = null;
+        this._nextTargetRefreshAt = 0;
+    }
+
+    /**
+     * After the Horde (minute 12+ / horde cleared): +20% HP & damage per player beyond 2.
+     * 1–2p → 1.0, 3p → 1.2, 4p → 1.4, … 12p → 3.0
+     */
+    static getPostHordeCoopScale() {
+        if (typeof GAME_STATE === 'undefined' || !GAME_STATE) return 1;
+        const afterHorde =
+            (GAME_STATE.elapsed || 0) >= 720000 ||
+            GAME_STATE.completedBosses?.has('horde');
+        if (!afterHorde) return 1;
+        const n =
+            (GAME_STATE.players || []).filter(
+                (p) => p && !p.disconnected && !p.kicked,
+            ).length || 1;
+        if (n <= 2) return 1;
+        return 1 + 0.2 * (n - 2);
+    }
+
+    static applyPostHordeCoopScale(enemy) {
+        if (!enemy) return enemy;
+        // Bosses (octopus / felhound / behemoth) keep base HP & damage
+        if (
+            (typeof enemy.isBoss === 'function' && enemy.isBoss()) ||
+            enemy.isBossUnit
+        ) {
+            enemy.coopHpDmgScale = 1;
+            return enemy;
+        }
+        const scale = Enemy.getPostHordeCoopScale();
+        enemy.coopHpDmgScale = scale;
+        if (scale === 1) return enemy;
+        enemy.hp *= scale;
+        enemy.maxHp *= scale;
+        enemy.damage *= scale;
+        if (typeof enemy.shotDamage === 'number') enemy.shotDamage *= scale;
+        if (typeof enemy.blastDamage === 'number') enemy.blastDamage *= scale;
+        return enemy;
+    }
+
+    /** Scale a hardcoded ability hit by post-horde co-op (no-op before horde / ≤2p). */
+    abilityDamage(base) {
+        return base * (this.coopHpDmgScale || 1);
     }
 
     static create(typeOrX, xOrY, typeOrNow, maybeNow) {
@@ -62,54 +111,77 @@ class Enemy extends Unit {
                     ? gameClock
                     : performance.now();
         }
+        let enemy;
         switch (type) {
             case 'brute':
             case 'mega_brute':
             case 'brute_lord':
             case 'swarm':
-                return new BruteEnemy(x, y, type, now);
+                enemy = new BruteEnemy(x, y, type, now);
+                break;
             case 'speeder':
-                return new SpeederEnemy(x, y, now);
+                enemy = new SpeederEnemy(x, y, now);
+                break;
             case 'meteor':
-                return new MeteorEnemy(x, y, now);
+                enemy = new MeteorEnemy(x, y, now);
+                break;
             case 'dasher':
-                return new DasherEnemy(x, y, now);
+                enemy = new DasherEnemy(x, y, now);
+                break;
             case 'shooter':
-                return new ShooterEnemy(x, y, now);
+                enemy = new ShooterEnemy(x, y, now);
+                break;
             case 'spiky':
-                return new SpikyEnemy(x, y, now);
+                enemy = new SpikyEnemy(x, y, now);
+                break;
             case 'baneling':
-                return new BanelingEnemy(x, y, now);
+                enemy = new BanelingEnemy(x, y, now);
+                break;
             case 'marauder':
-                return new MarauderEnemy(x, y, now);
+                enemy = new MarauderEnemy(x, y, now);
+                break;
             case 'stalker':
-                return new StalkerEnemy(x, y, now);
+                enemy = new StalkerEnemy(x, y, now);
+                break;
             case 'zergling':
-                return new ZerglingEnemy(x, y, now);
+                enemy = new ZerglingEnemy(x, y, now);
+                break;
             case 'spine_crawler':
-                return new SpineCrawlerEnemy(x, y, now);
+                enemy = new SpineCrawlerEnemy(x, y, now);
+                break;
             case 'sentry':
-                return new SentryEnemy(x, y, now);
+                enemy = new SentryEnemy(x, y, now);
+                break;
             case 'medivac':
-                return new MedivacEnemy(x, y, now);
+                enemy = new MedivacEnemy(x, y, now);
+                break;
             case 'warp_anomaly':
-                return new WarpAnomalyEnemy(x, y, now);
+                enemy = new WarpAnomalyEnemy(x, y, now);
+                break;
             case 'hellion':
-                return new HellionEnemy(x, y, now);
+                enemy = new HellionEnemy(x, y, now);
+                break;
             case 'shield_bearer':
-                return new ShieldBearerEnemy(x, y, now);
+                enemy = new ShieldBearerEnemy(x, y, now);
+                break;
             case 'viper':
-                return new ViperEnemy(x, y, now);
+                enemy = new ViperEnemy(x, y, now);
+                break;
             case 'octopus':
             case 'boss':
-                return new OctopusBoss(x, y, now);
+                enemy = new OctopusBoss(x, y, now);
+                break;
             case 'felhound':
-                return new FelhoundBoss(x, y, now);
+                enemy = new FelhoundBoss(x, y, now);
+                break;
             case 'behemoth':
-                return new BehemothBoss(x, y, now);
+                enemy = new BehemothBoss(x, y, now);
+                break;
             default:
-                return new BruteEnemy(x, y, 'swarm', now);
+                enemy = new BruteEnemy(x, y, 'swarm', now);
+                break;
         }
+        return Enemy.applyPostHordeCoopScale(enemy);
     }
 
     isBoss() {
@@ -230,35 +302,99 @@ class Enemy extends Unit {
         return false;
     }
 
+    /**
+     * Once-per-frame lists shared by all enemies (avoids N×players scans).
+     * Call Enemy.beginTargetFrame(now) before the enemy update loop.
+     */
+    static beginTargetFrame(now) {
+        const frame = Enemy._targetFrame;
+        if (frame.clock === now) return frame;
+        frame.clock = now;
+        frame.targetable.length = 0;
+        frame.martyrAura.length = 0;
+        frame.martyrPresence.length = 0;
+        frame.hasMartyrPresence = false;
+        const players =
+            typeof GAME_STATE !== 'undefined' && GAME_STATE.players
+                ? GAME_STATE.players
+                : [];
+        for (let i = 0; i < players.length; i++) {
+            const p = players[i];
+            if (!p || p.disconnected || p.kicked) continue;
+            if (typeof p.isTargetable === 'function' ? p.isTargetable() : false) {
+                frame.targetable.push(p);
+                if (p.martyrsPresenceEnabled) {
+                    frame.martyrPresence.push(p);
+                    frame.hasMartyrPresence = true;
+                }
+            }
+            if (!p.alive && p.martyrdomAuraEnabled) {
+                frame.martyrAura.push(p);
+            }
+        }
+        return frame;
+    }
+
+    invalidateTargetCache() {
+        this._nextTargetRefreshAt = 0;
+        this._cachedTargetInfo = null;
+    }
+
+    isCachedTargetValid(info) {
+        if (!info) return false;
+        const t = info.target;
+        // No target is a valid result until the next scheduled refresh
+        if (!t) return true;
+        if (info.isMine) {
+            const mines =
+                typeof GAME_STATE !== 'undefined'
+                    ? GAME_STATE.magneticMines
+                    : null;
+            if (!mines || mines.length === 0) return false;
+            for (let i = 0; i < mines.length; i++) {
+                if (mines[i] === t) return true;
+            }
+            return false;
+        }
+        if (info.isViper) {
+            return (
+                t.hp > 0 &&
+                t.viperState === 'stopped_attracting' &&
+                t !== this
+            );
+        }
+        if (typeof t.isTargetable === 'function') return t.isTargetable();
+        return !!(t.alive && t.hp > 0);
+    }
+
     getSpeed(now) {
         if (this.isBoss()) return this.speed;
         if (this.x < 0 || this.x > W || this.y < 0 || this.y > H)
             return this.speed;
         let s = this.speed;
         let isAuraSlowed = false;
-        for (const p of GAME_STATE.players) {
-            if (!p || p.disconnected) continue;
-            if (!p.alive && p.martyrdomAuraEnabled) {
-                const auraRadius =
-                    110 *
-                    (p.martyrsPresenceEnabled
-                        ? 1 +
-                          GAME_CONFIG.UPGRADES
-                              .MARTYRS_PRESENCE_RADIUS_BOOST_PCT /
-                              100
-                        : 1.0) *
-                    ((GAME_STATE.difficulty
-                        ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
-                        : 1.0) /
-                        2 +
-                        0.5);
-                const dx = this.x - p.x;
-                const dy = this.y - p.y;
-                if (dx * dx + dy * dy < auraRadius * auraRadius) {
-                    s *= 0.5;
-                    isAuraSlowed = true;
-                    break;
-                }
+        const frame = Enemy.beginTargetFrame(now);
+        const auraPlayers = frame.martyrAura;
+        for (let i = 0; i < auraPlayers.length; i++) {
+            const p = auraPlayers[i];
+            const auraRadius =
+                110 *
+                (p.martyrsPresenceEnabled
+                    ? 1 +
+                      GAME_CONFIG.UPGRADES.MARTYRS_PRESENCE_RADIUS_BOOST_PCT /
+                          100
+                    : 1.0) *
+                ((GAME_STATE.difficulty
+                    ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
+                    : 1.0) /
+                    2 +
+                    0.5);
+            const dx = this.x - p.x;
+            const dy = this.y - p.y;
+            if (dx * dx + dy * dy < auraRadius * auraRadius) {
+                s *= 0.5;
+                isAuraSlowed = true;
+                break;
             }
         }
         if (!isAuraSlowed) {
@@ -276,15 +412,57 @@ class Enemy extends Unit {
     }
 
     getTarget(now) {
+        // Turret aggro: always honor immediately (cheap, must not lag behind cache)
+        if (!this.isBoss() && this.turretTarget) {
+            if (this.turretTarget.alive) {
+                const tdx = this.turretTarget.x - this.x;
+                const tdy = this.turretTarget.y - this.y;
+                return {
+                    target: this.turretTarget,
+                    distSq: tdx * tdx + tdy * tdy,
+                    isMine: false,
+                    isViper: false,
+                };
+            }
+            this.turretTarget = null;
+        }
+
+        if (
+            this._cachedTargetInfo &&
+            now < this._nextTargetRefreshAt &&
+            this.isCachedTargetValid(this._cachedTargetInfo)
+        ) {
+            // Refresh distSq cheaply so movement uses current positions
+            const t = this._cachedTargetInfo.target;
+            if (t) {
+                const dx = t.x - this.x;
+                const dy = t.y - this.y;
+                this._cachedTargetInfo.distSq = dx * dx + dy * dy;
+            }
+            return this._cachedTargetInfo;
+        }
+
+        const info = this.computeTarget(now);
+        this._cachedTargetInfo = info;
+        // ~12 Hz retarget, staggered so not all enemies refresh the same frame
+        const interval = 80;
+        const stagger = Math.abs(this._nid || 0) % 17;
+        this._nextTargetRefreshAt = now + interval + stagger;
+        return info;
+    }
+
+    computeTarget(now) {
         let target = null,
             best = Infinity;
         let targetIsMine = false;
         let targetIsViperAttractor = false;
+        const frame = Enemy.beginTargetFrame(now);
+        const targetable = frame.targetable;
 
         if (this.isBoss()) {
             this.turretTarget = null;
-            for (const p of GAME_STATE.players) {
-                if (!p?.isTargetable()) continue;
+            for (let i = 0; i < targetable.length; i++) {
+                const p = targetable[i];
                 const dx = p.x - this.x,
                     dy = p.y - this.y;
                 const d2 = dx * dx + dy * dy;
@@ -296,114 +474,99 @@ class Enemy extends Unit {
             return { target, distSq: best, isMine: false, isViper: false };
         }
 
-        if (this.turretTarget) {
-            if (this.turretTarget.alive) {
-                target = this.turretTarget;
-                const tdx = target.x - this.x,
-                    tdy = target.y - this.y;
-                best = tdx * tdx + tdy * tdy;
-            } else {
-                this.turretTarget = null;
+        let provokedTarget = null;
+        let provokedBestD2 = Infinity;
+        if (frame.hasMartyrPresence) {
+            const presence = frame.martyrPresence;
+            for (let i = 0; i < presence.length; i++) {
+                const p = presence[i];
+                const dx = p.x - this.x,
+                    dy = p.y - this.y;
+                const d2 = dx * dx + dy * dy;
+                const mineRadius =
+                    50 *
+                    p.mineAoeModifier *
+                    ((GAME_STATE.difficulty
+                        ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
+                        : 1.0) /
+                        2 +
+                        0.5);
+                if (d2 <= mineRadius * mineRadius && d2 < provokedBestD2) {
+                    provokedBestD2 = d2;
+                    provokedTarget = p;
+                }
             }
         }
 
-        if (!target) {
-            let provokedTarget = null;
-            let provokedBestD2 = Infinity;
+        if (provokedTarget) {
+            target = provokedTarget;
+            best = provokedBestD2;
+        } else {
+            let viperAttractor = null;
+            let viperBestD2 = Infinity;
             if (
-                GAME_STATE.players.some(
-                    (p) => p?.isTargetable() && p.martyrsPresenceEnabled,
-                )
+                this.type !== 'viper' &&
+                this.type !== 'medivac' &&
+                GAME_STATE.attractingVipers.length > 0
             ) {
-                for (const p of GAME_STATE.players) {
-                    if (!p?.isTargetable() || !p.martyrsPresenceEnabled)
-                        continue;
-                    const dx = p.x - this.x,
-                        dy = p.y - this.y;
-                    const d2 = dx * dx + dy * dy;
-                    const mineRadius =
-                        50 *
-                        p.mineAoeModifier *
-                        ((GAME_STATE.difficulty
-                            ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
-                            : 1.0) /
-                            2 +
-                            0.5);
-                    if (d2 <= mineRadius * mineRadius && d2 < provokedBestD2) {
-                        provokedBestD2 = d2;
-                        provokedTarget = p;
+                for (
+                    let vi = 0;
+                    vi < GAME_STATE.attractingVipers.length;
+                    vi++
+                ) {
+                    const e = GAME_STATE.attractingVipers[vi];
+                    if (
+                        e !== this &&
+                        e.hp > 0 &&
+                        e.viperState === 'stopped_attracting'
+                    ) {
+                        const vdx = e.x - this.x,
+                            vdy = e.y - this.y;
+                        const vd2 = vdx * vdx + vdy * vdy;
+                        const attractRadius = 260;
+                        if (
+                            vd2 <= attractRadius * attractRadius &&
+                            vd2 < viperBestD2
+                        ) {
+                            viperBestD2 = vd2;
+                            viperAttractor = e;
+                        }
                     }
                 }
             }
 
-            if (provokedTarget) {
-                target = provokedTarget;
-                best = provokedBestD2;
+            if (viperAttractor) {
+                target = viperAttractor;
+                best = viperBestD2;
+                targetIsViperAttractor = true;
             } else {
-                let viperAttractor = null;
-                let viperBestD2 = Infinity;
-                if (
-                    this.type !== 'viper' &&
-                    this.type !== 'medivac' &&
-                    GAME_STATE.attractingVipers.length > 0
-                ) {
-                    for (
-                        let vi = 0;
-                        vi < GAME_STATE.attractingVipers.length;
-                        vi++
-                    ) {
-                        const e = GAME_STATE.attractingVipers[vi];
-                        if (
-                            e !== this &&
-                            e.hp > 0 &&
-                            e.viperState === 'stopped_attracting'
-                        ) {
-                            const vdx = e.x - this.x,
-                                vdy = e.y - this.y;
-                            const vd2 = vdx * vdx + vdy * vdy;
-                            const attractRadius = 260;
-                            if (
-                                vd2 <= attractRadius * attractRadius &&
-                                vd2 < viperBestD2
-                            ) {
-                                viperBestD2 = vd2;
-                                viperAttractor = e;
-                            }
-                        }
+                for (let i = 0; i < targetable.length; i++) {
+                    const p = targetable[i];
+                    const dx = p.x - this.x,
+                        dy = p.y - this.y;
+                    const d2 = dx * dx + dy * dy;
+                    if (d2 < best) {
+                        best = d2;
+                        target = p;
                     }
                 }
 
-                if (viperAttractor) {
-                    target = viperAttractor;
-                    best = viperBestD2;
-                    targetIsViperAttractor = true;
-                } else {
-                    for (const p of GAME_STATE.players) {
-                        if (!p?.isTargetable()) continue;
-                        const dx = p.x - this.x,
-                            dy = p.y - this.y;
+                const ignoresMagneticMines =
+                    this.type === 'medivac' ||
+                    this.type === 'warp_anomaly' ||
+                    this.type === 'shield_bearer' ||
+                    this.type === 'viper';
+                if (!ignoresMagneticMines) {
+                    const mines = GAME_STATE.magneticMines;
+                    for (let i = 0; i < mines.length; i++) {
+                        const m = mines[i];
+                        const dx = m.x - this.x,
+                            dy = m.y - this.y;
                         const d2 = dx * dx + dy * dy;
                         if (d2 < best) {
                             best = d2;
-                            target = p;
-                        }
-                    }
-
-                    const ignoresMagneticMines =
-                        this.type === 'medivac' ||
-                        this.type === 'warp_anomaly' ||
-                        this.type === 'shield_bearer' ||
-                        this.type === 'viper';
-                    if (!ignoresMagneticMines) {
-                        for (const m of GAME_STATE.magneticMines) {
-                            const dx = m.x - this.x,
-                                dy = m.y - this.y;
-                            const d2 = dx * dx + dy * dy;
-                            if (d2 < best) {
-                                best = d2;
-                                target = m;
-                                targetIsMine = true;
-                            }
+                            target = m;
+                            targetIsMine = true;
                         }
                     }
                 }
@@ -513,6 +676,15 @@ class Enemy extends Unit {
         this.drawCryoOverlay(now);
     }
 }
+
+/** Shared per-frame targeting lists (filled by Enemy.beginTargetFrame). */
+Enemy._targetFrame = {
+    clock: -1,
+    targetable: [],
+    martyrAura: [],
+    martyrPresence: [],
+    hasMartyrPresence: false,
+};
 
 // -------------------------------------------------------------
 // Base Boss Superclass
@@ -913,7 +1085,7 @@ class SpikyEnemy extends Enemy {
             (GAME_STATE.difficulty
                 ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
                 : 1.0);
-        const damage = 10;
+        const damage = this.abilityDamage(10);
         for (let i = 0; i < count; i++) {
             const angle = (i / count) * Math.PI * 2;
             const vx = Math.cos(angle) * speed;
@@ -1020,7 +1192,10 @@ class BanelingEnemy extends Enemy {
                 : 1.0) /
                 2 +
                 0.5);
-        const blastDamage = 55 * GAME_STATE.difficulty.takenMult;
+        const blastDamage =
+            55 *
+            GAME_STATE.difficulty.takenMult *
+            (this.coopHpDmgScale || 1);
 
         // Visual acid explosion hazard
         GAME_STATE.hazards.push(
@@ -3713,7 +3888,7 @@ class OctopusBoss extends BossEnemy {
             const dx = p.x - this.x,
                 dy = p.y - this.y;
             if (dx * dx + dy * dy < (220 + p.r) * (220 + p.r)) {
-                p.takeDamage(40, now, this);
+                p.takeDamage(this.abilityDamage(40), now, this);
             }
         }
         for (let i = 0; i < 40; i++) {
@@ -3758,7 +3933,7 @@ class OctopusBoss extends BossEnemy {
             (GAME_STATE.difficulty
                 ? GAME_STATE.difficulty.difficultyMultiplier || 1.0
                 : 1.0);
-        const damage = 10;
+        const damage = this.abilityDamage(10);
         for (let i = 0; i < count; i++) {
             const angle = (i / count) * Math.PI * 2;
             const vx = Math.cos(angle) * speed;
@@ -3911,7 +4086,7 @@ class OctopusBoss extends BossEnemy {
                     );
                     if (dist <= 25 + p.r) {
                         t.hitUnits.add(p);
-                        p.takeDamage(60, now, this);
+                        p.takeDamage(this.abilityDamage(60), now, this);
                         spawnHitParticles(p.x, p.y, '#ff00aa');
                     }
                 }
@@ -3929,7 +4104,7 @@ class OctopusBoss extends BossEnemy {
                     );
                     if (dist <= 25 + tur.r) {
                         t.hitUnits.add(tur);
-                        tur.takeDamage(60, now, this);
+                        tur.takeDamage(this.abilityDamage(60), now, this);
                         spawnHitParticles(tur.x, tur.y, '#ff00aa');
                     }
                 }
@@ -4755,7 +4930,7 @@ class BehemothBoss extends BossEnemy {
                 while (diff > Math.PI) diff -= Math.PI * 2;
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 if (Math.abs(diff) <= halfArc) {
-                    p.takeDamage(100, now, this);
+                    p.takeDamage(this.abilityDamage(100), now, this);
                     p.isKnockbackAirborne = true;
                     p.knockbackStartX = p.x;
                     p.knockbackStartY = p.y;
@@ -4786,7 +4961,7 @@ class BehemothBoss extends BossEnemy {
                 while (diff > Math.PI) diff -= Math.PI * 2;
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 if (Math.abs(diff) <= halfArc) {
-                    t.takeDamage(120, now, this);
+                    t.takeDamage(this.abilityDamage(120), now, this);
                 }
             }
         }
@@ -4821,7 +4996,7 @@ class BehemothBoss extends BossEnemy {
             const maxDist = nydusEruptRadius + p.r;
             const dSq = this.distanceToSq(p);
             if (dSq <= maxDist * maxDist) {
-                p.takeDamage(140, now, this);
+                p.takeDamage(this.abilityDamage(140), now, this);
                 const a =
                     dSq > 0.001 ? this.angleTo(p) : Math.random() * Math.PI * 2;
                 p.isKnockbackAirborne = true;
@@ -4846,7 +5021,7 @@ class BehemothBoss extends BossEnemy {
             if (!t.alive) continue;
             const maxDist = nydusEruptRadius + t.r;
             if (this.distanceToSq(t) <= maxDist * maxDist) {
-                t.takeDamage(150, now, this);
+                t.takeDamage(this.abilityDamage(150), now, this);
             }
         }
 
@@ -5278,7 +5453,7 @@ class BehemothBoss extends BossEnemy {
                 if (!p?.isActive()) continue;
                 const maxDist = this.r + p.r + 10;
                 if (this.distanceToSq(p) <= maxDist * maxDist) {
-                    p.takeDamage(90, now, this);
+                    p.takeDamage(this.abilityDamage(90), now, this);
                     // Knockback airborne
                     p.isKnockbackAirborne = true;
                     p.knockbackStartX = p.x;
@@ -5514,7 +5689,7 @@ class BehemothBoss extends BossEnemy {
                 if (dist <= p.r) {
                     if (!this.wallPiecePinnedPlayers.includes(p)) {
                         this.wallPiecePinnedPlayers.push(p);
-                        p.takeDamage(60, now, this);
+                        p.takeDamage(this.abilityDamage(60), now, this);
                         SoundEngine.meleeSweep(true);
                         spawnHitParticles(p.x, p.y, '#a8a29e');
                     }

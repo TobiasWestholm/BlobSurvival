@@ -1,10 +1,31 @@
 class Player extends Unit {
     constructor(index, def) {
-        const startX = W / 2 + (index - 0.5) * 60;
-        const startY = H / 2 + (index % 2 === 0 ? -40 : 40);
+        // Slots 0–3 keep the classic co-op spawn offsets; higher online slots
+        // fan out in a ring so 12 players don't spawn in a long horizontal line.
+        let startX;
+        let startY;
+        if (index < 4) {
+            startX = W / 2 + (index - 0.5) * 60;
+            startY = H / 2 + (index % 2 === 0 ? -40 : 40);
+        } else {
+            const ringIdx = index - 4;
+            const maxOnline =
+                typeof MAX_ONLINE_PLAYERS === 'number' ? MAX_ONLINE_PLAYERS : 12;
+            const ringCount = Math.max(8, maxOnline - 4);
+            const angle = (ringIdx / ringCount) * Math.PI * 2 - Math.PI / 2;
+            const radius = 120;
+            startX = W / 2 + Math.cos(angle) * radius;
+            startY = H / 2 + Math.sin(angle) * radius;
+        }
         super(startX, startY, 15, 100);
         this.index = index;
-        this.name = def?.name ? def.name : `Player ${index + 1}`;
+        const resolved =
+            def ||
+            (typeof getPlayerDef === 'function'
+                ? getPlayerDef(index)
+                : PLAYER_DEFS?.[index]) ||
+            {};
+        this.name = resolved.name ? resolved.name : `Player ${index + 1}`;
         if (GAME_STATE.gameMode === 'online') {
             this.keysText = 'WASD';
             this.keymap = {
@@ -14,11 +35,16 @@ class Player extends Unit {
                 right: ['d', 'arrowright'],
             };
         } else {
-            this.keysText = def.keysText;
-            this.keymap = def.keys;
+            this.keysText = resolved.keysText || 'WASD';
+            this.keymap = resolved.keys || {
+                up: ['w'],
+                left: ['a'],
+                down: ['s'],
+                right: ['d'],
+            };
         }
-        this.color = def.color;
-        this.ring = def.ring;
+        this.color = resolved.color || '#00ffcc';
+        this.ring = resolved.ring || '#003322';
         this.damageModifier = 1.0;
         this.mineDamageModifier = 1.0;
         this.damageUpgradeCount = 0;
@@ -118,6 +144,11 @@ class Player extends Unit {
         this.turretCooldownCount = 0;
         this.disconnected = false;
         this.kicked = false;
+        // True when this seat is controlled from a touch/mobile client (blocks dash upgrades).
+        // Local games set this from the shared device; online clients report via handshake.
+        this.isMobileClient = Boolean(
+            typeof isMobile !== 'undefined' && isMobile,
+        );
         this.remoteInput = null;
         this.nitroUntil = 0;
         this.acidSlowUntil = 0;
@@ -241,21 +272,8 @@ class Player extends Unit {
                     now,
                 );
             }
-            if (
-                (!GAME_STATE.isOnline || GAME_STATE.isHost) &&
-                this.iceTrailEnabled &&
-                (this.lastX !== this.x || this.lastY !== this.y)
-            ) {
-                GAME_STATE.hazards.push(
-                    new IceTrailSegment(
-                        this.lastX,
-                        this.lastY,
-                        this.x,
-                        this.y,
-                        now,
-                        this,
-                    ),
-                );
+            if (this.lastX !== this.x || this.lastY !== this.y) {
+                this.spawnIceTrail(this.lastX, this.lastY, this.x, this.y, now);
             }
             this.lastX = this.x;
             this.lastY = this.y;
@@ -343,32 +361,16 @@ class Player extends Unit {
                     this.y,
                     now,
                 );
-                if (!GAME_STATE.isOnline || GAME_STATE.isHost) {
-                    if (this.dashLvl2) {
-                        GAME_STATE.hazards.push(
-                            new BurningTrailSegment(
-                                this.lastX,
-                                this.lastY,
-                                this.x,
-                                this.y,
-                                now,
-                                this,
-                            ),
-                        );
-                    }
-                    if (this.iceTrailEnabled) {
-                        GAME_STATE.hazards.push(
-                            new IceTrailSegment(
-                                this.lastX,
-                                this.lastY,
-                                this.x,
-                                this.y,
-                                now,
-                                this,
-                            ),
-                        );
-                    }
+                if (this.dashLvl2) {
+                    this.spawnBurnTrail(
+                        this.lastX,
+                        this.lastY,
+                        this.x,
+                        this.y,
+                        now,
+                    );
                 }
+                this.spawnIceTrail(this.lastX, this.lastY, this.x, this.y, now);
             }
             this.agilityFade = Math.min(
                 1.0,
@@ -749,22 +751,7 @@ class Player extends Unit {
         // Handle laser and ice trails at the end of movement frame
         if (this.lastX !== this.x || this.lastY !== this.y) {
             this.spawnLaserTrails(this.lastX, this.lastY, this.x, this.y, now);
-        }
-        if (
-            (!GAME_STATE.isOnline || GAME_STATE.isHost) &&
-            this.iceTrailEnabled &&
-            (this.lastX !== this.x || this.lastY !== this.y)
-        ) {
-            GAME_STATE.hazards.push(
-                new IceTrailSegment(
-                    this.lastX,
-                    this.lastY,
-                    this.x,
-                    this.y,
-                    now,
-                    this,
-                ),
-            );
+            this.spawnIceTrail(this.lastX, this.lastY, this.x, this.y, now);
         }
         this.lastX = this.x;
         this.lastY = this.y;
@@ -1328,32 +1315,79 @@ class Player extends Unit {
         const dy = y2 - y1;
         const len = Math.sqrt(dx * dx + dy * dy);
         if (len < 0.001) return;
+        const spawn =
+            typeof spawnMotionTrailSegment === 'function'
+                ? spawnMotionTrailSegment
+                : null;
+        if (!spawn) return;
 
         if (this.iceTrailEnabled) {
             // Perpendicular unit vector
             const nx = -dy / len;
             const ny = dx / len;
 
-            // Left border (22px offset)
-            const lx1 = x1 - 22 * nx;
-            const ly1 = y1 - 22 * ny;
-            const lx2 = x2 - 22 * nx;
-            const ly2 = y2 - 22 * ny;
-            GAME_STATE.hazards.push(
-                new LaserTrailSegment(lx1, ly1, lx2, ly2, now, this),
+            // Left / right rails (22px offset) — distance-gated separately
+            spawn(
+                LaserTrailSegment,
+                this,
+                '_laserTrailAnchorL',
+                x1 - 22 * nx,
+                y1 - 22 * ny,
+                x2 - 22 * nx,
+                y2 - 22 * ny,
+                now,
             );
-
-            // Right border (22px offset)
-            const rx1 = x1 + 22 * nx;
-            const ry1 = y1 + 22 * ny;
-            const rx2 = x2 + 22 * nx;
-            const ry2 = y2 + 22 * ny;
-            GAME_STATE.hazards.push(
-                new LaserTrailSegment(rx1, ry1, rx2, ry2, now, this),
+            spawn(
+                LaserTrailSegment,
+                this,
+                '_laserTrailAnchorR',
+                x1 + 22 * nx,
+                y1 + 22 * ny,
+                x2 + 22 * nx,
+                y2 + 22 * ny,
+                now,
             );
         } else {
-            GAME_STATE.hazards.push(
-                new LaserTrailSegment(x1, y1, x2, y2, now, this),
+            spawn(
+                LaserTrailSegment,
+                this,
+                '_laserTrailAnchor',
+                x1,
+                y1,
+                x2,
+                y2,
+                now,
+            );
+        }
+    }
+
+    spawnIceTrail(x1, y1, x2, y2, now) {
+        if (!this.iceTrailEnabled) return;
+        if (typeof spawnMotionTrailSegment === 'function') {
+            spawnMotionTrailSegment(
+                IceTrailSegment,
+                this,
+                '_iceTrailAnchor',
+                x1,
+                y1,
+                x2,
+                y2,
+                now,
+            );
+        }
+    }
+
+    spawnBurnTrail(x1, y1, x2, y2, now) {
+        if (typeof spawnMotionTrailSegment === 'function') {
+            spawnMotionTrailSegment(
+                BurningTrailSegment,
+                this,
+                '_burnTrailAnchor',
+                x1,
+                y1,
+                x2,
+                y2,
+                now,
             );
         }
     }

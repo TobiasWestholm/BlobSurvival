@@ -191,6 +191,9 @@ class TurretEntity extends Unit {
 
         if (source instanceof Enemy && !source.isBoss()) {
             source.turretTarget = this;
+            if (typeof source.invalidateTargetCache === 'function') {
+                source.invalidateTargetCache();
+            }
             if (source.lunging) {
                 source.attackPauseUntil = Math.max(
                     source.attackPauseUntil || 0,
@@ -965,72 +968,57 @@ class TurretEntity extends Unit {
                         2 * (1 - t) * t * midY +
                         t * t * y1;
 
-                    // Fast dual-stroke glow: wide translucent pass instead of expensive shadowBlur
                     ctx.strokeStyle = fenceColor;
-                    ctx.lineWidth =
-                        (isLaserWall ? 4.0 : 2.5) + (isLaserWall ? 8 : 5);
-                    ctx.globalAlpha = 0.35;
+                    ctx.lineWidth = 2.5;
+                    ctx.globalAlpha = isLaserWall ? 0.45 : 0.95;
                     ctx.beginPath();
                     ctx.moveTo(p0x, p0y);
                     ctx.quadraticCurveTo(pMidX, pMidY, p1x, p1y);
                     ctx.stroke();
 
-                    // High-energy laser surge line
-                    ctx.lineWidth = isLaserWall ? 4.0 : 2.5;
-                    ctx.globalAlpha = 0.95;
-                    ctx.beginPath();
-                    ctx.moveTo(p0x, p0y);
-                    ctx.quadraticCurveTo(pMidX, pMidY, p1x, p1y);
-                    ctx.stroke();
+                    if (!isLaserWall) {
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 1.1;
+                        ctx.globalAlpha = 0.9;
+                        ctx.stroke();
 
-                    // Bright inner core
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = isLaserWall ? 1.8 : 1.1;
-                    ctx.globalAlpha = 0.9;
-                    ctx.stroke();
-
-                    // Leading edge plasma spark head forging the fence (translucent halo instead of shadowBlur)
-                    ctx.fillStyle = fenceColor;
-                    ctx.globalAlpha = 0.35;
-                    ctx.beginPath();
-                    ctx.arc(
-                        p1x,
-                        p1y,
-                        (isLaserWall ? 3.5 : 2.4) + 4,
-                        0,
-                        Math.PI * 2,
-                    );
-                    ctx.fill();
-                    ctx.globalAlpha = 1;
-                    ctx.fillStyle = '#ffffff';
-                    ctx.beginPath();
-                    ctx.arc(p1x, p1y, isLaserWall ? 3.5 : 2.4, 0, Math.PI * 2);
-                    ctx.fill();
+                        ctx.fillStyle = fenceColor;
+                        ctx.globalAlpha = 0.35;
+                        ctx.beginPath();
+                        ctx.arc(p1x, p1y, 6.4, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                        ctx.fillStyle = '#ffffff';
+                        ctx.beginPath();
+                        ctx.arc(p1x, p1y, 2.4, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else {
+                        // Quiet tip marker — one fill, no glow halo
+                        ctx.fillStyle = fenceColor;
+                        ctx.globalAlpha = 0.5;
+                        ctx.beginPath();
+                        ctx.arc(p1x, p1y, 2.4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
                 } else {
-                    // Settled, permanent bio-tendril fence cord
-                    const pulse = 0.5 + 0.3 * Math.sin(now * 0.006);
-                    // Fast dual-stroke glow: wide translucent pass instead of expensive shadowBlur
+                    // Settled cord — laser fences stay thin/faint to avoid late-game clutter
+                    const pulse = isLaserWall
+                        ? 0.78 + 0.12 * Math.sin(now * 0.006)
+                        : 0.5 + 0.3 * Math.sin(now * 0.006);
                     ctx.strokeStyle = fenceColor;
-                    ctx.lineWidth =
-                        (isLaserWall ? 3.0 : 1.8) + (isLaserWall ? 6 : 4);
-                    ctx.globalAlpha = (isLaserWall ? 0.7 : 0.45) * pulse * 0.4;
+                    ctx.lineWidth = 1.8;
+                    ctx.globalAlpha = (isLaserWall ? 0.3 : 0.45) * pulse;
                     ctx.beginPath();
                     ctx.moveTo(x0, y0);
                     ctx.quadraticCurveTo(midX, midY, x1, y1);
                     ctx.stroke();
 
-                    ctx.lineWidth = isLaserWall ? 3.0 : 1.8;
-                    ctx.globalAlpha = (isLaserWall ? 0.7 : 0.45) * pulse;
-                    ctx.beginPath();
-                    ctx.moveTo(x0, y0);
-                    ctx.quadraticCurveTo(midX, midY, x1, y1);
-                    ctx.stroke();
-
-                    // Luminous inner core along the tendril
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = isLaserWall ? 1.4 : 0.9;
-                    ctx.globalAlpha = 0.65;
-                    ctx.stroke();
+                    if (!isLaserWall) {
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 0.9;
+                        ctx.globalAlpha = 0.65;
+                        ctx.stroke();
+                    }
                 }
 
                 ctx.restore();

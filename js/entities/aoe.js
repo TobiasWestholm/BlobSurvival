@@ -121,8 +121,113 @@ class BurningSurface extends Entity {
     }
 }
 
+/**
+ * Trail segment budget (laser / ice / burn).
+ *
+ * Math (after TRAIL_MIN_SPAWN_DIST gating, 4.5s lifetime):
+ *   Late-game move speed with Speed+Temporal+Ice (+coop) ≈ 350–450 px/s
+ *   → ~40–45 segments/s per trail stream.
+ *   Ice kit = 2 laser rails + 1 ice trail = 3 streams ≈ 130/s ≈ 580 live / player.
+ *   Absolute ceiling (12p × full ice kit, always moving) ≈ 12 × 580 ≈ 7000.
+ *
+ * Cap is ~1/3 of that ceiling, scaled by seat count so small lobbies stay lighter:
+ *   200/player covers continuous Speed II; +400 shared for ice dual-rails / flail bursts.
+ *   1p→600, 4p→1200, 12p→2800 (clamped).
+ */
+const TRAIL_CAP_PER_PLAYER = 200;
+const TRAIL_CAP_SHARED = 400;
+const TRAIL_CAP_MAX = 2800;
+/** Min travel (px) before emitting another motion-trail segment. */
+const TRAIL_MIN_SPAWN_DIST = 10;
+const TRAIL_MIN_SPAWN_DIST_SQ = TRAIL_MIN_SPAWN_DIST * TRAIL_MIN_SPAWN_DIST;
+
+function getMaxTrailSegments() {
+    let n = 1;
+    if (typeof GAME_STATE !== 'undefined' && GAME_STATE.players) {
+        n = 0;
+        for (let i = 0; i < GAME_STATE.players.length; i++) {
+            const p = GAME_STATE.players[i];
+            if (p && !p.disconnected && !p.kicked) n++;
+        }
+        if (n < 1) n = 1;
+    }
+    return Math.min(TRAIL_CAP_MAX, TRAIL_CAP_PER_PLAYER * n + TRAIL_CAP_SHARED);
+}
+
+function isMotionTrailHazard(h) {
+    if (!h) return false;
+    return (
+        h instanceof BurningTrailSegment ||
+        h instanceof LaserTrailSegment ||
+        h instanceof IceTrailSegment
+    );
+}
+
+function enforceTrailSegmentCap(maxCount = getMaxTrailSegments()) {
+    if (typeof GAME_STATE === 'undefined' || !GAME_STATE.hazards) return;
+    const trails = [];
+    for (let i = 0; i < GAME_STATE.hazards.length; i++) {
+        const h = GAME_STATE.hazards[i];
+        if (h && h.alive !== false && isMotionTrailHazard(h)) trails.push(h);
+    }
+    const excess = trails.length - maxCount;
+    if (excess <= 0) return;
+    trails.sort((a, b) => (a.spawnTime || 0) - (b.spawnTime || 0));
+    for (let i = 0; i < excess; i++) trails[i].alive = false;
+}
+
+function pushTrailHazard(segment) {
+    if (!segment || typeof GAME_STATE === 'undefined' || !GAME_STATE.hazards) {
+        return segment;
+    }
+    GAME_STATE.hazards.push(segment);
+    enforceTrailSegmentCap();
+    return segment;
+}
+
+/**
+ * Emit a motion trail only after enough travel since the last emitted point
+ * (longer segments, no gaps — far fewer hazard objects).
+ */
+function spawnMotionTrailSegment(
+    Ctor,
+    player,
+    anchorKey,
+    fromX,
+    fromY,
+    toX,
+    toY,
+    now,
+    durationMs,
+) {
+    if (!player || !Ctor) return null;
+    if (
+        typeof GAME_STATE !== 'undefined' &&
+        GAME_STATE.isOnline &&
+        !GAME_STATE.isHost
+    ) {
+        return null;
+    }
+    const anchor = player[anchorKey];
+    if (!anchor) {
+        const dx0 = toX - fromX;
+        const dy0 = toY - fromY;
+        player[anchorKey] = { x: toX, y: toY };
+        if (dx0 * dx0 + dy0 * dy0 < TRAIL_MIN_SPAWN_DIST_SQ) return null;
+        return pushTrailHazard(
+            new Ctor(fromX, fromY, toX, toY, now, player, durationMs),
+        );
+    }
+    const dx = toX - anchor.x;
+    const dy = toY - anchor.y;
+    if (dx * dx + dy * dy < TRAIL_MIN_SPAWN_DIST_SQ) return null;
+    const seg = new Ctor(anchor.x, anchor.y, toX, toY, now, player, durationMs);
+    player[anchorKey] = { x: toX, y: toY };
+    return pushTrailHazard(seg);
+}
+
 class BurningTrailSegment extends Entity {
-    constructor(x1, y1, x2, y2, now, player) {
+    constructor(x1, y1, x2, y2, now, player, durationMs) {
         super((x1 + x2) / 2, (y1 + y2) / 2, 22);
         this.x1 = x1;
         this.y1 = y1;
@@ -134,17 +239,26 @@ class BurningTrailSegment extends Entity {
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
-        this.duration = 4500;
+        this.duration =
+            typeof durationMs === 'number' && durationMs > 0 ? durationMs : 4500;
         this.alive = true;
         this.player = player;
         this.damage = 3;
         this.hitCooldown = new Map();
-
-        // Bounding box for fast collision pruning
-        this.minX = Math.min(x1, x2) - 25;
-        this.maxX = Math.max(x1, x2) + 25;
-        this.minY = Math.min(y1, y2) - 25;
-        this.maxY = Math.max(y1, y2) + 25;
+        this.recomputeBounds();
+    }
+    recomputeBounds() {
+        this.x = (this.x1 + this.x2) / 2;
+        this.y = (this.y1 + this.y2) / 2;
+        this.minX = Math.min(this.x1, this.x2) - 25;
+        this.maxX = Math.max(this.x1, this.x2) + 25;
+        this.minY = Math.min(this.y1, this.y2) - 25;
+        this.maxY = Math.max(this.y1, this.y2) + 25;
+    }
+    extendTo(x2, y2) {
+        this.x2 = x2;
+        this.y2 = y2;
+        this.recomputeBounds();
     }
     update(dt, now) {
         const curTime =
@@ -252,7 +366,7 @@ class BurningTrailSegment extends Entity {
 }
 
 class LaserTrailSegment extends Entity {
-    constructor(x1, y1, x2, y2, now, player) {
+    constructor(x1, y1, x2, y2, now, player, durationMs) {
         super((x1 + x2) / 2, (y1 + y2) / 2, 15);
         this.x1 = x1;
         this.y1 = y1;
@@ -264,17 +378,26 @@ class LaserTrailSegment extends Entity {
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
-        this.duration = 4500;
+        this.duration =
+            typeof durationMs === 'number' && durationMs > 0 ? durationMs : 4500;
         this.alive = true;
         this.player = player;
         this.damage = 0.2;
         this.hitCooldown = new Map();
-
-        // Bounding box for fast collision pruning
-        this.minX = Math.min(x1, x2) - 15;
-        this.maxX = Math.max(x1, x2) + 15;
-        this.minY = Math.min(y1, y2) - 15;
-        this.maxY = Math.max(y1, y2) + 15;
+        this.recomputeBounds();
+    }
+    recomputeBounds() {
+        this.x = (this.x1 + this.x2) / 2;
+        this.y = (this.y1 + this.y2) / 2;
+        this.minX = Math.min(this.x1, this.x2) - 15;
+        this.maxX = Math.max(this.x1, this.x2) + 15;
+        this.minY = Math.min(this.y1, this.y2) - 15;
+        this.maxY = Math.max(this.y1, this.y2) + 15;
+    }
+    extendTo(x2, y2) {
+        this.x2 = x2;
+        this.y2 = y2;
+        this.recomputeBounds();
     }
     update(dt, now) {
         const curTime =
@@ -359,20 +482,12 @@ class LaserTrailSegment extends Entity {
         const elapsed = curTime - this.spawnTime;
         const t = Math.min(1, elapsed / this.duration);
         const fade = 1 - Math.pow(t, 8);
+        // Single thin stroke (no white core) — half the draw cost, far less late-game clutter
         ctx.save();
         ctx.lineCap = 'round';
-
         ctx.strokeStyle = this.player ? this.player.color : '#33ccff';
-        ctx.lineWidth = 3.5 * fade;
-        ctx.globalAlpha = 0.2 * fade;
-        ctx.beginPath();
-        ctx.moveTo(this.x1, this.y1);
-        ctx.lineTo(this.x2, this.y2);
-        ctx.stroke();
-
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.0 * fade;
-        ctx.globalAlpha = 0.2 * fade;
+        ctx.lineWidth = 1.7 * fade;
+        ctx.globalAlpha = 0.11 * fade;
         ctx.beginPath();
         ctx.moveTo(this.x1, this.y1);
         ctx.lineTo(this.x2, this.y2);
@@ -382,7 +497,7 @@ class LaserTrailSegment extends Entity {
 }
 
 class IceTrailSegment extends Entity {
-    constructor(x1, y1, x2, y2, now, player) {
+    constructor(x1, y1, x2, y2, now, player, durationMs) {
         super((x1 + x2) / 2, (y1 + y2) / 2, 25);
         this.x1 = x1;
         this.y1 = y1;
@@ -394,19 +509,28 @@ class IceTrailSegment extends Entity {
                 : typeof gameClock !== 'undefined'
                   ? gameClock
                   : performance.now();
-        this.duration = 4500;
+        this.duration =
+            typeof durationMs === 'number' && durationMs > 0 ? durationMs : 4500;
         this.alive = true;
         this.player = player;
-
-        // Bounding box for fast collision pruning
-        this.minX = Math.min(x1, x2) - 25;
-        this.maxX = Math.max(x1, x2) + 25;
-        this.minY = Math.min(y1, y2) - 25;
-        this.maxY = Math.max(y1, y2) + 25;
+        this.recomputeBounds();
 
         if (typeof GAME_STATE !== 'undefined' && GAME_STATE.iceTrails) {
             GAME_STATE.iceTrails.push(this);
         }
+    }
+    recomputeBounds() {
+        this.x = (this.x1 + this.x2) / 2;
+        this.y = (this.y1 + this.y2) / 2;
+        this.minX = Math.min(this.x1, this.x2) - 25;
+        this.maxX = Math.max(this.x1, this.x2) + 25;
+        this.minY = Math.min(this.y1, this.y2) - 25;
+        this.maxY = Math.max(this.y1, this.y2) + 25;
+    }
+    extendTo(x2, y2) {
+        this.x2 = x2;
+        this.y2 = y2;
+        this.recomputeBounds();
     }
     update(dt, now) {
         const curTime =
@@ -1723,6 +1847,15 @@ function triggerFullBoardMineExplosion(now) {
 
 // ---------------- Global Window / Module Exports ----------------
 if (typeof window !== 'undefined') {
+    window.TRAIL_CAP_PER_PLAYER = TRAIL_CAP_PER_PLAYER;
+    window.TRAIL_CAP_SHARED = TRAIL_CAP_SHARED;
+    window.TRAIL_CAP_MAX = TRAIL_CAP_MAX;
+    window.TRAIL_MIN_SPAWN_DIST = TRAIL_MIN_SPAWN_DIST;
+    window.getMaxTrailSegments = getMaxTrailSegments;
+    window.isMotionTrailHazard = isMotionTrailHazard;
+    window.enforceTrailSegmentCap = enforceTrailSegmentCap;
+    window.pushTrailHazard = pushTrailHazard;
+    window.spawnMotionTrailSegment = spawnMotionTrailSegment;
     window.BurningSurface = BurningSurface;
     window.BurningTrailSegment = BurningTrailSegment;
     window.LaserTrailSegment = LaserTrailSegment;

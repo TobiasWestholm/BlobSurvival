@@ -93,6 +93,11 @@ const MONSTER_BASE_XP = {
 };
 
 // 4. PLAYER DEFINITIONS & DEFAULT CONTROLS
+// Local co-op uses the first MAX_LOCAL_PLAYERS entries (keyboard layouts).
+// Online co-op supports up to MAX_ONLINE_PLAYERS (host + clients); extras are color-only.
+const MAX_LOCAL_PLAYERS = 4;
+const MAX_ONLINE_PLAYERS = 12;
+
 const PLAYER_DEFS = [
     {
         name: 'Player 1',
@@ -127,7 +132,93 @@ const PLAYER_DEFS = [
         keys: { up: ['i'], left: ['j'], down: ['k'], right: ['l'] },
         keysText: 'IJKL',
     },
+    // Online-only palette (slots 5–12): lighter/deeper variants of P1–P4
+    // (teal / pink / gold / blue) — avoid reds, oranges, limes, purples used by enemies.
+    {
+        name: 'Player 5',
+        color: '#66ffe0', // teal light
+        ring: '#003328',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    },
+    {
+        name: 'Player 6',
+        color: '#ff99dd', // pink light
+        ring: '#33001f',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    },
+    {
+        name: 'Player 7',
+        color: '#ffe066', // gold light
+        ring: '#332900',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    },
+    {
+        name: 'Player 8',
+        color: '#99ccff', // blue light
+        ring: '#001a33',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    },
+    {
+        name: 'Player 9',
+        color: '#00bfa5', // teal deep
+        ring: '#00221c',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    },
+    {
+        name: 'Player 10',
+        color: '#e645a0', // pink deep
+        ring: '#2a0018',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    },
+    {
+        name: 'Player 11',
+        color: '#e6b800', // gold deep
+        ring: '#2a2200',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    },
+    {
+        name: 'Player 12',
+        color: '#4d94e6', // blue deep
+        ring: '#001228',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    },
 ];
+
+/** Resolve a player visual/control def for any slot index (falls back safely). */
+function getPlayerDef(playerIndex) {
+    const idx = Math.max(0, playerIndex | 0);
+    if (PLAYER_DEFS[idx]) return PLAYER_DEFS[idx];
+    const palette = [
+        '#00ffcc',
+        '#ff66cc',
+        '#ffcc00',
+        '#66aaff',
+        '#66ffe0',
+        '#ff99dd',
+        '#ffe066',
+        '#99ccff',
+        '#00bfa5',
+        '#e645a0',
+        '#e6b800',
+        '#4d94e6',
+    ];
+    const color = palette[idx % palette.length];
+    return {
+        name: `Player ${idx + 1}`,
+        color,
+        ring: '#111111',
+        keys: { up: ['w'], left: ['a'], down: ['s'], right: ['d'] },
+        keysText: 'WASD',
+    };
+}
 
 function getPlayerKeyLabels(playerIndex, gameMode) {
     const currentMode =
@@ -428,6 +519,9 @@ if (typeof window !== 'undefined') {
     window.DIFFICULTIES = DIFFICULTIES;
     window.MONSTER_BASE_XP = MONSTER_BASE_XP;
     window.PLAYER_DEFS = PLAYER_DEFS;
+    window.MAX_LOCAL_PLAYERS = MAX_LOCAL_PLAYERS;
+    window.MAX_ONLINE_PLAYERS = MAX_ONLINE_PLAYERS;
+    window.getPlayerDef = getPlayerDef;
     window.PROGRESSION = PROGRESSION;
     window.GAME_CONFIG = GAME_CONFIG;
     window.GAME_STATE = GAME_STATE;

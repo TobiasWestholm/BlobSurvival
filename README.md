@@ -1,6 +1,6 @@
 # Blob Survival 🎮
 
-A fast-paced, high-density 2D rogue-like survival game built from the ground up in zero-dependency Vanilla JavaScript and HTML5 Canvas. Survive escalating hordes of unique blobs, unlock powerful weapon synergies, and defeat multi-phase bosses in single-player or up to 4-player multiplayer.
+A fast-paced, high-density 2D rogue-like survival game built from the ground up in zero-dependency Vanilla JavaScript and HTML5 Canvas. Survive escalating hordes of unique blobs, unlock powerful weapon synergies, and defeat multi-phase bosses in single-player, local co-op (up to 4), or online multiplayer (up to 12).
 
 ## ***[🎮PLAY GAME🎮](https://tobiaswestholm.github.io/BlobSurvival/)***
 
@@ -11,7 +11,7 @@ https://github.com/user-attachments/assets/e7c3951c-04b9-462f-9d4b-b916a9200d06
 
 ## 🌟 Key Features
 
-* **Singleplayer or Online/Local Co-Op (1–4 Players):** Simultaneous multiplayer with shared XP and individual upgrades, and dynamic difficulty scaling based on active player count.
+* **Singleplayer, Local Co-Op (2–4), or Online Co-Op (up to 12):** Simultaneous multiplayer with shared XP and individual upgrades, and dynamic difficulty scaling based on active player count (1–4 identical to before; 5–12 continue the same curve).
 * **Three different difficulty settings:** Choose Easy, Medium or Hard.
 * **Synergistic Skill Trees:** Auto-firing weapons and passive upgrades, starting out with ranged, melee, explosives, or turrets.
 

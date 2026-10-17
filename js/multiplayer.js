@@ -121,12 +121,13 @@ class NetworkManager {
         this.peer = null;
         this.connections = new Map(); // peerId -> DataConnection (Reliable RPC channel)
         this.streamConnections = new Map(); // peerId -> DataConnection (Unreliable Stream channel)
-        this.playerPeerMap = new Map(); // playerIndex (1..3) -> peerId
-        this.peerPlayerMap = new Map(); // peerId -> playerIndex (1..3)
-        this.sessionPlayerMap = new Map(); // sessionToken -> playerIndex (1..3)
-        this.playerSessionMap = new Map(); // playerIndex (1..3) -> sessionToken
+        this.playerPeerMap = new Map(); // playerIndex (1..MAX_ONLINE_PLAYERS-1) -> peerId
+        this.peerPlayerMap = new Map(); // peerId -> playerIndex (1..MAX_ONLINE_PLAYERS-1)
+        this.sessionPlayerMap = new Map(); // sessionToken -> playerIndex
+        this.playerSessionMap = new Map(); // playerIndex -> sessionToken
         this.peerLastSeenMap = new Map(); // peerId -> timestamp
-        this.playerPingMap = new Map(); // playerIndex (1..3) -> ping in ms
+        this.playerPingMap = new Map(); // playerIndex -> ping in ms
+        this.playerMobileMap = new Map(); // playerIndex -> isMobileClient
         this.currentPing = null; // Client's smoothed ping in ms
         this.heartbeatInterval = null;
         this.healthCheckInterval = null;
@@ -210,6 +211,7 @@ class NetworkManager {
         this.playerSessionMap.clear();
         this.peerLastSeenMap.clear();
         this.playerPingMap.clear();
+        this.playerMobileMap.clear();
         this.currentPing = null;
         this.isHost = false;
         this.isClient = false;
@@ -447,6 +449,9 @@ class NetworkManager {
                             metadata: {
                                 sessionToken: this.sessionToken,
                                 channelType: 'rpc',
+                                isMobile: Boolean(
+                                    typeof isMobile !== 'undefined' && isMobile,
+                                ),
                             },
                         },
                     );
@@ -481,10 +486,13 @@ class NetworkManager {
                             }
                         }, 1000);
 
-                        // Send explicit HANDSHAKE with sessionToken
+                        // Send explicit HANDSHAKE with sessionToken + device class
                         this.sendConn(conn, {
                             type: 'HANDSHAKE',
                             sessionToken: this.sessionToken,
+                            isMobile: Boolean(
+                                typeof isMobile !== 'undefined' && isMobile,
+                            ),
                         });
 
                         // Secondary: Establish unreliable streaming channel for 20Hz snapshots & 60Hz inputs
@@ -498,6 +506,10 @@ class NetworkManager {
                                     metadata: {
                                         sessionToken: this.sessionToken,
                                         channelType: 'stream',
+                                        isMobile: Boolean(
+                                            typeof isMobile !== 'undefined' &&
+                                                isMobile,
+                                        ),
                                     },
                                 },
                             );
@@ -563,6 +575,18 @@ class NetworkManager {
         });
     }
 
+    applyPlayerMobileFlag(playerIndex, isMobileClient) {
+        const flag = Boolean(isMobileClient);
+        this.playerMobileMap.set(playerIndex, flag);
+        if (
+            typeof GAME_STATE !== 'undefined' &&
+            GAME_STATE.players &&
+            GAME_STATE.players[playerIndex]
+        ) {
+            GAME_STATE.players[playerIndex].isMobileClient = flag;
+        }
+    }
+
     handleIncomingConnection(conn) {
         conn.on('open', () => {
             let sessionToken = conn.metadata?.sessionToken
@@ -573,6 +597,10 @@ class NetworkManager {
                 : conn.label === 'stream'
                   ? 'stream'
                   : 'rpc';
+            const metaIsMobile =
+                typeof conn.metadata?.isMobile === 'boolean'
+                    ? conn.metadata.isMobile
+                    : null;
 
             // 0. Handle secondary unreliable streaming channel
             if (channelType === 'stream') {
@@ -638,6 +666,9 @@ class NetworkManager {
                 this.sessionPlayerMap.set(sessionToken, assignedSlot);
                 this.playerSessionMap.set(assignedSlot, sessionToken);
                 this.peerLastSeenMap.set(conn.peer, Date.now());
+                if (metaIsMobile !== null) {
+                    this.applyPlayerMobileFlag(assignedSlot, metaIsMobile);
+                }
 
                 const connectedSlots = [0, ...this.playerPeerMap.keys()];
                 let upgradesMap = null;
@@ -739,8 +770,10 @@ class NetworkManager {
                 return;
             }
 
-            // 3. Still in starting weapon selection: allow up to 4 players (slots 1..3 for clients)
-            for (let i = 1; i <= 3; i++) {
+            // 3. Still in starting weapon selection: host is slot 0; clients fill 1..MAX-1
+            const maxOnline =
+                typeof MAX_ONLINE_PLAYERS === 'number' ? MAX_ONLINE_PLAYERS : 12;
+            for (let i = 1; i < maxOnline; i++) {
                 if (
                     !this.playerSessionMap.has(i) &&
                     !this.playerPeerMap.has(i)
@@ -757,7 +790,7 @@ class NetworkManager {
                 );
                 this.sendConn(conn, {
                     type: 'ROOM_FULL',
-                    reason: 'The lobby is full (maximum 4 players).',
+                    reason: `The lobby is full (maximum ${maxOnline} players).`,
                 });
                 setTimeout(() => conn.close(), 500);
                 return;
@@ -772,6 +805,9 @@ class NetworkManager {
             this.sessionPlayerMap.set(sessionToken, assignedSlot);
             this.playerSessionMap.set(assignedSlot, sessionToken);
             this.peerLastSeenMap.set(conn.peer, Date.now());
+            if (metaIsMobile !== null) {
+                this.applyPlayerMobileFlag(assignedSlot, metaIsMobile);
+            }
 
             console.log(
                 `[Net] Assigned new player slot P${assignedSlot + 1} to peer:`,
@@ -854,6 +890,9 @@ class NetworkManager {
                 ) {
                     this.sessionPlayerMap.set(data.sessionToken, playerIndex);
                     this.playerSessionMap.set(playerIndex, data.sessionToken);
+                }
+                if (typeof data.isMobile === 'boolean') {
+                    this.applyPlayerMobileFlag(playerIndex, data.isMobile);
                 }
                 break;
 
@@ -1023,30 +1062,6 @@ class NetworkManager {
                 }
                 break;
 
-            case 'WORLD_SNAPSHOT':
-                // Authoritative game world state from host (binary only: raw stream or base64)
-                if (typeof window.onWorldSnapshotReceived === 'function') {
-                    if (data.b) {
-                        try {
-                            const bytes = base64ToUint8(data.b);
-                            const snapshot = unpackWorldSnapshotBinary(bytes);
-                            if (snapshot) {
-                                window.onWorldSnapshotReceived(snapshot);
-                            }
-                        } catch (e) {
-                            console.warn(
-                                '[Net] Failed to decode base64 snapshot:',
-                                e,
-                            );
-                        }
-                    } else {
-                        console.warn(
-                            '[Net] Ignoring non-binary WORLD_SNAPSHOT (JSON path removed)',
-                        );
-                    }
-                }
-                break;
-
             case 'LEVEL_UP_START':
                 // Midgame level up triggered
                 if (typeof window.onOnlineLevelUpStarted === 'function') {
@@ -1087,8 +1102,13 @@ class NetworkManager {
 
             case 'ROOM_FULL':
                 if (typeof showToast === 'function') {
+                    const maxOnline =
+                        typeof MAX_ONLINE_PLAYERS === 'number'
+                            ? MAX_ONLINE_PLAYERS
+                            : 12;
                     showToast(
-                        'This room is already full (maximum 4 players).',
+                        data.reason ||
+                            `This room is already full (maximum ${maxOnline} players).`,
                         5000,
                         true,
                     );
@@ -1301,6 +1321,9 @@ class NetworkManager {
                 metadata: {
                     sessionToken: this.sessionToken,
                     channelType: 'rpc',
+                    isMobile: Boolean(
+                        typeof isMobile !== 'undefined' && isMobile,
+                    ),
                 },
             });
 
@@ -1335,6 +1358,9 @@ class NetworkManager {
                 this.sendConn(conn, {
                     type: 'HANDSHAKE',
                     sessionToken: this.sessionToken,
+                    isMobile: Boolean(
+                        typeof isMobile !== 'undefined' && isMobile,
+                    ),
                 });
 
                 try {
@@ -1347,6 +1373,9 @@ class NetworkManager {
                             metadata: {
                                 sessionToken: this.sessionToken,
                                 channelType: 'stream',
+                                isMobile: Boolean(
+                                    typeof isMobile !== 'undefined' && isMobile,
+                                ),
                             },
                         },
                     );
@@ -1391,9 +1420,10 @@ class NetworkManager {
         }, delay);
     }
 
-    // Host sends authoritative game world snapshot to all connected clients (binary only)
+    // Host sends authoritative world snapshots over the binary stream only.
+    // No JSON/RPC fallback — PeerJS JSON channels cannot carry large snapshots.
     broadcastWorldSnapshot(snapshot = null) {
-        if (!this.isHost || this.connections.size === 0) return;
+        if (!this.isHost || this.streamConnections.size === 0) return;
 
         let binBuffer = null;
         if (snapshot instanceof ArrayBuffer) {
@@ -1406,26 +1436,9 @@ class NetworkManager {
         }
         if (!binBuffer) return;
 
-        let base64Payload = null;
-
-        for (const [peerId, conn] of this.connections.entries()) {
-            const streamConn = this.streamConnections.get(peerId);
+        for (const streamConn of this.streamConnections.values()) {
             if (streamConn?.open) {
-                // Primary: stream raw binary ArrayBuffer over unreliable stream channel
                 this.sendConn(streamConn, binBuffer, 65536);
-            } else if (conn?.open) {
-                // Fallback: same binary, base64-wrapped over reliable RPC channel
-                if (!base64Payload) {
-                    const bytes =
-                        binBuffer instanceof Uint8Array
-                            ? binBuffer
-                            : new Uint8Array(binBuffer);
-                    base64Payload = {
-                        type: 'WORLD_SNAPSHOT',
-                        b: uint8ToBase64(bytes),
-                    };
-                }
-                this.sendConn(conn, base64Payload, 65536);
             }
         }
     }
@@ -1658,11 +1671,14 @@ window.onOnlinePlayerJoined = (assignedSlot, peerId, isReconnection) => {
     );
     let p = GAME_STATE.players[assignedSlot];
     if (!p) {
-        GAME_STATE.players[assignedSlot] = new Player(
-            assignedSlot,
-            PLAYER_DEFS[assignedSlot],
-        );
+        const def =
+            typeof getPlayerDef === 'function'
+                ? getPlayerDef(assignedSlot)
+                : PLAYER_DEFS[assignedSlot];
+        GAME_STATE.players[assignedSlot] = new Player(assignedSlot, def);
         p = GAME_STATE.players[assignedSlot];
+        // Remote seats: don't inherit the host device's isMobile from Player ctor
+        p.isMobileClient = false;
     } else {
         p.disconnected = false;
         p.lastInputSeq = 0;
@@ -1742,6 +1758,11 @@ window.onOnlinePlayerJoined = (assignedSlot, peerId, isReconnection) => {
             p.alive = true;
         }
     }
+    if (netManager?.playerMobileMap?.has(assignedSlot)) {
+        p.isMobileClient = Boolean(
+            netManager.playerMobileMap.get(assignedSlot),
+        );
+    }
     recalculateDynamicDifficulty();
 
     if (GAME_STATE.current === STATES.WEAPON_SELECT) {
@@ -1791,41 +1812,21 @@ window.onOnlinePlayerDisconnected = (playerIndex, peerId) => {
         const allReady =
             activePlayers.length > 0 &&
             activePlayers.every((p) => p.selectedWeapon);
-        netManager.broadcastLobbyState(
-            activePlayers.map((p) => ({
-                index: p.index,
-                name: p.name || `Player ${p.index + 1}`,
-                selectedWeapon: p.selectedWeapon,
-                selectedWeaponLabel: p.selectedWeaponLabel,
-            })),
-            allReady,
-        );
-    } else if (
-        GAME_STATE.current === STATES.LEVEL_UP &&
-        netManager &&
-        netManager.isHost
-    ) {
-        // Disconnected player in level up: immediately offer Kick button to host
-        const panel = document.getElementById(`levelPanel_${playerIndex}`);
-        if (
-            panel &&
-            panel.dataset.pickDone !== 'true' &&
-            !panel.querySelector('.kick-player-btn')
-        ) {
-            const kickBtn = document.createElement('button');
-            kickBtn.className = 'kick-player-btn';
-            kickBtn.innerHTML = `⚠️ Kick Player ${playerIndex + 1} (Disconnected)`;
-            kickBtn.onclick = (e) => {
-                e.stopPropagation();
-                if (
-                    confirm(
-                        `Permanently kick Player ${playerIndex + 1} from this game session?`,
-                    )
-                ) {
-                    kickPlayerByHost(playerIndex);
-                }
-            };
-            panel.appendChild(kickBtn);
+        if (typeof netManager !== 'undefined' && netManager) {
+            netManager.broadcastLobbyState(
+                activePlayers.map((p) => ({
+                    index: p.index,
+                    name: p.name || `Player ${p.index + 1}`,
+                    selectedWeapon: p.selectedWeapon,
+                    selectedWeaponLabel: p.selectedWeaponLabel,
+                })),
+                allReady,
+            );
+        }
+    } else if (GAME_STATE.current === STATES.LEVEL_UP) {
+        // Never stall level-up on a drop — skip their pick immediately
+        if (typeof releaseDisconnectedPlayerPick === 'function') {
+            releaseDisconnectedPlayerPick(playerIndex, 'Disconnected — skipped');
         }
     }
 };
@@ -1870,7 +1871,9 @@ window.onAssignedSlot = (
             ? connectedSlots
             : [0, assignedSlot];
     for (const s of slots) {
-        GAME_STATE.players[s] = new Player(s, PLAYER_DEFS[s]);
+        const def =
+            typeof getPlayerDef === 'function' ? getPlayerDef(s) : PLAYER_DEFS[s];
+        GAME_STATE.players[s] = new Player(s, def);
     }
     if (upgradesMap) {
         for (const idx in upgradesMap) {
@@ -1967,7 +1970,13 @@ window.onRemoteInputReceived = (
     dashing,
     seq = null,
 ) => {
-    if (typeof playerIndex !== 'number' || playerIndex < 1 || playerIndex > 3) {
+    const maxOnline =
+        typeof MAX_ONLINE_PLAYERS === 'number' ? MAX_ONLINE_PLAYERS : 12;
+    if (
+        typeof playerIndex !== 'number' ||
+        playerIndex < 1 ||
+        playerIndex >= maxOnline
+    ) {
         return;
     }
     const p = GAME_STATE.players?.[playerIndex];
@@ -2104,7 +2113,11 @@ window.onRemotePlayerNameChanged = (playerIndex, newName) => {
             .trim();
         if (cleaned) {
             p.name = cleaned;
-            if (typeof renderLobbyWeaponPanels === 'function') {
+            // Name commits are discrete events — update the label in place so
+            // other players' open name editors are not destroyed.
+            if (typeof updateLobbyPlayerNameDisplay === 'function') {
+                updateLobbyPlayerNameDisplay(playerIndex, cleaned);
+            } else if (typeof renderLobbyWeaponPanels === 'function') {
                 renderLobbyWeaponPanels();
             }
             if (netManager?.isHost) {
@@ -2141,6 +2154,16 @@ window.onRemoteUpgradeSelected = (playerIndex, upgradeId) => {
     }
     const p = GAME_STATE.players?.[playerIndex];
     if (!p || p.disconnected || p.kicked) return;
+
+    if (
+        typeof isUpgradeBlockedOnMobile === 'function' &&
+        isUpgradeBlockedOnMobile(upgradeId, p)
+    ) {
+        console.warn(
+            `[Net] Rejected mobile-blocked upgrade "${upgradeId}" from P${playerIndex + 1}.`,
+        );
+        return;
+    }
 
     const panel = document.getElementById(`levelPanel_${playerIndex}`);
     if (
@@ -2211,35 +2234,58 @@ window.onUpgradeChosenSync = (playerIndex, upgradeId, upgradeName) => {
 window.onLobbyStateUpdated = (playersData, allReady) => {
     if (!playersData) return;
     const activeIndices = new Set(playersData.map((pd) => pd.index));
+    const maxOnline =
+        typeof MAX_ONLINE_PLAYERS === 'number' ? MAX_ONLINE_PLAYERS : 12;
+    let needsFullRerender = false;
     // Clear slots that are no longer connected
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < maxOnline; i++) {
         if (
             !activeIndices.has(i) &&
             (typeof netManager === 'undefined' ||
                 i !== netManager.localPlayerIndex)
         ) {
+            if (GAME_STATE.players[i]) needsFullRerender = true;
             delete GAME_STATE.players[i];
         }
     }
+    const nameUpdates = [];
     for (const pd of playersData) {
         if (!GAME_STATE.players[pd.index]) {
-            GAME_STATE.players[pd.index] = new Player(
-                pd.index,
-                PLAYER_DEFS[pd.index],
-            );
+            const def =
+                typeof getPlayerDef === 'function'
+                    ? getPlayerDef(pd.index)
+                    : PLAYER_DEFS[pd.index];
+            GAME_STATE.players[pd.index] = new Player(pd.index, def);
+            needsFullRerender = true;
         }
         const p = GAME_STATE.players[pd.index];
         if (pd.name && pd.name !== p.name) {
             p.name = pd.name;
+            nameUpdates.push({ index: pd.index, name: pd.name });
         }
         if (p.selectedWeapon !== pd.selectedWeapon) {
             p.selectedWeapon = pd.selectedWeapon;
             p.selectedWeaponLabel = pd.selectedWeaponLabel;
             p.weapons = [];
             if (pd.selectedWeapon) p.unlockWeapon(pd.selectedWeapon);
+            needsFullRerender = true;
         }
     }
-    renderLobbyWeaponPanels();
+    if (needsFullRerender) {
+        // Full rebuild (join/leave/weapon) — open name edits are restored inside
+        renderLobbyWeaponPanels();
+    } else {
+        // Name-only sync: patch labels without tearing down other editors
+        for (const u of nameUpdates) {
+            if (typeof updateLobbyPlayerNameDisplay === 'function') {
+                updateLobbyPlayerNameDisplay(u.index, u.name);
+            }
+        }
+        const lobbyStartBtn = document.getElementById('lobbyStartBtn');
+        if (lobbyStartBtn && typeof allReady === 'boolean') {
+            lobbyStartBtn.disabled = !allReady;
+        }
+    }
 };
 
 window.onOnlineCountdownStarted = (isNewGame) => {
@@ -2814,7 +2860,8 @@ window.applyNetworkBlobDeform = applyNetworkBlobDeform;
 function queueNetworkCombatVfx(type, x, y, param = 0, playerIndex = 0) {
     if (netVfxEvents.length >= 32) return;
     if (!netManager?.isHost || !netManager?.connections?.size) return;
-    const header = ((playerIndex & 0x03) << 4) | (type & 0x0f);
+    // High nibble: player index 0–15; low nibble: VFX type
+    const header = ((playerIndex & 0x0f) << 4) | (type & 0x0f);
     netVfxEvents.push([
         header & 0xff,
         Math.round(x || 0),
@@ -2853,7 +2900,7 @@ function getEnemyVisualState(e, hostClock) {
         if (e.heldPlayer?.alive && e.heldPlayer.viperGrabber === e) {
             const pIdx =
                 e.heldPlayer.index !== undefined ? e.heldPlayer.index : 0;
-            return { vState: 6, vParam: pIdx & 3 };
+            return { vState: 6, vParam: pIdx & 0x0f };
         }
         if (e.viperState === 'tongue_firing' || e.tongueActive) {
             const a =
@@ -2942,7 +2989,7 @@ function getEnemyVisualState(e, hostClock) {
         if (e.behemothState === 'tongue_dragging_player') {
             const pIdx =
                 e.heldPlayer?.index !== undefined ? e.heldPlayer.index : 0;
-            return { vState: 19, vParam: pIdx & 3 };
+            return { vState: 19, vParam: pIdx & 0x0f };
         }
         if (e.behemothState === 'tongue_dragging_wall') {
             return {
@@ -3104,7 +3151,7 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
             e.viperState = 'holding';
             const p =
                 typeof GAME_STATE !== 'undefined' && GAME_STATE.players
-                    ? GAME_STATE.players[vp & 3]
+                    ? GAME_STATE.players[vp & 0x0f]
                     : null;
             if (p) {
                 e.heldPlayer = p;
@@ -3192,7 +3239,7 @@ function applyEnemyVisualState(e, vs, vp, nowTime) {
             e.tongueActive = true;
             const p =
                 typeof GAME_STATE !== 'undefined' && GAME_STATE.players
-                    ? GAME_STATE.players[vp & 3]
+                    ? GAME_STATE.players[vp & 0x0f]
                     : null;
             if (p) {
                 e.heldPlayer = p;
@@ -4253,8 +4300,11 @@ function packWorldSnapshotBinary() {
                 (p.growth === undefined || p.growth > 0.05))
                 ? 1
                 : 0;
+        // Owner index 0–15: bits 3–5 = low 3, bit 7 = high bit (bit 6 = hasStatic)
         const pIndex =
-            p.player && p.player.index !== undefined ? p.player.index & 3 : 0;
+            p.player && p.player.index !== undefined
+                ? p.player.index & 0x0f
+                : 0;
         const hasTarget = p.targetX !== undefined || p.targetY !== undefined;
         const hasStart = p.startX !== undefined || p.startY !== undefined;
         const tx = hasTarget ? Math.round(p.targetX || 0) : 0;
@@ -4286,7 +4336,8 @@ function packWorldSnapshotBinary() {
             if (mr) pFlags |= 1 << 0;
             if (hasTarget) pFlags |= 1 << 1;
             if (hasStart) pFlags |= 1 << 2;
-            pFlags |= pIndex << 3;
+            pFlags |= (pIndex & 0x07) << 3;
+            if (pIndex & 0x08) pFlags |= 1 << 7;
         }
         view.setUint8(offset, pFlags);
         offset += 1;
@@ -4475,7 +4526,18 @@ function packWorldSnapshotBinary() {
         // Segment hazards (trails) carry their start point in x1/y1; x/y is only the midpoint
         const hx = Math.round(h.x1 !== undefined ? h.x1 : h.x || 0);
         const hy = Math.round(h.y1 !== undefined ? h.y1 : h.y || 0);
+        const hx2 = Math.round(
+            h.x2 !== undefined
+                ? h.x2
+                : /** @type {{ targetX?: number }} */ (h).targetX || hx,
+        );
+        const hy2 = Math.round(
+            h.y2 !== undefined
+                ? h.y2
+                : /** @type {{ targetY?: number }} */ (h).targetY || hy,
+        );
         const htr = h.triggeredTime ? 1 : 0;
+        const hst = Math.round(h.spawnTime || 0);
         const isTrail =
             (typeof BurningTrailSegment !== 'undefined' &&
                 h instanceof BurningTrailSegment) ||
@@ -4487,13 +4549,30 @@ function packWorldSnapshotBinary() {
             h._netFullSends = 0;
             h._netX = hx;
             h._netY = hy;
+            h._netX2 = hx2;
+            h._netY2 = hy2;
             h._netTr = htr;
+            h._netSt = hst;
             h._netChangedSeq = -Infinity;
-        } else if (hx !== h._netX || hy !== h._netY || htr !== h._netTr) {
+        } else if (
+            hx !== h._netX ||
+            hy !== h._netY ||
+            hx2 !== h._netX2 ||
+            hy2 !== h._netY2 ||
+            htr !== h._netTr ||
+            hst !== h._netSt
+        ) {
             h._netX = hx;
             h._netY = hy;
+            h._netX2 = hx2;
+            h._netY2 = hy2;
             h._netTr = htr;
+            h._netSt = hst;
             h._netChangedSeq = snapshotSeq;
+            // Trails only pack endpoints in full records — force a full resend on grow
+            if (isTrail) {
+                /** @type {{ _netFullSends?: number }} */ (h)._netFullSends = 0;
+            }
         }
 
         const sendFull =
@@ -4534,22 +4613,12 @@ function packWorldSnapshotBinary() {
         view.setUint8(offset, typeId);
         offset += 1;
 
-        // Trails: compact x1/y1/x2/y2/player only (r/angle/spawn/duration are fixed client-side)
+        // Trails: x1/y1/x2/y2/player/duration/spawnTime (sniper beam grows tip + refreshes spawn)
         if (isTrail) {
             view.setInt16(offset, hx, true);
             offset += 2;
             view.setInt16(offset, hy, true);
             offset += 2;
-            const hx2 = Math.round(
-                h.x2 !== undefined
-                    ? h.x2
-                    : /** @type {{ targetX?: number }} */ (h).targetX || hx,
-            );
-            const hy2 = Math.round(
-                h.y2 !== undefined
-                    ? h.y2
-                    : /** @type {{ targetY?: number }} */ (h).targetY || hy,
-            );
             view.setInt16(offset, hx2, true);
             offset += 2;
             view.setInt16(offset, hy2, true);
@@ -4559,6 +4628,14 @@ function packWorldSnapshotBinary() {
                 h.player && h.player.index !== undefined ? h.player.index : 0,
             );
             offset += 1;
+            view.setUint16(
+                offset,
+                Math.min(65535, Math.round(h.duration || 4500)),
+                true,
+            );
+            offset += 2;
+            view.setUint32(offset, Math.round(h.spawnTime || 0), true);
+            offset += 4;
             continue;
         }
 
@@ -5134,7 +5211,7 @@ function unpackWorldSnapshotBinary(buffer) {
                 r = view.getUint8(offset);
                 offset += 1;
                 mr = pFlags & (1 << 0) ? 1 : 0;
-                pi = (pFlags >> 3) & 3;
+                pi = ((pFlags >> 3) & 0x07) | (pFlags & (1 << 7) ? 0x08 : 0);
                 tx = undefined;
                 ty = undefined;
                 sx = undefined;
@@ -5295,7 +5372,7 @@ function unpackWorldSnapshotBinary(buffer) {
             offset += 1;
             const t = ID_TO_HAZARD_TYPE[typeId] || 'hazard';
 
-            // Compact trail records: x1/y1/x2/y2/player
+            // Compact trail records: x1/y1/x2/y2/player/duration/spawnTime
             if (TRAIL_HAZARD_TYPE_IDS.has(typeId)) {
                 const x = view.getInt16(offset, true);
                 offset += 2;
@@ -5307,6 +5384,10 @@ function unpackWorldSnapshotBinary(buffer) {
                 offset += 2;
                 const pi = view.getUint8(offset);
                 offset += 1;
+                const dur = view.getUint16(offset, true);
+                offset += 2;
+                const st = view.getUint32(offset, true);
+                offset += 4;
                 hazards.push({
                     id,
                     t,
@@ -5317,8 +5398,8 @@ function unpackWorldSnapshotBinary(buffer) {
                     r: 22,
                     a: 0,
                     ca: undefined,
-                    st: undefined,
-                    dur: 4500,
+                    st,
+                    dur: dur || 4500,
                     lt: undefined,
                     tr: 0,
                     pi,
@@ -5478,7 +5559,7 @@ function unpackWorldSnapshotBinary(buffer) {
             for (let i = 0; i < vfxCount; i++) {
                 const rawType = view.getUint8(offset);
                 offset += 1;
-                const playerIndex = (rawType >> 4) & 0x03;
+                const playerIndex = (rawType >> 4) & 0x0f;
                 const type = rawType & 0x0f;
                 const x = view.getInt16(offset, true);
                 offset += 2;
@@ -6001,8 +6082,21 @@ const NetworkEnemyProjectileProto = {
 };
 
 function applyNetworkHazardUpdate(hazard, sh, nowTime) {
-    // Segment hazards are static and their wire x/y is the start point, not the midpoint
-    if (hazard.x1 === undefined) {
+    // Trail segments: wire x/y is start; x2/y2 is tip (may grow for sniper beams)
+    if (hazard.x1 !== undefined) {
+        if (sh.x !== undefined) hazard.x1 = sh.x;
+        if (sh.y !== undefined) hazard.y1 = sh.y;
+        if (sh.x2 !== undefined) hazard.x2 = sh.x2;
+        if (sh.y2 !== undefined) hazard.y2 = sh.y2;
+        if (sh.dur !== undefined && sh.dur > 0) hazard.duration = sh.dur;
+        if (sh.st !== undefined) hazard.spawnTime = sh.st;
+        if (typeof hazard.recomputeBounds === 'function') {
+            hazard.recomputeBounds();
+        } else {
+            hazard.x = (hazard.x1 + hazard.x2) / 2;
+            hazard.y = (hazard.y1 + hazard.y2) / 2;
+        }
+    } else {
         if (hazard.x !== undefined) hazard.x = sh.x;
         if (hazard.y !== undefined) hazard.y = sh.y;
     }
@@ -6097,12 +6191,14 @@ window.onWorldSnapshotReceived = (snapshot) => {
             if (!p) {
                 p = new Player(
                     sp.i,
-                    PLAYER_DEFS[sp.i] || {
-                        keysText: 'WASD',
-                        color: '#00ffcc',
-                        ring: 'rgba(0,255,204,0.3)',
-                        keys: {},
-                    },
+                    typeof getPlayerDef === 'function'
+                        ? getPlayerDef(sp.i)
+                        : PLAYER_DEFS[sp.i] || {
+                              keysText: 'WASD',
+                              color: '#00ffcc',
+                              ring: 'rgba(0,255,204,0.3)',
+                              keys: {},
+                          },
                 );
                 GAME_STATE.players[sp.i] = p;
             }
@@ -7005,6 +7101,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
                             sh.y2 || sh.y,
                             sh.st || nowTime,
                             owner,
+                            sh.dur,
                         );
                         hazard.spawnTime = sh.st || nowTime;
                         break;
@@ -7016,6 +7113,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
                             sh.y2 || sh.y,
                             sh.st || nowTime,
                             owner,
+                            sh.dur,
                         );
                         hazard.spawnTime = sh.st || nowTime;
                         break;
@@ -7027,6 +7125,7 @@ window.onWorldSnapshotReceived = (snapshot) => {
                             sh.y2 || sh.y,
                             sh.st || nowTime,
                             owner,
+                            sh.dur,
                         );
                         hazard.spawnTime = sh.st || nowTime;
                         break;
@@ -7687,8 +7786,11 @@ function recalculateDynamicDifficulty() {
     const activePlayers =
         GAME_STATE.players.filter((p) => p && !p.disconnected).length || 1;
     const diff = GAME_STATE.difficulty || DIFFICULTIES.normal;
+    // Same curve as 1–4p local co-op; extends linearly for 5–12 online players.
+    // dmgFactor: 1p=1.0, 2p=0.6, 3p≈0.429, 4p≈0.333, … × difficulty dmgMult
     GAME_STATE.dmgFactor =
         (1.5 / (activePlayers + 0.5)) * (diff.dmgMult || 1.0);
+    // Speed: 1p=1.00, 2p=1.10, 3p=1.15, 4p=1.20, … × difficulty speedMult
     const coopSpeedBonus = activePlayers > 1 ? 1 + 0.05 * activePlayers : 1.0;
     const speedFactor = coopSpeedBonus * (diff.speedMult || 1.0);
     for (const p of GAME_STATE.players) {

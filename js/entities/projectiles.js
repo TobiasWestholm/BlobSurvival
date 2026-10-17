@@ -449,9 +449,49 @@ class SniperProjectile extends Projectile {
         this.type = 'sniper';
         this.hitEnemies = new Set();
         this.sourceUnitType = sourceUnitType;
+        this.originX = x;
+        this.originY = y;
+        this._laserTrail = null;
+    }
+    /** One straight laser trail grown with the beam (not per-step crumbs). */
+    syncLaserTrail(tipX, tipY, now, stillActive) {
+        if (!this.player?.laserSniperEnabled) return;
+        if (
+            typeof GAME_STATE !== 'undefined' &&
+            GAME_STATE.isOnline &&
+            !GAME_STATE.isHost
+        ) {
+            return;
+        }
+        const dur =
+            typeof GAME_CONFIG !== 'undefined' &&
+            GAME_CONFIG.UPGRADES?.LASER_SNIPER_TRAIL_DURATION_MS
+                ? GAME_CONFIG.UPGRADES.LASER_SNIPER_TRAIL_DURATION_MS
+                : 600;
+        if (!this._laserTrail?.alive) {
+            this._laserTrail = new LaserTrailSegment(
+                this.originX,
+                this.originY,
+                tipX,
+                tipY,
+                now,
+                this.player,
+                dur,
+            );
+            if (typeof pushTrailHazard === 'function') {
+                pushTrailHazard(this._laserTrail);
+            } else {
+                GAME_STATE.hazards.push(this._laserTrail);
+            }
+        } else {
+            this._laserTrail.extendTo(tipX, tipY);
+        }
+        // Keep trail fully bright while the beam is in flight; fade starts on stop
+        if (stillActive) this._laserTrail.spawnTime = now;
     }
     update(dt, dtFactor = 1.0, now) {
         if (now - this.spawnTime > this.lifespan) {
+            this.syncLaserTrail(this.x, this.y, now, false);
             this.alive = false;
             return;
         }
@@ -471,18 +511,7 @@ class SniperProjectile extends Projectile {
         if (shieldCheck?.blocked) {
             this.x = shieldCheck.hitX;
             this.y = shieldCheck.hitY;
-            if (this.player?.laserSniperEnabled) {
-                GAME_STATE.hazards.push(
-                    new LaserTrailSegment(
-                        prevX,
-                        prevY,
-                        this.x,
-                        this.y,
-                        now,
-                        this.player,
-                    ),
-                );
-            }
+            this.syncLaserTrail(this.x, this.y, now, false);
             this.alive = false;
             spawnHitParticles(
                 this.x,
@@ -512,18 +541,7 @@ class SniperProjectile extends Projectile {
                     if (hit.hit) {
                         this.x = hit.hitX;
                         this.y = hit.hitY;
-                        if (this.player?.laserSniperEnabled) {
-                            GAME_STATE.hazards.push(
-                                new LaserTrailSegment(
-                                    prevX,
-                                    prevY,
-                                    this.x,
-                                    this.y,
-                                    now,
-                                    this.player,
-                                ),
-                            );
-                        }
+                        this.syncLaserTrail(this.x, this.y, now, false);
                         this.alive = false;
                         spawnHitParticles(this.x, this.y, '#ff8f00');
                         return;
@@ -555,18 +573,7 @@ class SniperProjectile extends Projectile {
                     if (hit.hit) {
                         this.x = hit.hitX;
                         this.y = hit.hitY;
-                        if (this.player?.laserSniperEnabled) {
-                            GAME_STATE.hazards.push(
-                                new LaserTrailSegment(
-                                    prevX,
-                                    prevY,
-                                    this.x,
-                                    this.y,
-                                    now,
-                                    this.player,
-                                ),
-                            );
-                        }
+                        this.syncLaserTrail(this.x, this.y, now, false);
                         this.alive = false;
                         spawnHitParticles(this.x, this.y, '#a8a29e');
                         return;
@@ -592,18 +599,7 @@ class SniperProjectile extends Projectile {
                     if (hit.hit) {
                         this.x = hit.hitX;
                         this.y = hit.hitY;
-                        if (this.player?.laserSniperEnabled) {
-                            GAME_STATE.hazards.push(
-                                new LaserTrailSegment(
-                                    prevX,
-                                    prevY,
-                                    this.x,
-                                    this.y,
-                                    now,
-                                    this.player,
-                                ),
-                            );
-                        }
+                        this.syncLaserTrail(this.x, this.y, now, false);
                         this.alive = false;
                         spawnHitParticles(this.x, this.y, '#a8a29e');
                         return;
@@ -624,18 +620,7 @@ class SniperProjectile extends Projectile {
                     if (hit.hit) {
                         this.x = hit.hitX;
                         this.y = hit.hitY;
-                        if (this.player?.laserSniperEnabled) {
-                            GAME_STATE.hazards.push(
-                                new LaserTrailSegment(
-                                    prevX,
-                                    prevY,
-                                    this.x,
-                                    this.y,
-                                    now,
-                                    this.player,
-                                ),
-                            );
-                        }
+                        this.syncLaserTrail(this.x, this.y, now, false);
                         this.alive = false;
                         spawnHitParticles(this.x, this.y, '#ff8f00');
                         return;
@@ -644,27 +629,17 @@ class SniperProjectile extends Projectile {
             }
         }
 
-        // 3. If unblocked by shields, advance position and spawn laser trail segment
+        // 3. If unblocked by shields, advance and grow the single straight laser trail
         this.x = nextX;
         this.y = nextY;
-        if (this.player?.laserSniperEnabled) {
-            GAME_STATE.hazards.push(
-                new LaserTrailSegment(
-                    prevX,
-                    prevY,
-                    this.x,
-                    this.y,
-                    now,
-                    this.player,
-                ),
-            );
-        }
+        this.syncLaserTrail(this.x, this.y, now, true);
         if (
             this.x < -150 ||
             this.y < -150 ||
             this.x > W + 150 ||
             this.y > H + 150
         ) {
+            this.syncLaserTrail(this.x, this.y, now, false);
             this.alive = false;
             return;
         }
