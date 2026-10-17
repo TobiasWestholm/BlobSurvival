@@ -14,12 +14,25 @@ let H = typeof window !== 'undefined' ? window.innerHeight : 900;
 /** Normal laptop battlefield — used for mobile hosts and as the online sim size. */
 const STANDARD_ARENA_W = 1512;
 const STANDARD_ARENA_H = 900;
-/** World units visible across the phone width (zoomed-in play view). */
+/** World units visible across the phone width (maximum zoomed-in play view). */
 const MOBILE_VIEW_WORLD_W = 640;
 const MOBILE_VIEW_WORLD_W_LANDSCAPE = 860;
 /** Soft follow: higher = snappier. Deadzone keeps the blob off strict center. */
 const MOBILE_CAM_FOLLOW = 5.5;
 const MOBILE_CAM_DEADZONE = 0.4; // fraction of view from each edge before camera moves
+/** Assertive zoom step lerp (higher = snappier snap between discrete levels). */
+const MOBILE_ZOOM_FOLLOW = 9;
+/** Discrete zoom levels: 0 = max out (fit one arena dim), last = max in. */
+const MOBILE_ZOOM_STEP_COUNT = 3;
+/**
+ * Hysteresis gates (total alive battlefield entities).
+ * UP[i] = count needed to leave step i toward zoom-in (i → i+1).
+ * DOWN[i] = count needed to leave step i+1 toward zoom-out (i+1 → i).
+ * DOWN < UP so the zoom does not chatter at band edges.
+ */
+const MOBILE_ZOOM_STEP_UP = [70, 200];
+const MOBILE_ZOOM_STEP_DOWN = [40, 140];
+const MOBILE_ZOOM_STEP_COOLDOWN_MS = 550;
 
 /** Canvas buffer size (phone pixels when mobile camera is on; else equals W/H). */
 let viewW = W;
@@ -28,7 +41,11 @@ let mobileCameraActive = false;
 let camX = 0;
 let camY = 0;
 let camZoom = 1;
+/** Current discrete zoom step (0 = zoomed out … N-1 = zoomed in). */
+let mobileZoomStep = MOBILE_ZOOM_STEP_COUNT - 1;
+let mobileZoomTarget = 1;
 let _camLastNow = 0;
+let _zoomStepCooldownUntil = 0;
 
 /** Extra padding so large sprites / trail ends near the edge aren't clipped early. */
 const VIEW_CULL_MARGIN = 64;
@@ -43,6 +60,8 @@ function syncWindowArenaSize() {
     window.camX = camX;
     window.camY = camY;
     window.camZoom = camZoom;
+    window.mobileZoomStep = mobileZoomStep;
+    window.mobileZoomTarget = mobileZoomTarget;
 }
 
 function shouldUseMobileCamera() {
@@ -51,7 +70,8 @@ function shouldUseMobileCamera() {
             ? isMobile
             : typeof window !== 'undefined' && window.isMobile;
     if (!mobile) return false;
-    // Shared-screen local co-op needs the full field on one device
+    // Shared-screen local co-op needs the full field on one device.
+    // Singleplayer + online host/client all use the density zoom camera.
     if (
         typeof GAME_STATE !== 'undefined' &&
         GAME_STATE.gameMode === 'local'
@@ -175,8 +195,143 @@ function clampMobileCamera() {
     camY = Math.max(0, Math.min(maxY, camY));
 }
 
+/** Max zoom-in: current default phone framing (narrow world window). */
+function getMobileMaxZoomIn() {
+    if (viewW <= 0 || viewH <= 0) return 1;
+    const isLandscape = viewW >= viewH;
+    let viewWorldW = isLandscape
+        ? MOBILE_VIEW_WORLD_W_LANDSCAPE
+        : MOBILE_VIEW_WORLD_W;
+    viewWorldW = Math.min(viewWorldW, W);
+    let z = viewW / Math.max(1, viewWorldW);
+    const viewWorldH = viewH / z;
+    if (viewWorldH > H && H > 0) {
+        z = viewH / H;
+    }
+    return z;
+}
+
+/**
+ * Max zoom-out: one phone edge matches the arena (contain) —
+ * full board awareness without empty letterboxing beyond that fit.
+ */
+function getMobileMaxZoomOut() {
+    if (viewW <= 0 || viewH <= 0 || W <= 0 || H <= 0) return 1;
+    return Math.min(viewW / W, viewH / H);
+}
+
+function getMobileZoomForStep(step) {
+    const maxStep = MOBILE_ZOOM_STEP_COUNT - 1;
+    const s = Math.max(0, Math.min(maxStep, step));
+    const zoomOut = getMobileMaxZoomOut();
+    const zoomIn = getMobileMaxZoomIn();
+    if (maxStep <= 0) return zoomIn;
+    const t = s / maxStep; // 0 = out, 1 = in
+    return zoomOut + (zoomIn - zoomOut) * t;
+}
+
+function countAliveEntitiesIn(arr) {
+    if (!arr?.length) return 0;
+    let n = 0;
+    for (let i = 0; i < arr.length; i++) {
+        const o = arr[i];
+        if (!o) continue;
+        if (o.alive === false) continue;
+        if (typeof o.hp === 'number' && o.hp <= 0) continue;
+        n++;
+    }
+    return n;
+}
+
+/** Total live battlefield entities — stabler density signal than enemies alone. */
+function countBattlefieldEntitiesForZoom() {
+    if (typeof GAME_STATE === 'undefined' || !GAME_STATE) return 0;
+    return (
+        countAliveEntitiesIn(GAME_STATE.enemies) +
+        countAliveEntitiesIn(GAME_STATE.projectiles) +
+        countAliveEntitiesIn(GAME_STATE.enemyProjectiles) +
+        countAliveEntitiesIn(GAME_STATE.turrets) +
+        countAliveEntitiesIn(GAME_STATE.hazards) +
+        countAliveEntitiesIn(GAME_STATE.gems) +
+        countAliveEntitiesIn(GAME_STATE.particles) +
+        countAliveEntitiesIn(GAME_STATE.magneticMines) +
+        countAliveEntitiesIn(GAME_STATE.terrains)
+    );
+}
+
+/** Initial step from density (no hysteresis) — used on camera snap / resize. */
+function pickMobileZoomStepFromCount(count) {
+    const maxStep = MOBILE_ZOOM_STEP_COUNT - 1;
+    for (let s = maxStep - 1; s >= 0; s--) {
+        if (count >= MOBILE_ZOOM_STEP_UP[s]) return s + 1;
+    }
+    return 0;
+}
+
+/**
+ * Pick discrete zoom step from total entity density with hysteresis + cooldown
+ * so zoom snaps assertively and does not flicker between levels.
+ * Same path for singleplayer and online on phone.
+ */
+function updateMobileZoomStep(nowMs) {
+    const count = countBattlefieldEntitiesForZoom();
+    const maxStep = MOBILE_ZOOM_STEP_COUNT - 1;
+    if (mobileZoomStep > maxStep) mobileZoomStep = maxStep;
+    if (nowMs < _zoomStepCooldownUntil) {
+        mobileZoomTarget = getMobileZoomForStep(mobileZoomStep);
+        return;
+    }
+
+    let next = mobileZoomStep;
+    // Prefer zoom-in when crowded (one step at a time)
+    if (
+        next < maxStep &&
+        count >=
+            MOBILE_ZOOM_STEP_UP[
+                Math.min(next, MOBILE_ZOOM_STEP_UP.length - 1)
+            ]
+    ) {
+        next += 1;
+    } else if (next > 0 && count <= MOBILE_ZOOM_STEP_DOWN[next - 1]) {
+        next -= 1;
+    }
+
+    if (next !== mobileZoomStep) {
+        mobileZoomStep = next;
+        _zoomStepCooldownUntil = nowMs + MOBILE_ZOOM_STEP_COOLDOWN_MS;
+    }
+    mobileZoomTarget = getMobileZoomForStep(mobileZoomStep);
+}
+
+function applyMobileZoomToward(targetZoom, dt, focusX, focusY) {
+    const oldZ = camZoom;
+    if (!(oldZ > 0) || !(targetZoom > 0)) return;
+    const k = 1 - Math.exp(-MOBILE_ZOOM_FOLLOW * dt);
+    let next = oldZ + (targetZoom - oldZ) * k;
+    // Hard-snap when nearly there so we never hover mid-step
+    if (Math.abs(targetZoom - next) < 0.004 * Math.max(targetZoom, oldZ)) {
+        next = targetZoom;
+    }
+    if (focusX != null && focusY != null) {
+        const sx = (focusX - camX) * oldZ;
+        const sy = (focusY - camY) * oldZ;
+        camZoom = next;
+        camX = focusX - sx / camZoom;
+        camY = focusY - sy / camZoom;
+    } else {
+        camZoom = next;
+    }
+}
+
 function snapMobileCameraToFollow() {
     if (!mobileCameraActive) return;
+    // Place at the density-appropriate step immediately (solo early game = zoomed out)
+    mobileZoomStep = pickMobileZoomStepFromCount(
+        countBattlefieldEntitiesForZoom(),
+    );
+    mobileZoomTarget = getMobileZoomForStep(mobileZoomStep);
+    camZoom = mobileZoomTarget;
+    _zoomStepCooldownUntil = 0;
     const { vw, vh } = getViewWorldSize();
     const p = getCameraFollowPlayer();
     if (p) {
@@ -193,6 +348,7 @@ function snapMobileCameraToFollow() {
 /**
  * Smooth deadzone follow — camera only moves when the blob leaves the
  * central band, then eases toward that edge (not hard-locked to center).
+ * Zoom steps assertively with enemy-count hysteresis.
  */
 function updateMobileCamera(now) {
     if (!mobileCameraActive) return;
@@ -208,7 +364,18 @@ function updateMobileCamera(now) {
     if (dt > 0.1) dt = 0.1;
 
     const p = getCameraFollowPlayer();
-    if (!p) return;
+    updateMobileZoomStep(t);
+    applyMobileZoomToward(
+        mobileZoomTarget,
+        dt,
+        p ? p.x : null,
+        p ? p.y : null,
+    );
+
+    if (!p) {
+        clampMobileCamera();
+        return;
+    }
 
     const { vw, vh } = getViewWorldSize();
     const dz = MOBILE_CAM_DEADZONE;
@@ -366,21 +533,8 @@ function resizeCanvas() {
         canvas.style.left = '50%';
         canvas.style.transform = 'translate(-50%, -50%)';
 
-        const isLandscape = rawW >= rawH;
-        let viewWorldW = isLandscape
-            ? MOBILE_VIEW_WORLD_W_LANDSCAPE
-            : MOBILE_VIEW_WORLD_W;
-        viewWorldW = Math.min(viewWorldW, W);
-        camZoom = viewW / viewWorldW;
-        // If the tall phone view would exceed arena height, widen the view instead
-        let viewWorldH = viewH / camZoom;
-        if (viewWorldH > H && H > 0) {
-            viewWorldH = H;
-            camZoom = viewH / viewWorldH;
-            viewWorldW = viewW / camZoom;
-        }
-
         mobileCameraActive = true;
+        // Density step + framing for this buffer/arena (single + online phone)
         snapMobileCameraToFollow();
 
         if (typeof SPATIAL_GRID !== 'undefined' && SPATIAL_GRID.init) {
@@ -1103,6 +1257,129 @@ function draw(now) {
             }
         }
     }
+
+    // Offline teammates: edge arrows on the phone bezel (online + mobile camera only)
+    drawOffscreenPlayerEdgeIndicators(now);
+}
+
+/**
+ * Project a world point onto the phone screen edge (inset by pad).
+ * Returns null if the point is already on-screen.
+ */
+function worldToScreenEdge(worldX, worldY, pad = 28) {
+    if (!mobileCameraActive || camZoom <= 0) return null;
+    const sx = (worldX - camX) * camZoom;
+    const sy = (worldY - camY) * camZoom;
+    const left = pad;
+    const right = viewW - pad;
+    const top = pad;
+    const bottom = viewH - pad;
+    if (sx >= left && sx <= right && sy >= top && sy <= bottom) return null;
+
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
+    let dx = sx - cx;
+    const dy = sy - cy;
+    if (dx === 0 && dy === 0) {
+        dx = 1;
+    }
+    const scaleX =
+        dx > 0 ? (right - cx) / dx : dx < 0 ? (left - cx) / dx : Infinity;
+    const scaleY =
+        dy > 0 ? (bottom - cy) / dy : dy < 0 ? (top - cy) / dy : Infinity;
+    const scale = Math.min(scaleX, scaleY);
+    if (!Number.isFinite(scale) || scale <= 0) return null;
+    return {
+        x: cx + dx * scale,
+        y: cy + dy * scale,
+        angle: Math.atan2(dy, dx),
+    };
+}
+
+function drawOffscreenPlayerEdgeIndicators(now) {
+    if (!mobileCameraActive || !ctx) return;
+    if (!isOnlineMultiplayer()) return;
+    if (typeof GAME_STATE === 'undefined' || !GAME_STATE.players) return;
+    const state = GAME_STATE.current;
+    if (
+        state !== STATES.GAMEPLAY &&
+        state !== STATES.COUNTDOWN &&
+        state !== STATES.LEVEL_UP &&
+        state !== STATES.WEAPON_SELECT
+    ) {
+        return;
+    }
+
+    resetScreenTransform();
+    const localIdx = getLocalPlayerIndex();
+    const pad = 26;
+    const bob = Math.sin((now || 0) * 0.008) * 1.5;
+
+    for (let i = 0; i < GAME_STATE.players.length; i++) {
+        const p = GAME_STATE.players[i];
+        if (!p || p.disconnected || p.kicked) continue;
+        if (Number(p.index) === localIdx) continue;
+
+        const edge = worldToScreenEdge(p.x, p.y, pad);
+        if (!edge) continue;
+
+        const alive = isPlayerAlive(p);
+        const color = p.color || '#00ffcc';
+        const ang = edge.angle;
+        // Nudge slightly inward from the rim so the icon stays fully visible
+        const inward = 10;
+        const ex = edge.x - Math.cos(ang) * inward + Math.cos(ang) * bob * 0.25;
+        const ey = edge.y - Math.sin(ang) * inward + Math.sin(ang) * bob * 0.25;
+
+        ctx.save();
+        ctx.translate(ex, ey);
+
+        // Mini blob (live fill vs dead outline+X)
+        const br = 10;
+        if (alive) {
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(0, 0, br, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(-2.5, -2.5, br * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.globalAlpha = 0.75;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.2;
+            ctx.beginPath();
+            ctx.arc(0, 0, br, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-5, -5);
+            ctx.lineTo(5, 5);
+            ctx.moveTo(5, -5);
+            ctx.lineTo(-5, 5);
+            ctx.stroke();
+        }
+
+        // Arrow tip outward toward the off-screen player
+        ctx.rotate(ang);
+        ctx.beginPath();
+        ctx.moveTo(br + 12, 0);
+        ctx.lineTo(br + 1, -7);
+        ctx.lineTo(br + 1, 7);
+        ctx.closePath();
+        ctx.globalAlpha = alive ? 0.95 : 0.6;
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = '#0a0a0f';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.restore();
+    }
 }
 
 const MOVEMENT_HINT_HOLD_MS = 2000;
@@ -1632,6 +1909,8 @@ if (typeof window !== 'undefined') {
     window.drawParticles = drawParticles;
     syncWindowArenaSize();
     window.drawPlayerFocusArrow = drawPlayerFocusArrow;
+    window.drawOffscreenPlayerEdgeIndicators =
+        drawOffscreenPlayerEdgeIndicators;
     window.drawKeyboardKeyCluster = drawKeyboardKeyCluster;
     window.drawKeyCapCanvas = drawKeyCapCanvas;
     window.noteMovementHintFirstMove = noteMovementHintFirstMove;
