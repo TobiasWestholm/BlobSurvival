@@ -1,22 +1,27 @@
 /**
- * Blob Survival - TURN credential Worker (Cloudflare Workers)
- * Serves short-lived Metered TURN credentials so no Metered key ever reaches the browser.
+ * Blob Survival - Cloudflare Realtime TURN credential Worker
+ * Serves short-lived Cloudflare TURN ICE servers so the TURN key never reaches
+ * the browser.
  *
- * Metered credentials take up to ~1 minute to become usable after creation, so the Worker
- * keeps the active credential in KV and creates its successor well before it expires.
+ * Dashboard: Realtime → TURN → create key → copy Turn Token ID + API Token.
  *
  * Required bindings (Worker > Settings):
- *   METERED_SECRET_KEY - Secret
- *   TURN_KV            - KV namespace binding
- *   Cron trigger, e.g. "0 * * * *", so rotation also happens when nobody is playing.
+ *   TURN_KEY_ID     - Secret (Turn Token ID)
+ *   TURN_API_TOKEN  - Secret (API Token for that key)
+ *   TURN_KV         - KV namespace binding (caches shared credentials)
+ *   Optional cron, e.g. "0 * * * *", to refresh cache while idle.
+ *
+ * Deploy (from this directory, after secrets are set):
+ *   npx wrangler secret put TURN_KEY_ID
+ *   npx wrangler secret put TURN_API_TOKEN
+ *   npx wrangler deploy
  */
 
-const METERED_APP = 'blobsurvival';
-const STATE_KEY = 'turn-state';
+const STATE_KEY = 'cf-turn-state';
+/** Credential lifetime sent to Cloudflare (max 48h). */
 const CREDENTIAL_TTL_SECONDS = 8 * 60 * 60;
-// Served credentials keep at least this much lifetime, covering client caching (1h) plus a long session.
-const ROTATE_BEFORE_EXPIRY_MS = 4 * 60 * 60 * 1000;
-const ACTIVATION_DELAY_MS = 2 * 60 * 1000;
+/** Refresh when less than this remains (covers 1h client cache + long session). */
+const REFRESH_BEFORE_EXPIRY_MS = 4 * 60 * 60 * 1000;
 
 // 'null' is the Origin sent by pages opened via file://. Entries ending in '*' match by prefix.
 const ALLOWED_ORIGINS = [
@@ -27,13 +32,6 @@ const ALLOWED_ORIGINS = [
     'null',
 ];
 
-const TURN_URLS = [
-    'turn:global.relay.metered.ca:80',
-    'turn:global.relay.metered.ca:80?transport=tcp',
-    'turn:global.relay.metered.ca:443',
-    'turns:global.relay.metered.ca:443?transport=tcp',
-];
-
 function isAllowedOrigin(origin) {
     return ALLOWED_ORIGINS.some((allowed) =>
         allowed.endsWith('*')
@@ -42,7 +40,7 @@ function isAllowedOrigin(origin) {
     );
 }
 
-function respond(body, status, origin) {
+function respond(body, status, origin, extraHeaders = {}) {
     return new Response(body === null ? null : JSON.stringify(body), {
         status,
         headers: {
@@ -50,61 +48,88 @@ function respond(body, status, origin) {
             'Cache-Control': 'no-store',
             'Access-Control-Allow-Origin': origin,
             'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Expose-Headers': 'X-Turn-Provider',
             Vary: 'Origin',
+            ...extraHeaders,
         },
     });
 }
 
-async function createCredential(env) {
+/** Flatten CF generate-ice-servers payload into RTCIceServer[] (TURN only). */
+function iceServersFromCloudflareResponse(data) {
+    const raw = Array.isArray(data?.iceServers) ? data.iceServers : [];
+    const out = [];
+    for (const entry of raw) {
+        if (!entry || entry.username == null || entry.credential == null) {
+            continue; // skip STUN-only entries
+        }
+        const urls = Array.isArray(entry.urls)
+            ? entry.urls
+            : entry.urls
+              ? [entry.urls]
+              : [];
+        // Browsers block TURN on port 53 — drop those URLs if present.
+        const filtered = urls.filter((u) => !/:53(?:\?|$)/.test(String(u)));
+        if (!filtered.length) continue;
+        out.push({
+            urls: filtered.length === 1 ? filtered[0] : filtered,
+            username: entry.username,
+            credential: entry.credential,
+        });
+    }
+    return out;
+}
+
+async function createCloudflareIceServers(env) {
+    const keyId = env.TURN_KEY_ID;
+    const token = env.TURN_API_TOKEN;
+    if (!keyId || !token) {
+        throw new Error('TURN_KEY_ID / TURN_API_TOKEN secrets are not set');
+    }
     const res = await fetch(
-        `https://${METERED_APP}.metered.live/api/v1/turn/credential?secretKey=${encodeURIComponent(env.METERED_SECRET_KEY)}`,
+        `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`,
         {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                expiryInSeconds: CREDENTIAL_TTL_SECONDS,
-                label: 'blobsurvival-rotating',
-            }),
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ttl: CREDENTIAL_TTL_SECONDS }),
         },
     );
-    if (!res.ok) {
-        throw new Error(`Metered credential request failed: ${res.status}`);
+    if (res.status !== 201 && !res.ok) {
+        const text = await res.text();
+        throw new Error(
+            `Cloudflare TURN credential request failed: ${res.status} ${text}`,
+        );
     }
-    const { username, password } = await res.json();
+    const data = await res.json();
+    const iceServers = iceServersFromCloudflareResponse(data);
+    if (!iceServers.length) {
+        throw new Error('Cloudflare TURN response had no usable ICE servers');
+    }
     const now = Date.now();
     return {
-        username,
-        password,
+        iceServers,
         createdAt: now,
         expiresAt: now + CREDENTIAL_TTL_SECONDS * 1000,
     };
 }
 
-async function getActiveCredential(env) {
+async function getActiveIceServers(env) {
     const now = Date.now();
     const state = (await env.TURN_KV.get(STATE_KEY, 'json')) || {};
     let current = state.current || null;
-    let next = state.next || null;
-    let changed = false;
 
-    if (next && now - next.createdAt >= ACTIVATION_DELAY_MS) {
-        current = next;
-        next = null;
-        changed = true;
-    }
     if (current && current.expiresAt <= now) {
         current = null;
-        changed = true;
     }
     if (
-        !next &&
-        (!current || current.expiresAt - now < ROTATE_BEFORE_EXPIRY_MS)
+        !current ||
+        current.expiresAt - now < REFRESH_BEFORE_EXPIRY_MS
     ) {
-        next = await createCredential(env);
-        changed = true;
-    }
-    if (changed) {
-        await env.TURN_KV.put(STATE_KEY, JSON.stringify({ current, next }));
+        current = await createCloudflareIceServers(env);
+        await env.TURN_KV.put(STATE_KEY, JSON.stringify({ current }));
     }
     return current;
 }
@@ -121,27 +146,10 @@ export default {
         }
 
         try {
-            const active = await getActiveCredential(env);
-            if (!active) {
-                return respond(
-                    {
-                        error: 'TURN credentials are activating',
-                        retryAfterSeconds: ACTIVATION_DELAY_MS / 1000,
-                    },
-                    503,
-                    origin,
-                );
-            }
-            const { username, password } = active;
-            return respond(
-                TURN_URLS.map((urls) => ({
-                    urls,
-                    username,
-                    credential: password,
-                })),
-                200,
-                origin,
-            );
+            const active = await getActiveIceServers(env);
+            return respond(active.iceServers, 200, origin, {
+                'X-Turn-Provider': 'cloudflare',
+            });
         } catch (e) {
             console.error(e);
             return respond({ error: 'TURN provider error' }, 502, origin);
@@ -149,6 +157,10 @@ export default {
     },
 
     async scheduled(event, env, ctx) {
-        ctx.waitUntil(getActiveCredential(env));
+        ctx.waitUntil(
+            getActiveIceServers(env).catch((e) => {
+                console.error('[TURN] scheduled refresh failed:', e);
+            }),
+        );
     },
 };
