@@ -20,7 +20,7 @@ const STANDARD_ARENA_H = 900;
  */
 const MOBILE_BLOB_WORLD_R = 15;
 /** Target blob radius in CSS pixels at maximum zoom-in (same on every phone). */
-const MOBILE_ZOOM_IN_BLOB_RADIUS_PX = 16.5;
+const MOBILE_ZOOM_IN_BLOB_RADIUS_PX = 15;
 /** Soft follow: higher = snappier. Deadzone keeps the blob off strict center. */
 const MOBILE_CAM_FOLLOW = 5.5;
 const MOBILE_CAM_DEADZONE = 0.4; // fraction of view from each edge before camera moves
@@ -214,7 +214,7 @@ function getMobileMaxZoomIn() {
         MOBILE_ZOOM_IN_BLOB_RADIUS_PX / Math.max(1, MOBILE_BLOB_WORLD_R);
     const zOut = getMobileMaxZoomOut();
     // Cover can exceed the blob target on large tablets — stay tighter than out
-    return Math.max(zBlob, zOut * 1.12);
+    return Math.max(zBlob, zOut * 1.06);
 }
 
 function getMobileZoomForStep(step) {

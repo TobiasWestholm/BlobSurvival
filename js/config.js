@@ -504,10 +504,10 @@ const GAME_STATE = {
 // Feature flag: set to true locally to expose the Upgrade Testing Lab button.
 const ENABLE_TESTING_LAB = false;
 
-// TURN relay for online play. turn-worker/worker.js returns short-lived credentials
+// TURN: Cloudflare Realtime via turn-worker (short-lived credentials).
 const TURN_CONFIG = {
     credentialsUrl: 'https://blobsurvival-turn.tobias-westholm96.workers.dev/',
-    servers: [], // optional static entries: [{ urls, username, credential }]
+    servers: [], // optional static ICE extras: [{ urls, username, credential }]
 };
 
 // 9. GLOBAL WINDOW EXPORTS

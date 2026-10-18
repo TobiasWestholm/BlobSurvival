@@ -28,15 +28,17 @@ async function resolveTurnServers() {
     if (cfg.credentialsUrl) {
         try {
             const res = await fetch(cfg.credentialsUrl);
-            if (res.status === 503) {
-                lastTurnError =
-                    'TURN relay is activating. Try again in about 2 minutes.';
-            }
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const fetched = await res.json();
-            if (Array.isArray(fetched)) servers = servers.concat(fetched);
+            if (Array.isArray(fetched) && fetched.length) {
+                servers = servers.concat(fetched);
+                const provider = res.headers.get('X-Turn-Provider');
+                console.info('[Net] TURN provider:', provider || 'worker');
+            }
         } catch (e) {
             console.warn('[Net] Could not fetch TURN credentials:', e);
+            lastTurnError =
+                'Could not fetch Cloudflare TURN credentials from Worker.';
         }
     }
     if (servers.length) {
@@ -88,7 +90,7 @@ async function buildIceConfig(isRelay) {
         if (!turnServers.length) {
             throw new Error(
                 lastTurnError ||
-                    'Relay mode needs a TURN server. Set TURN_CONFIG in js/config.js.',
+                    'Relay mode needs Cloudflare TURN. Check TURN_CONFIG / Worker.',
             );
         }
         const probe = await probeRelayCandidates(turnServers);
