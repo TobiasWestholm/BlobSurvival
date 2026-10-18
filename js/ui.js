@@ -1934,7 +1934,17 @@ function updateFpsToggleBtn() {
     }
 }
 
-// ---------------- Full screen (mobile address bar + desktop) ----------------
+// ---------------- Full screen (native API + iOS immersive fallback) ----------------
+// iPhone Safari/Chrome (WebKit) do not support element.requestFullscreen().
+// Immersive mode collapses browser chrome via scroll + visualViewport sizing and
+// works on any host (GitHub Pages, custom domain, localhost, etc.).
+
+/** @type {boolean} */
+let immersiveFullscreenActive = false;
+/** @type {number|null} */
+let immersiveFsLockTimer = null;
+/** @type {boolean} */
+let immersiveFsListenersBound = false;
 
 function getFullscreenElement() {
     if (typeof document === 'undefined') return null;
@@ -1947,27 +1957,49 @@ function getFullscreenElement() {
     );
 }
 
-function isFullscreenActive() {
-    if (typeof document === 'undefined') return false;
-    if (getFullscreenElement()) return true;
-    if (document.webkitIsFullScreen) return true;
+function isStandaloneDisplayMode() {
     try {
+        const nav = /** @type {Navigator & { standalone?: boolean }} */ (
+            typeof window !== 'undefined' ? window.navigator : null
+        );
+        if (nav?.standalone) {
+            return true;
+        }
         if (
             typeof window !== 'undefined' &&
             window.matchMedia &&
-            window.matchMedia('(display-mode: fullscreen)').matches
+            (window.matchMedia('(display-mode: standalone)').matches ||
+                window.matchMedia('(display-mode: fullscreen)').matches)
         ) {
             return true;
         }
     } catch {
-        // ignore matchMedia errors
+        // ignore
     }
     return false;
 }
 
-function canRequestFullscreen() {
+function isFullscreenActive() {
     if (typeof document === 'undefined') return false;
-    const el = document.documentElement;
+    if (immersiveFullscreenActive) return true;
+    if (getFullscreenElement()) return true;
+    if (document.webkitIsFullScreen) return true;
+    return isStandaloneDisplayMode();
+}
+
+function getFullscreenCandidates() {
+    /** @type {Element[]} */
+    const list = [];
+    if (typeof document === 'undefined') return list;
+    if (document.documentElement) list.push(document.documentElement);
+    const canvas = document.getElementById('gameCanvas');
+    if (canvas) list.push(canvas);
+    if (document.body) list.push(document.body);
+    return list;
+}
+
+function elementSupportsFullscreenRequest(el) {
+    if (!el) return false;
     return Boolean(
         el.requestFullscreen ||
             el.webkitRequestFullscreen ||
@@ -1975,6 +2007,10 @@ function canRequestFullscreen() {
             el.mozRequestFullScreen ||
             el.msRequestFullscreen,
     );
+}
+
+function canRequestNativeFullscreen() {
+    return getFullscreenCandidates().some(elementSupportsFullscreenRequest);
 }
 
 function updateFullscreenButtons() {
@@ -1998,80 +2034,258 @@ function updateFullscreenButtons() {
     }
 }
 
-async function enterFullscreen() {
-    if (typeof document === 'undefined') return false;
-    const el = document.documentElement;
-    const tryRequest = async (withNavHide) => {
-        if (el.requestFullscreen) {
-            if (withNavHide) {
+/**
+ * @param {Element} el
+ * @param {boolean} withNavHide
+ */
+async function requestFullscreenOnElement(el, withNavHide) {
+    if (!el) return false;
+    if (el.requestFullscreen) {
+        if (withNavHide) {
+            try {
                 await el.requestFullscreen({ navigationUI: 'hide' });
-            } else {
+                return true;
+            } catch {
                 await el.requestFullscreen();
+                return true;
             }
-            return true;
         }
-        if (el.webkitRequestFullscreen) {
-            el.webkitRequestFullscreen();
-            return true;
-        }
-        if (el.webkitRequestFullScreen) {
-            // Legacy Safari / older WebKit
-            el.webkitRequestFullScreen();
-            return true;
-        }
-        if (el.mozRequestFullScreen) {
-            el.mozRequestFullScreen();
-            return true;
-        }
-        if (el.msRequestFullscreen) {
-            el.msRequestFullscreen();
-            return true;
-        }
-        return false;
-    };
-
-    try {
-        const ok = await tryRequest(true);
-        if (!ok) {
-            if (typeof showToast === 'function') {
-                showToast(
-                    'Full screen is not supported in this browser.',
-                    4000,
-                    true,
-                );
-            }
-            return false;
-        }
+        await el.requestFullscreen();
         return true;
-    } catch {
+    }
+    if (el.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen();
+        return true;
+    }
+    if (el.webkitRequestFullScreen) {
+        el.webkitRequestFullScreen();
+        return true;
+    }
+    if (el.mozRequestFullScreen) {
+        el.mozRequestFullScreen();
+        return true;
+    }
+    if (el.msRequestFullscreen) {
+        el.msRequestFullscreen();
+        return true;
+    }
+    return false;
+}
+
+async function tryNativeFullscreen() {
+    const candidates = getFullscreenCandidates().filter(
+        elementSupportsFullscreenRequest,
+    );
+    for (const el of candidates) {
         try {
-            const ok = await tryRequest(false);
-            if (!ok) {
-                if (typeof showToast === 'function') {
-                    showToast(
-                        'Full screen is not supported in this browser.',
-                        4000,
-                        true,
-                    );
-                }
-                return false;
-            }
-            return true;
+            const ok = await requestFullscreenOnElement(el, true);
+            if (ok) return true;
         } catch {
-            if (typeof showToast === 'function') {
-                showToast(
-                    'Could not enter full screen. Try again with a direct tap.',
-                    4000,
-                    true,
-                );
+            try {
+                const ok = await requestFullscreenOnElement(el, false);
+                if (ok) return true;
+            } catch {
+                // try next candidate
             }
-            return false;
         }
     }
+    return false;
+}
+
+function ensureImmersiveSpacer() {
+    if (typeof document === 'undefined') return null;
+    let spacer = document.getElementById('immersiveFsSpacer');
+    if (!spacer) {
+        spacer = document.createElement('div');
+        spacer.id = 'immersiveFsSpacer';
+        spacer.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(spacer);
+    }
+    return spacer;
+}
+
+function syncImmersiveViewportCss() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const vv = window.visualViewport;
+    const w = vv ? vv.width : window.innerWidth;
+    const h = vv ? vv.height : window.innerHeight;
+    const root = document.documentElement;
+    root.style.setProperty('--app-width', `${Math.round(w)}px`);
+    root.style.setProperty('--app-height', `${Math.round(h)}px`);
+    root.style.setProperty('--app-vh', `${h * 0.01}px`);
+    if (typeof window !== 'undefined') {
+        window._immersiveFullscreenActive = immersiveFullscreenActive;
+    }
+}
+
+function onImmersiveViewportChange() {
+    if (!immersiveFullscreenActive) return;
+    syncImmersiveViewportCss();
+    // Keep chrome collapsed when possible
+    try {
+        if (window.scrollY < 1) window.scrollTo(0, 1);
+    } catch {
+        // ignore
+    }
+    if (typeof resizeCanvas === 'function') resizeCanvas();
+    updateFullscreenButtons();
+}
+
+function bindImmersiveViewportListeners() {
+    if (immersiveFsListenersBound || typeof window === 'undefined') return;
+    immersiveFsListenersBound = true;
+    const opts = { passive: true };
+    window.addEventListener('resize', onImmersiveViewportChange, opts);
+    window.addEventListener('orientationchange', onImmersiveViewportChange, opts);
+    window.addEventListener('scroll', onImmersiveViewportChange, opts);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener(
+            'resize',
+            onImmersiveViewportChange,
+            opts,
+        );
+        window.visualViewport.addEventListener(
+            'scroll',
+            onImmersiveViewportChange,
+            opts,
+        );
+    }
+}
+
+function enterImmersiveFullscreen() {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+        return false;
+    }
+    // Already running as an installed / standalone app — treat as active.
+    if (isStandaloneDisplayMode()) {
+        immersiveFullscreenActive = true;
+        syncImmersiveViewportCss();
+        updateFullscreenButtons();
+        if (typeof resizeCanvas === 'function') resizeCanvas();
+        return true;
+    }
+
+    immersiveFullscreenActive = true;
+    if (typeof window !== 'undefined') {
+        window._immersiveFullscreenActive = true;
+    }
+    bindImmersiveViewportListeners();
+    ensureImmersiveSpacer();
+
+    const root = document.documentElement;
+    root.classList.remove('immersive-fs');
+    root.classList.add('immersive-fs-prep');
+
+    const collapseChrome = () => {
+        try {
+            // iOS collapses the URL bar after a non-zero scroll.
+            window.scrollTo(0, 1);
+            const target = Math.max(
+                1,
+                Math.min(
+                    80,
+                    Math.round(
+                        (window.innerHeight || 0) -
+                            (window.visualViewport?.height ||
+                                window.innerHeight ||
+                                0) +
+                            8,
+                    ),
+                ),
+            );
+            window.scrollTo(0, target);
+        } catch {
+            // ignore
+        }
+    };
+
+    collapseChrome();
+    requestAnimationFrame(collapseChrome);
+
+    if (immersiveFsLockTimer) clearTimeout(immersiveFsLockTimer);
+    immersiveFsLockTimer = window.setTimeout(() => {
+        immersiveFsLockTimer = null;
+        if (!immersiveFullscreenActive) return;
+        root.classList.remove('immersive-fs-prep');
+        root.classList.add('immersive-fs');
+        try {
+            window.scrollTo(0, 0);
+        } catch {
+            // ignore
+        }
+        syncImmersiveViewportCss();
+        updateFullscreenButtons();
+        if (typeof resizeCanvas === 'function') resizeCanvas();
+        // Second pass after chrome animation settles
+        setTimeout(() => {
+            if (!immersiveFullscreenActive) return;
+            syncImmersiveViewportCss();
+            if (typeof resizeCanvas === 'function') resizeCanvas();
+        }, 250);
+    }, 120);
+
+    syncImmersiveViewportCss();
+    updateFullscreenButtons();
+    if (typeof resizeCanvas === 'function') resizeCanvas();
+    return true;
+}
+
+function exitImmersiveFullscreen() {
+    if (typeof document === 'undefined') return false;
+    immersiveFullscreenActive = false;
+    if (typeof window !== 'undefined') {
+        window._immersiveFullscreenActive = false;
+    }
+    if (immersiveFsLockTimer) {
+        clearTimeout(immersiveFsLockTimer);
+        immersiveFsLockTimer = null;
+    }
+    const root = document.documentElement;
+    root.classList.remove('immersive-fs-prep', 'immersive-fs');
+    root.style.removeProperty('--app-width');
+    root.style.removeProperty('--app-height');
+    root.style.removeProperty('--app-vh');
+    const spacer = document.getElementById('immersiveFsSpacer');
+    if (spacer) spacer.remove();
+    try {
+        window.scrollTo(0, 0);
+    } catch {
+        // ignore
+    }
+    updateFullscreenButtons();
+    if (typeof resizeCanvas === 'function') {
+        setTimeout(() => resizeCanvas(), 80);
+    }
+    return true;
+}
+
+async function enterFullscreen() {
+    if (typeof document === 'undefined') return false;
+    if (isStandaloneDisplayMode()) {
+        immersiveFullscreenActive = true;
+        updateFullscreenButtons();
+        return true;
+    }
+    if (canRequestNativeFullscreen()) {
+        const ok = await tryNativeFullscreen();
+        if (ok) {
+            // If WebKit accepted the call but never entered FS (common on iPhone),
+            // fall through to immersive after a short check.
+            await new Promise((r) => setTimeout(r, 60));
+            if (getFullscreenElement() || document.webkitIsFullScreen) {
+                updateFullscreenButtons();
+                return true;
+            }
+        }
+    }
+    return enterImmersiveFullscreen();
 }
 
 async function exitFullscreen() {
     if (typeof document === 'undefined') return false;
+    if (immersiveFullscreenActive && !getFullscreenElement()) {
+        return exitImmersiveFullscreen();
+    }
     try {
         if (document.exitFullscreen) {
             await document.exitFullscreen();
@@ -2084,29 +2298,28 @@ async function exitFullscreen() {
         } else if (document.msExitFullscreen) {
             document.msExitFullscreen();
         }
-        return true;
     } catch {
-        return false;
+        // fall through to immersive exit
     }
+    if (immersiveFullscreenActive) exitImmersiveFullscreen();
+    updateFullscreenButtons();
+    return true;
 }
 
 async function toggleFullscreen() {
+    // Home-screen / installed PWAs are already fullscreen on every host.
+    if (isStandaloneDisplayMode()) {
+        updateFullscreenButtons();
+        if (typeof resizeCanvas === 'function') {
+            setTimeout(() => resizeCanvas(), 80);
+        }
+        return;
+    }
     if (isFullscreenActive()) {
         await exitFullscreen();
     } else {
-        if (!canRequestFullscreen()) {
-            if (typeof showToast === 'function') {
-                showToast(
-                    'Full screen is not supported in this browser.',
-                    4000,
-                    true,
-                );
-            }
-            return;
-        }
         await enterFullscreen();
     }
-    // Some browsers update async; also refresh immediately for prefix-only paths
     updateFullscreenButtons();
     if (typeof resizeCanvas === 'function') {
         setTimeout(() => resizeCanvas(), 80);
@@ -2115,6 +2328,10 @@ async function toggleFullscreen() {
 
 function initFullscreenControls() {
     if (typeof document === 'undefined') return;
+
+    if (typeof window !== 'undefined') {
+        window._immersiveFullscreenActive = false;
+    }
 
     const onFsChange = () => {
         updateFullscreenButtons();

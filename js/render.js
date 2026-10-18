@@ -485,14 +485,22 @@ function resizeCanvas() {
     initCanvasElements();
     if (!canvas) return;
 
-    const rawW =
-        typeof window !== 'undefined'
-            ? window.innerWidth || document.documentElement.clientWidth || 1512
-            : 1512;
-    const rawH =
-        typeof window !== 'undefined'
-            ? window.innerHeight || document.documentElement.clientHeight || 900
-            : 900;
+    // Prefer visualViewport while immersive FS is active so iPhone Chrome/Safari
+    // size to the chrome-collapsed viewport (works on any deployment host).
+    const useImmersiveVv =
+        typeof window !== 'undefined' &&
+        window._immersiveFullscreenActive &&
+        window.visualViewport;
+    const rawW = useImmersiveVv
+        ? Math.max(1, Math.round(window.visualViewport.width))
+        : typeof window !== 'undefined'
+          ? window.innerWidth || document.documentElement.clientWidth || 1512
+          : 1512;
+    const rawH = useImmersiveVv
+        ? Math.max(1, Math.round(window.visualViewport.height))
+        : typeof window !== 'undefined'
+          ? window.innerHeight || document.documentElement.clientHeight || 900
+          : 900;
     const isOnlineClient =
         typeof GAME_STATE !== 'undefined' &&
         GAME_STATE.gameMode === 'online' &&
