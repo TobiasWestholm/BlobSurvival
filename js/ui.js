@@ -1941,7 +1941,7 @@ function updateFpsToggleBtn() {
 
 /** @type {boolean} */
 let immersiveFullscreenActive = false;
-/** @type {number|null} */
+/** @type {ReturnType<typeof setTimeout>|null} */
 let immersiveFsLockTimer = null;
 /** @type {boolean} */
 let immersiveFsListenersBound = false;
@@ -1957,19 +1957,22 @@ function getFullscreenElement() {
     );
 }
 
+function isNativeFullscreenActive() {
+    if (typeof document === 'undefined') return false;
+    return Boolean(getFullscreenElement() || document.webkitIsFullScreen);
+}
+
+/** Installed home-screen / PWA only — NOT browser fullscreen display-mode. */
 function isStandaloneDisplayMode() {
     try {
         const nav = /** @type {Navigator & { standalone?: boolean }} */ (
             typeof window !== 'undefined' ? window.navigator : null
         );
-        if (nav?.standalone) {
-            return true;
-        }
+        if (nav?.standalone) return true;
         if (
             typeof window !== 'undefined' &&
             window.matchMedia &&
-            (window.matchMedia('(display-mode: standalone)').matches ||
-                window.matchMedia('(display-mode: fullscreen)').matches)
+            window.matchMedia('(display-mode: standalone)').matches
         ) {
             return true;
         }
@@ -1979,11 +1982,26 @@ function isStandaloneDisplayMode() {
     return false;
 }
 
+/** iPhone/iPod (and iPad pretending to be Mac). Native FS is unusable here. */
+function isIosLikeBrowser() {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    if (/iPhone|iPod/i.test(ua)) return true;
+    // iPadOS 13+ desktop UA
+    if (
+        navigator.platform === 'MacIntel' &&
+        typeof navigator.maxTouchPoints === 'number' &&
+        navigator.maxTouchPoints > 1
+    ) {
+        return true;
+    }
+    return /iPad/i.test(ua);
+}
+
 function isFullscreenActive() {
     if (typeof document === 'undefined') return false;
+    if (isNativeFullscreenActive()) return true;
     if (immersiveFullscreenActive) return true;
-    if (getFullscreenElement()) return true;
-    if (document.webkitIsFullScreen) return true;
     return isStandaloneDisplayMode();
 }
 
@@ -1991,9 +2009,8 @@ function getFullscreenCandidates() {
     /** @type {Element[]} */
     const list = [];
     if (typeof document === 'undefined') return list;
+    // Prefer the document element — canvas FS can leave UI controls unreachable.
     if (document.documentElement) list.push(document.documentElement);
-    const canvas = document.getElementById('gameCanvas');
-    if (canvas) list.push(canvas);
     if (document.body) list.push(document.body);
     return list;
 }
@@ -2010,6 +2027,7 @@ function elementSupportsFullscreenRequest(el) {
 }
 
 function canRequestNativeFullscreen() {
+    if (isIosLikeBrowser()) return false;
     return getFullscreenCandidates().some(elementSupportsFullscreenRequest);
 }
 
@@ -2092,6 +2110,27 @@ async function tryNativeFullscreen() {
     return false;
 }
 
+async function exitNativeFullscreen() {
+    if (typeof document === 'undefined') return false;
+    if (!isNativeFullscreenActive()) return false;
+    try {
+        if (document.exitFullscreen) {
+            await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.webkitCancelFullScreen) {
+            document.webkitCancelFullScreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function ensureImmersiveSpacer() {
     if (typeof document === 'undefined') return null;
     let spacer = document.getElementById('immersiveFsSpacer');
@@ -2107,26 +2146,26 @@ function ensureImmersiveSpacer() {
 function syncImmersiveViewportCss() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     const vv = window.visualViewport;
-    const w = vv ? vv.width : window.innerWidth;
-    const h = vv ? vv.height : window.innerHeight;
+    // Prefer the largest useful height so the canvas fills chrome-collapsed space.
+    const layoutH =
+        window.innerHeight || document.documentElement.clientHeight || 0;
+    const vvH = vv ? vv.height : 0;
+    const vvW = vv ? vv.width : 0;
+    const w = Math.max(
+        1,
+        Math.round(vvW || window.innerWidth || document.documentElement.clientWidth || 1),
+    );
+    const h = Math.max(1, Math.round(Math.max(layoutH, vvH) || 1));
     const root = document.documentElement;
-    root.style.setProperty('--app-width', `${Math.round(w)}px`);
-    root.style.setProperty('--app-height', `${Math.round(h)}px`);
+    root.style.setProperty('--app-width', `${w}px`);
+    root.style.setProperty('--app-height', `${h}px`);
     root.style.setProperty('--app-vh', `${h * 0.01}px`);
-    if (typeof window !== 'undefined') {
-        window._immersiveFullscreenActive = immersiveFullscreenActive;
-    }
+    window._immersiveFullscreenActive = immersiveFullscreenActive;
 }
 
 function onImmersiveViewportChange() {
     if (!immersiveFullscreenActive) return;
     syncImmersiveViewportCss();
-    // Keep chrome collapsed when possible
-    try {
-        if (window.scrollY < 1) window.scrollTo(0, 1);
-    } catch {
-        // ignore
-    }
     if (typeof resizeCanvas === 'function') resizeCanvas();
     updateFullscreenButtons();
 }
@@ -2137,7 +2176,6 @@ function bindImmersiveViewportListeners() {
     const opts = { passive: true };
     window.addEventListener('resize', onImmersiveViewportChange, opts);
     window.addEventListener('orientationchange', onImmersiveViewportChange, opts);
-    window.addEventListener('scroll', onImmersiveViewportChange, opts);
     if (window.visualViewport) {
         window.visualViewport.addEventListener(
             'resize',
@@ -2152,13 +2190,33 @@ function bindImmersiveViewportListeners() {
     }
 }
 
+function collapseMobileBrowserChrome() {
+    if (typeof window === 'undefined') return;
+    try {
+        // Non-zero scroll is what triggers iOS/Chrome URL-bar collapse.
+        const vv = window.visualViewport;
+        const delta = Math.max(
+            24,
+            Math.round(
+                (window.innerHeight || 0) - (vv?.height || window.innerHeight || 0) + 24,
+            ),
+        );
+        window.scrollTo(0, 0);
+        window.scrollTo(0, delta);
+        document.documentElement.scrollTop = delta;
+        document.body.scrollTop = delta;
+    } catch {
+        // ignore
+    }
+}
+
 function enterImmersiveFullscreen() {
     if (typeof document === 'undefined' || typeof window === 'undefined') {
         return false;
     }
-    // Already running as an installed / standalone app — treat as active.
     if (isStandaloneDisplayMode()) {
         immersiveFullscreenActive = true;
+        window._immersiveFullscreenActive = true;
         syncImmersiveViewportCss();
         updateFullscreenButtons();
         if (typeof resizeCanvas === 'function') resizeCanvas();
@@ -2166,9 +2224,7 @@ function enterImmersiveFullscreen() {
     }
 
     immersiveFullscreenActive = true;
-    if (typeof window !== 'undefined') {
-        window._immersiveFullscreenActive = true;
-    }
+    window._immersiveFullscreenActive = true;
     bindImmersiveViewportListeners();
     ensureImmersiveSpacer();
 
@@ -2176,53 +2232,38 @@ function enterImmersiveFullscreen() {
     root.classList.remove('immersive-fs');
     root.classList.add('immersive-fs-prep');
 
-    const collapseChrome = () => {
-        try {
-            // iOS collapses the URL bar after a non-zero scroll.
-            window.scrollTo(0, 1);
-            const target = Math.max(
-                1,
-                Math.min(
-                    80,
-                    Math.round(
-                        (window.innerHeight || 0) -
-                            (window.visualViewport?.height ||
-                                window.innerHeight ||
-                                0) +
-                            8,
-                    ),
-                ),
-            );
-            window.scrollTo(0, target);
-        } catch {
-            // ignore
-        }
-    };
-
-    collapseChrome();
-    requestAnimationFrame(collapseChrome);
+    // Collapse chrome while the document is still scrollable. Do NOT scroll back
+    // to 0 afterward — that restores the iOS address bar.
+    collapseMobileBrowserChrome();
+    requestAnimationFrame(() => {
+        collapseMobileBrowserChrome();
+        syncImmersiveViewportCss();
+        if (typeof resizeCanvas === 'function') resizeCanvas();
+    });
 
     if (immersiveFsLockTimer) clearTimeout(immersiveFsLockTimer);
-    immersiveFsLockTimer = window.setTimeout(() => {
-        immersiveFsLockTimer = null;
+    let passes = 0;
+    const finishLock = () => {
         if (!immersiveFullscreenActive) return;
+        passes += 1;
+        collapseMobileBrowserChrome();
+        syncImmersiveViewportCss();
+        if (typeof resizeCanvas === 'function') resizeCanvas();
+        updateFullscreenButtons();
+
+        if (passes < 4) {
+            immersiveFsLockTimer = window.setTimeout(finishLock, 100);
+            return;
+        }
+        immersiveFsLockTimer = null;
+        // Keep a tiny scroll offset while locking overflow so chrome stays down.
         root.classList.remove('immersive-fs-prep');
         root.classList.add('immersive-fs');
-        try {
-            window.scrollTo(0, 0);
-        } catch {
-            // ignore
-        }
         syncImmersiveViewportCss();
-        updateFullscreenButtons();
         if (typeof resizeCanvas === 'function') resizeCanvas();
-        // Second pass after chrome animation settles
-        setTimeout(() => {
-            if (!immersiveFullscreenActive) return;
-            syncImmersiveViewportCss();
-            if (typeof resizeCanvas === 'function') resizeCanvas();
-        }, 250);
-    }, 120);
+        updateFullscreenButtons();
+    };
+    immersiveFsLockTimer = window.setTimeout(finishLock, 50);
 
     syncImmersiveViewportCss();
     updateFullscreenButtons();
@@ -2263,16 +2304,19 @@ async function enterFullscreen() {
     if (typeof document === 'undefined') return false;
     if (isStandaloneDisplayMode()) {
         immersiveFullscreenActive = true;
+        if (typeof window !== 'undefined') {
+            window._immersiveFullscreenActive = true;
+        }
         updateFullscreenButtons();
         return true;
     }
-    if (canRequestNativeFullscreen()) {
+    // iPhone WebKit: skip native API (missing / no-ops) and go straight to immersive
+    // so we don't burn the user-gesture turn on a useless await.
+    if (!isIosLikeBrowser() && canRequestNativeFullscreen()) {
         const ok = await tryNativeFullscreen();
         if (ok) {
-            // If WebKit accepted the call but never entered FS (common on iPhone),
-            // fall through to immersive after a short check.
-            await new Promise((r) => setTimeout(r, 60));
-            if (getFullscreenElement() || document.webkitIsFullScreen) {
+            await new Promise((r) => setTimeout(r, 50));
+            if (isNativeFullscreenActive()) {
                 updateFullscreenButtons();
                 return true;
             }
@@ -2283,40 +2327,25 @@ async function enterFullscreen() {
 
 async function exitFullscreen() {
     if (typeof document === 'undefined') return false;
-    if (immersiveFullscreenActive && !getFullscreenElement()) {
-        return exitImmersiveFullscreen();
+    if (isNativeFullscreenActive()) {
+        await exitNativeFullscreen();
     }
-    try {
-        if (document.exitFullscreen) {
-            await document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        } else if (document.webkitCancelFullScreen) {
-            document.webkitCancelFullScreen();
-        } else if (document.mozCancelFullScreen) {
-            document.mozCancelFullScreen();
-        } else if (document.msExitFullscreen) {
-            document.msExitFullscreen();
-        }
-    } catch {
-        // fall through to immersive exit
+    if (immersiveFullscreenActive) {
+        exitImmersiveFullscreen();
     }
-    if (immersiveFullscreenActive) exitImmersiveFullscreen();
     updateFullscreenButtons();
     return true;
 }
 
 async function toggleFullscreen() {
-    // Home-screen / installed PWAs are already fullscreen on every host.
-    if (isStandaloneDisplayMode()) {
-        updateFullscreenButtons();
-        if (typeof resizeCanvas === 'function') {
-            setTimeout(() => resizeCanvas(), 80);
-        }
-        return;
-    }
-    if (isFullscreenActive()) {
+    // Native FS first: Mac sets display-mode:fullscreen while natively fullscreen,
+    // which must NOT be confused with an installed PWA (that bug made Exit a no-op).
+    if (isNativeFullscreenActive() || immersiveFullscreenActive) {
         await exitFullscreen();
+    } else if (isStandaloneDisplayMode()) {
+        // Home-screen / installed PWAs are already fullscreen.
+        updateFullscreenButtons();
+        return;
     } else {
         await enterFullscreen();
     }
@@ -2344,14 +2373,21 @@ function initFullscreenControls() {
     document.addEventListener('mozfullscreenchange', onFsChange);
     document.addEventListener('MSFullscreenChange', onFsChange);
 
+    /** @type {number} */
+    let lastFsToggleAt = 0;
     const bindToggle = (id) => {
         const btn = document.getElementById(id);
         if (!btn) return;
-        btn.addEventListener('click', (e) => {
+        const handler = (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // Debounce: iOS can synthesize click after touchend.
+            const now = Date.now();
+            if (now - lastFsToggleAt < 350) return;
+            lastFsToggleAt = now;
             toggleFullscreen();
-        });
+        };
+        btn.addEventListener('click', handler);
         btn.addEventListener('pointerdown', (e) => e.stopPropagation());
     };
     bindToggle('btnFullscreenMenu');
