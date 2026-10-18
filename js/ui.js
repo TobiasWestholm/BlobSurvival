@@ -212,12 +212,16 @@ function renderLobbyWeaponPanels() {
     const lobbyStartBtn = document.getElementById('lobbyStartBtn');
     const inviteBanner = document.getElementById('inviteCodeBanner');
     const howToPlayBanner = document.getElementById('howToPlayBanner');
+    const fullscreenLobbyBtn = document.getElementById('fullscreenLobbyBtn');
+    const lobbyActionStack = document.getElementById('lobbyActionStack');
     const tipEl = document.getElementById('tipText');
 
     if (isSingle) {
         if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
         if (inviteBanner) inviteBanner.style.display = 'none';
         if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+        if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.remove('is-visible');
+        if (lobbyActionStack) lobbyActionStack.classList.remove('is-visible');
         const player = GAME_STATE.players?.[0] ? GAME_STATE.players[0] : null;
         if (player)
             layer.appendChild(buildStartingWeaponPanel(player, 1, true));
@@ -230,6 +234,10 @@ function renderLobbyWeaponPanels() {
             lobbyStartBtn.onclick = () => {
                 lobbyStartBtn.style.display = 'none';
                 if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+                if (fullscreenLobbyBtn)
+                    fullscreenLobbyBtn.classList.remove('is-visible');
+                if (lobbyActionStack)
+                    lobbyActionStack.classList.remove('is-visible');
                 layer.classList.remove('show');
                 if (tipEl) tipEl.style.display = 'none';
                 startCountdown(true);
@@ -237,6 +245,8 @@ function renderLobbyWeaponPanels() {
         }
         if (inviteBanner) inviteBanner.style.display = 'none';
         if (howToPlayBanner) howToPlayBanner.style.display = 'block';
+        if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.add('is-visible');
+        if (lobbyActionStack) lobbyActionStack.classList.add('is-visible');
         const count = GAME_STATE.players.length;
         for (const player of GAME_STATE.players) {
             if (player)
@@ -253,7 +263,9 @@ function renderLobbyWeaponPanels() {
                     ? netManager.roomCode
                     : 'XXXX';
         }
-        if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+        if (howToPlayBanner) howToPlayBanner.style.display = 'block';
+        if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.add('is-visible');
+        if (lobbyActionStack) lobbyActionStack.classList.add('is-visible');
         if (lobbyStartBtn) {
             lobbyStartBtn.style.display = 'block';
             const activePlayers = (GAME_STATE.players || []).filter(
@@ -267,6 +279,10 @@ function renderLobbyWeaponPanels() {
                 lobbyStartBtn.style.display = 'none';
                 if (inviteBanner) inviteBanner.style.display = 'none';
                 if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+                if (fullscreenLobbyBtn)
+                    fullscreenLobbyBtn.classList.remove('is-visible');
+                if (lobbyActionStack)
+                    lobbyActionStack.classList.remove('is-visible');
                 layer.classList.remove('show');
                 if (tipEl) tipEl.style.display = 'none';
                 if (typeof netManager !== 'undefined' && netManager) {
@@ -330,6 +346,8 @@ function renderLobbyWeaponPanels() {
         if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
         if (inviteBanner) inviteBanner.style.display = 'none';
         if (howToPlayBanner) howToPlayBanner.style.display = 'block';
+        if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.add('is-visible');
+        if (lobbyActionStack) lobbyActionStack.classList.add('is-visible');
         const myIndex = netManager ? netManager.localPlayerIndex : 0;
         if (typeof isMobile !== 'undefined' && isMobile) {
             const def =
@@ -369,6 +387,7 @@ function renderLobbyWeaponPanels() {
     }
     layer.classList.add('show');
     adjustTipTextLayout();
+    updateFullscreenButtons();
     if (typeof requestAnimationFrame !== 'undefined') {
         requestAnimationFrame(() => adjustTipTextLayout());
     }
@@ -1266,6 +1285,10 @@ function startCountdown(isNewGame = false) {
     if (hostOverlay) hostOverlay.style.display = 'none';
     const howToPlayBanner = document.getElementById('howToPlayBanner');
     if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+    const fullscreenLobbyBtn = document.getElementById('fullscreenLobbyBtn');
+    if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.remove('is-visible');
+    const lobbyActionStack = document.getElementById('lobbyActionStack');
+    if (lobbyActionStack) lobbyActionStack.classList.remove('is-visible');
     closeHowToPlayModal();
     stopTipRotation();
     const uiLayer = document.querySelector('.ui-layer');
@@ -1879,6 +1902,10 @@ function showStartMenu() {
     if (inviteBanner) inviteBanner.style.display = 'none';
     const howToPlayBanner = document.getElementById('howToPlayBanner');
     if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+    const fullscreenLobbyBtn = document.getElementById('fullscreenLobbyBtn');
+    if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.remove('is-visible');
+    const lobbyActionStack = document.getElementById('lobbyActionStack');
+    if (lobbyActionStack) lobbyActionStack.classList.remove('is-visible');
     closeHowToPlayModal();
     const rotateHint = document.getElementById('rotateHint');
     if (rotateHint) rotateHint.style.display = 'none';
@@ -1889,6 +1916,7 @@ function showStartMenu() {
     showStartStep('mode');
     const startMenu = document.getElementById('startMenu');
     if (startMenu) startMenu.classList.add('show');
+    updateFullscreenButtons();
 }
 
 function updateFpsToggleBtn() {
@@ -1904,6 +1932,216 @@ function updateFpsToggleBtn() {
     } else {
         btn.classList.add('disabled-state');
     }
+}
+
+// ---------------- Full screen (mobile address bar + desktop) ----------------
+
+function getFullscreenElement() {
+    if (typeof document === 'undefined') return null;
+    return (
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement ||
+        null
+    );
+}
+
+function isFullscreenActive() {
+    if (typeof document === 'undefined') return false;
+    if (getFullscreenElement()) return true;
+    if (document.webkitIsFullScreen) return true;
+    try {
+        if (
+            typeof window !== 'undefined' &&
+            window.matchMedia &&
+            window.matchMedia('(display-mode: fullscreen)').matches
+        ) {
+            return true;
+        }
+    } catch {
+        // ignore matchMedia errors
+    }
+    return false;
+}
+
+function canRequestFullscreen() {
+    if (typeof document === 'undefined') return false;
+    const el = document.documentElement;
+    return Boolean(
+        el.requestFullscreen ||
+            el.webkitRequestFullscreen ||
+            el.webkitRequestFullScreen ||
+            el.mozRequestFullScreen ||
+            el.msRequestFullscreen,
+    );
+}
+
+function updateFullscreenButtons() {
+    if (typeof document === 'undefined') return;
+    const active = isFullscreenActive();
+    const label = active ? 'Exit Full screen' : 'Enter Full screen';
+
+    for (const id of [
+        'btnFullscreenMenu',
+        'fullscreenLobbyBtn',
+        'fullscreenPauseBtn',
+    ]) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        const labelEl = btn.querySelector('.fullscreen-label');
+        if (labelEl) labelEl.textContent = label;
+        btn.classList.toggle('active-fullscreen', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        btn.title = label;
+        btn.setAttribute('aria-label', label);
+    }
+}
+
+async function enterFullscreen() {
+    if (typeof document === 'undefined') return false;
+    const el = document.documentElement;
+    const tryRequest = async (withNavHide) => {
+        if (el.requestFullscreen) {
+            if (withNavHide) {
+                await el.requestFullscreen({ navigationUI: 'hide' });
+            } else {
+                await el.requestFullscreen();
+            }
+            return true;
+        }
+        if (el.webkitRequestFullscreen) {
+            el.webkitRequestFullscreen();
+            return true;
+        }
+        if (el.webkitRequestFullScreen) {
+            // Legacy Safari / older WebKit
+            el.webkitRequestFullScreen();
+            return true;
+        }
+        if (el.mozRequestFullScreen) {
+            el.mozRequestFullScreen();
+            return true;
+        }
+        if (el.msRequestFullscreen) {
+            el.msRequestFullscreen();
+            return true;
+        }
+        return false;
+    };
+
+    try {
+        const ok = await tryRequest(true);
+        if (!ok) {
+            if (typeof showToast === 'function') {
+                showToast(
+                    'Full screen is not supported in this browser.',
+                    4000,
+                    true,
+                );
+            }
+            return false;
+        }
+        return true;
+    } catch {
+        try {
+            const ok = await tryRequest(false);
+            if (!ok) {
+                if (typeof showToast === 'function') {
+                    showToast(
+                        'Full screen is not supported in this browser.',
+                        4000,
+                        true,
+                    );
+                }
+                return false;
+            }
+            return true;
+        } catch {
+            if (typeof showToast === 'function') {
+                showToast(
+                    'Could not enter full screen. Try again with a direct tap.',
+                    4000,
+                    true,
+                );
+            }
+            return false;
+        }
+    }
+}
+
+async function exitFullscreen() {
+    if (typeof document === 'undefined') return false;
+    try {
+        if (document.exitFullscreen) {
+            await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.webkitCancelFullScreen) {
+            document.webkitCancelFullScreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function toggleFullscreen() {
+    if (isFullscreenActive()) {
+        await exitFullscreen();
+    } else {
+        if (!canRequestFullscreen()) {
+            if (typeof showToast === 'function') {
+                showToast(
+                    'Full screen is not supported in this browser.',
+                    4000,
+                    true,
+                );
+            }
+            return;
+        }
+        await enterFullscreen();
+    }
+    // Some browsers update async; also refresh immediately for prefix-only paths
+    updateFullscreenButtons();
+    if (typeof resizeCanvas === 'function') {
+        setTimeout(() => resizeCanvas(), 80);
+    }
+}
+
+function initFullscreenControls() {
+    if (typeof document === 'undefined') return;
+
+    const onFsChange = () => {
+        updateFullscreenButtons();
+        if (typeof resizeCanvas === 'function') {
+            setTimeout(() => resizeCanvas(), 80);
+        }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    document.addEventListener('mozfullscreenchange', onFsChange);
+    document.addEventListener('MSFullscreenChange', onFsChange);
+
+    const bindToggle = (id) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleFullscreen();
+        });
+        btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    };
+    bindToggle('btnFullscreenMenu');
+    bindToggle('fullscreenLobbyBtn');
+    bindToggle('fullscreenPauseBtn');
+
+    updateFullscreenButtons();
 }
 
 const PAUSE_MENU_ICON_PAUSE =
@@ -2260,6 +2498,8 @@ function closeHowToPlayModal() {
 
 function initUISystem() {
     if (typeof document === 'undefined') return;
+
+    initFullscreenControls();
 
     // Dynamically adjust tip text width whenever window is resized
     window.addEventListener('resize', adjustTipTextLayout);
@@ -2633,6 +2873,9 @@ if (typeof window !== 'undefined') {
     window.updateFpsToggleBtn = updateFpsToggleBtn;
     window.togglePause = togglePause;
     window.updatePauseMenuButtonIcon = updatePauseMenuButtonIcon;
+    window.isFullscreenActive = isFullscreenActive;
+    window.toggleFullscreen = toggleFullscreen;
+    window.updateFullscreenButtons = updateFullscreenButtons;
     window.updateUI = updateUI;
     window.initUISystem = initUISystem;
     window.createKeyClusterDOM = createKeyClusterDOM;

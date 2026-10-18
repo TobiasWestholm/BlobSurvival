@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Blob Survival</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%2300ffcc'/></svg>">
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -152,6 +152,87 @@
         border-color: #555;
         box-shadow: none;
         background: rgba(15, 15, 15, 0.8);
+    }
+    .fullscreen-action-btn {
+        background: rgba(20, 20, 20, 0.85);
+        color: #00ffcc;
+        border: 1px solid #00ffcc;
+        border-radius: 6px;
+        padding: 10px 16px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: bold;
+        box-shadow: 0 0 10px rgba(0, 255, 204, 0.2);
+        transition: all 0.15s ease;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+        pointer-events: auto;
+        font-family: inherit;
+        white-space: nowrap;
+        box-sizing: border-box;
+    }
+    .fullscreen-action-btn:hover {
+        background: #00ffcc;
+        color: #000;
+        box-shadow: 0 0 14px rgba(0, 255, 204, 0.6);
+    }
+    .fullscreen-action-btn.active-fullscreen {
+        color: #fff;
+        border-color: #76ff03;
+        box-shadow: 0 0 12px rgba(118, 255, 3, 0.35);
+    }
+    #fullscreenPauseBtn {
+        display: flex;
+        width: 100%;
+        margin: 0 0 14px 0;
+        padding: 10px 12px;
+    }
+    #startMenuShell {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 100;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        width: max-content;
+        max-width: 95vw;
+        max-height: 96vh;
+        overflow-x: hidden;
+        overflow-y: auto;
+        pointer-events: none;
+        box-sizing: border-box;
+        padding: 0;
+    }
+    #startMenuShell:has(#startMenu.show) {
+        display: flex;
+    }
+    #startMenuShell #startMenu.modal {
+        position: relative;
+        top: auto;
+        left: auto;
+        transform: none;
+        margin: 0;
+        pointer-events: auto;
+        flex-shrink: 0;
+        max-height: none;
+        width: clamp(440px, 34vw, 620px);
+        max-width: 100%;
+    }
+    #btnFullscreenMenu {
+        display: flex;
+        pointer-events: auto;
+        flex-shrink: 0;
+        width: auto;
+        min-width: 0;
+        box-sizing: border-box;
     }
     #fpsToggleBtn {
         background: rgba(20, 20, 20, 0.85);
@@ -577,6 +658,18 @@
         overflow-y: auto !important;
         box-sizing: border-box !important;
     }
+    body.mobile-device #startMenuShell #startMenu.modal {
+        position: relative !important;
+        top: auto !important;
+        left: auto !important;
+        transform: none !important;
+        width: 90vw !important;
+        max-width: 380px !important;
+    }
+    body.mobile-device #btnFullscreenMenu {
+        padding: 9px 14px !important;
+        font-size: 13px !important;
+    }
     body.mobile-device #startMenu h1 {
         font-size: 24px !important;
         margin-bottom: 8px !important;
@@ -856,30 +949,28 @@
         height: 30px !important;
         margin: 0 !important;
     }
-    body.mobile-device #inviteCodeBanner {
-        position: fixed !important;
+    body.mobile-device #lobbyActionStack {
         bottom: calc(max(14px, env(safe-area-inset-bottom, 14px)) + 148px) !important;
         left: 50% !important;
         right: auto !important;
-        top: auto !important;
         transform: translateX(-50%) !important;
+        gap: 12px !important;
+        z-index: 140 !important;
+    }
+    body.mobile-device #inviteCodeBanner {
         padding: 5px 12px !important;
         font-size: 11px !important;
-        z-index: 140 !important;
     }
     body.mobile-device #inviteCodeBanner .code-text {
         font-size: 14px !important;
     }
     body.mobile-device #howToPlayBanner {
-        position: fixed !important;
-        bottom: calc(max(14px, env(safe-area-inset-bottom, 14px)) + 148px) !important;
-        left: 50% !important;
-        right: auto !important;
-        top: auto !important;
-        transform: translateX(-50%) !important;
         padding: 8px 14px !important;
         font-size: 13px !important;
-        z-index: 140 !important;
+    }
+    body.mobile-device #fullscreenLobbyBtn {
+        padding: 8px 12px !important;
+        font-size: 12px !important;
     }
     body.mobile-device #lobbyStartBtn {
         position: fixed !important;
@@ -946,25 +1037,25 @@
             font-size: 13px !important;
             z-index: 160 !important;
         }
-        body.mobile-device #inviteCodeBanner {
+        body.mobile-device #lobbyActionStack {
             bottom: max(10px, env(safe-area-inset-bottom, 10px)) !important;
             right: calc(50% + 94px) !important;
             left: auto !important;
-            top: auto !important;
             transform: none !important;
-            padding: 4px 10px !important;
-            font-size: 10px !important;
+            gap: 10px !important;
             z-index: 140 !important;
         }
+        body.mobile-device #inviteCodeBanner {
+            padding: 4px 10px !important;
+            font-size: 10px !important;
+        }
         body.mobile-device #howToPlayBanner {
-            bottom: max(10px, env(safe-area-inset-bottom, 10px)) !important;
-            right: calc(50% + 94px) !important;
-            left: auto !important;
-            top: auto !important;
-            transform: none !important;
             padding: 6px 12px !important;
             font-size: 12px !important;
-            z-index: 140 !important;
+        }
+        body.mobile-device #fullscreenLobbyBtn {
+            padding: 6px 10px !important;
+            font-size: 11px !important;
         }
         .modal {
             max-height: 92vh !important;
@@ -973,6 +1064,12 @@
             left: 50% !important;
             top: 50% !important;
             transform: translate(-50%, -50%) !important;
+        }
+        #startMenuShell #startMenu.modal {
+            left: auto !important;
+            top: auto !important;
+            transform: none !important;
+            position: relative !important;
         }
     }
 
@@ -1122,6 +1219,13 @@
             overflow-y: auto !important;
             box-sizing: border-box !important;
         }
+        #startMenuShell #startMenu.modal {
+            position: relative !important;
+            top: auto !important;
+            left: auto !important;
+            transform: none !important;
+            max-height: none !important;
+        }
         #startMenu h1 {
             font-size: clamp(30px, 8.5vw, 44px) !important;
             margin-bottom: 16px !important;
@@ -1245,7 +1349,8 @@
         transform: translate(-50%, -50%) scale(0.96);
     }
 
-    #inviteCodeBanner {
+    /* Stacked lobby actions: Full screen → How to play → Invite (host). Gap is shared. */
+    #lobbyActionStack {
         display: none;
         position: fixed;
         bottom: calc(max(16px, env(safe-area-inset-bottom, 16px)) + 14px);
@@ -1254,6 +1359,26 @@
         top: auto;
         transform: translateX(-50%);
         z-index: 155;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        pointer-events: none;
+    }
+    #lobbyActionStack.is-visible {
+        display: flex;
+    }
+    #lobbyActionStack > * {
+        position: static;
+        left: auto;
+        right: auto;
+        top: auto;
+        bottom: auto;
+        transform: none;
+        pointer-events: auto;
+        margin: 0;
+    }
+    #inviteCodeBanner {
+        display: none;
         background: rgba(14, 14, 22, 0.94);
         border: 1.5px solid #00ffcc;
         border-radius: 8px;
@@ -1268,6 +1393,7 @@
         touch-action: manipulation;
         transition: all 0.15s ease;
         white-space: nowrap;
+        text-align: center;
     }
     #inviteCodeBanner:hover {
         background: rgba(0, 255, 204, 0.15);
@@ -1285,13 +1411,6 @@
     }
     #howToPlayBanner {
         display: none;
-        position: fixed;
-        bottom: calc(max(16px, env(safe-area-inset-bottom, 16px)) + 14px);
-        left: 50%;
-        right: auto;
-        top: auto;
-        transform: translateX(-50%);
-        z-index: 155;
         background: rgba(14, 14, 22, 0.94);
         border: 1.5px solid #00ffcc;
         border-radius: 8px;
@@ -1306,13 +1425,15 @@
         touch-action: manipulation;
         transition: all 0.15s ease;
         white-space: nowrap;
-        pointer-events: auto;
         font-family: inherit;
     }
     #howToPlayBanner:hover {
         background: rgba(0, 255, 204, 0.15);
         box-shadow: 0 0 20px rgba(0, 255, 204, 0.45);
         color: #fff;
+    }
+    #fullscreenLobbyBtn.is-visible {
+        display: flex;
     }
 
     .player-panel.placeholder-panel {
@@ -1399,6 +1520,7 @@
     </svg>
 </button>
 
+<div id="startMenuShell">
 <div id="startMenu" class="modal show">
     <h1>BLOB SURVIVAL</h1>
     
@@ -1489,6 +1611,10 @@
         <button type="button" class="upgrade-btn back-btn" id="backToPreviousFromDiff"><span class="name">← Back</span></button>
     </div>
 </div>
+<button type="button" class="fullscreen-action-btn" id="btnFullscreenMenu" title="Enter Full screen" aria-label="Enter Full screen">
+    <span aria-hidden="true">⛶</span> <span class="fullscreen-label">Enter Full screen</span>
+</button>
+</div>
 
 <!-- Floating Device Rotation Hint (Shown on mobile portrait when joining a widescreen host) -->
 <div id="rotateHint" style="display: none;">
@@ -1497,15 +1623,18 @@
     <button type="button" class="rotate-hint-close" onclick="dismissRotateHint()" aria-label="Dismiss">✕</button>
 </div>
 
-<!-- Floating Invite Code Banner (Hosted Online Multiplayer) -->
-<div id="inviteCodeBanner">
-    <div style="font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px;">Invite Code</div>
-    <div class="code-text" id="inviteCodeText">XXXX</div>
-    <div id="inviteCopyHint" style="font-size: 10px; color: #00ffcc; opacity: 0.85; margin-top: 2px;">Click to copy link</div>
+<!-- Lobby action stack: Full screen above How to play; invite below How to play on host -->
+<div id="lobbyActionStack">
+    <button type="button" class="fullscreen-action-btn" id="fullscreenLobbyBtn" title="Enter Full screen" aria-label="Enter Full screen">
+        <span aria-hidden="true">⛶</span> <span class="fullscreen-label">Enter Full screen</span>
+    </button>
+    <button type="button" id="howToPlayBanner">How to play</button>
+    <div id="inviteCodeBanner">
+        <div style="font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px;">Invite Code</div>
+        <div class="code-text" id="inviteCodeText">XXXX</div>
+        <div id="inviteCopyHint" style="font-size: 10px; color: #00ffcc; opacity: 0.85; margin-top: 2px;">Click to copy link</div>
+    </div>
 </div>
-
-<!-- Floating How to Play (weapon select lobby — all except online host) -->
-<button type="button" id="howToPlayBanner">How to play</button>
 
 <div id="howToPlayModal" class="modal" style="max-width: 420px; text-align: left; z-index: 520; padding: 22px; box-sizing: border-box;">
     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
@@ -1700,6 +1829,9 @@
     </div>
     <button type="button" id="fpsToggleBtn" class="disabled-state" title="Toggle FPS & Enemy Counter (1)" aria-label="Toggle FPS & Enemy Counter">
         <span>📊</span> <span id="fpsToggleBtnLabel">FPS & Stats: OFF</span>
+    </button>
+    <button type="button" class="fullscreen-action-btn" id="fullscreenPauseBtn" title="Enter Full screen" aria-label="Enter Full screen">
+        <span aria-hidden="true">⛶</span> <span class="fullscreen-label">Enter Full screen</span>
     </button>
     <button type="button" class="upgrade-btn" id="resumeBtn" style="margin: 8px 0; width: 100%;"><span class="name">RESUME</span></button>
     <button type="button" class="upgrade-btn" id="pauseQuitBtn" style="margin: 8px 0; width: 100%; background: #333; border-color: #555;"><span class="name">MAIN MENU</span></button>
