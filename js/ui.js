@@ -1934,10 +1934,11 @@ function updateFpsToggleBtn() {
     }
 }
 
-// ---------------- Full screen (native API + iOS immersive fallback) ----------------
-// iPhone Safari/Chrome (WebKit) do not support element.requestFullscreen().
-// Immersive mode collapses browser chrome via scroll + visualViewport sizing and
-// works on any host (GitHub Pages, custom domain, localhost, etc.).
+// ---------------- Full screen (native API + iOS video fullscreen) ----------------
+// Desktop/Android: Element.requestFullscreen().
+// iPhone: WebKit blocks element fullscreen. YouTube-style FS uses
+// HTMLVideoElement.webkitEnterFullscreen() with a canvas.captureStream() feed.
+// Immersive scroll is only a last-resort fallback if video FS is unavailable.
 
 /** @type {boolean} */
 let immersiveFullscreenActive = false;
@@ -1945,6 +1946,12 @@ let immersiveFullscreenActive = false;
 let immersiveFsLockTimer = null;
 /** @type {boolean} */
 let immersiveFsListenersBound = false;
+/** @type {HTMLVideoElement|null} */
+let iosFsVideo = null;
+/** @type {MediaStream|null} */
+let iosFsStream = null;
+/** @type {boolean} */
+let iosVideoFsActive = false;
 
 function getFullscreenElement() {
     if (typeof document === 'undefined') return null;
@@ -1998,11 +2005,190 @@ function isIosLikeBrowser() {
     return /iPad/i.test(ua);
 }
 
+function isIosVideoFullscreenActive() {
+    if (iosVideoFsActive) return true;
+    const v = iosFsVideo;
+    if (v && /** @type {any} */ (v).webkitDisplayingFullscreen) return true;
+    return false;
+}
+
 function isFullscreenActive() {
     if (typeof document === 'undefined') return false;
     if (isNativeFullscreenActive()) return true;
+    if (isIosVideoFullscreenActive()) return true;
     if (immersiveFullscreenActive) return true;
     return isStandaloneDisplayMode();
+}
+
+function canUseIosVideoFullscreen() {
+    if (!isIosLikeBrowser() || typeof document === 'undefined') return false;
+    const canvas = /** @type {HTMLCanvasElement|null} */ (
+        document.getElementById('gameCanvas')
+    );
+    if (!canvas || typeof canvas.captureStream !== 'function') return false;
+    const probe = document.createElement('video');
+    const anyProbe = /** @type {any} */ (probe);
+    return (
+        typeof anyProbe.webkitEnterFullscreen === 'function' ||
+        typeof anyProbe.webkitEnterFullScreen === 'function' ||
+        typeof probe.requestFullscreen === 'function'
+    );
+}
+
+function teardownIosFsStream() {
+    if (iosFsStream) {
+        for (const track of iosFsStream.getTracks()) {
+            try {
+                track.stop();
+            } catch {
+                // ignore
+            }
+        }
+        iosFsStream = null;
+    }
+    if (iosFsVideo) {
+        try {
+            iosFsVideo.pause();
+        } catch {
+            // ignore
+        }
+        iosFsVideo.removeAttribute('src');
+        iosFsVideo.srcObject = null;
+        try {
+            iosFsVideo.load();
+        } catch {
+            // ignore
+        }
+    }
+}
+
+function ensureIosFsVideo() {
+    if (typeof document === 'undefined') return null;
+    if (iosFsVideo) return iosFsVideo;
+    const video = document.createElement('video');
+    video.id = 'iosFsVideo';
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('muted', '');
+    video.setAttribute('autoplay', '');
+    // Keep in DOM but invisible until native video fullscreen takes over.
+    video.style.cssText =
+        'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;';
+    document.body.appendChild(video);
+
+    const onBegin = () => {
+        iosVideoFsActive = true;
+        updateFullscreenButtons();
+        if (typeof resizeCanvas === 'function') resizeCanvas();
+    };
+    const onEnd = () => {
+        iosVideoFsActive = false;
+        teardownIosFsStream();
+        updateFullscreenButtons();
+        if (typeof resizeCanvas === 'function') {
+            setTimeout(() => resizeCanvas(), 80);
+        }
+    };
+    video.addEventListener('webkitbeginfullscreen', onBegin);
+    video.addEventListener('webkitendfullscreen', onEnd);
+    video.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement === video) onBegin();
+        else if (iosVideoFsActive) onEnd();
+    });
+
+    iosFsVideo = video;
+    return video;
+}
+
+/**
+ * YouTube-style iOS fullscreen: stream the game canvas into a <video> and call
+ * webkitEnterFullscreen(). Must run directly from a user gesture (no awaits before).
+ */
+function enterIosVideoFullscreen() {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+        return false;
+    }
+    const canvas = /** @type {HTMLCanvasElement|null} */ (
+        document.getElementById('gameCanvas')
+    );
+    if (!canvas || typeof canvas.captureStream !== 'function') return false;
+
+    const video = ensureIosFsVideo();
+    if (!video) return false;
+    const anyVideo = /** @type {any} */ (video);
+
+    teardownIosFsStream();
+    try {
+        iosFsStream = canvas.captureStream(60);
+    } catch {
+        try {
+            iosFsStream = canvas.captureStream();
+        } catch {
+            return false;
+        }
+    }
+    video.srcObject = iosFsStream;
+
+    // Start playback; do not await — awaiting can drop the iOS user-gesture token
+    // required by webkitEnterFullscreen.
+    try {
+        const playResult = video.play();
+        if (playResult && typeof playResult.catch === 'function') {
+            playResult.catch(() => {});
+        }
+    } catch {
+        // continue — some WebKit builds still allow enterFullscreen
+    }
+
+    try {
+        if (typeof anyVideo.webkitEnterFullscreen === 'function') {
+            anyVideo.webkitEnterFullscreen();
+        } else if (typeof anyVideo.webkitEnterFullScreen === 'function') {
+            anyVideo.webkitEnterFullScreen();
+        } else if (typeof video.requestFullscreen === 'function') {
+            video.requestFullscreen();
+        } else {
+            teardownIosFsStream();
+            return false;
+        }
+    } catch {
+        teardownIosFsStream();
+        return false;
+    }
+
+    iosVideoFsActive = true;
+    updateFullscreenButtons();
+    return true;
+}
+
+function exitIosVideoFullscreen() {
+    const video = iosFsVideo;
+    if (!video) {
+        iosVideoFsActive = false;
+        return false;
+    }
+    const anyVideo = /** @type {any} */ (video);
+    try {
+        if (typeof anyVideo.webkitExitFullscreen === 'function') {
+            anyVideo.webkitExitFullscreen();
+        } else if (typeof anyVideo.webkitExitFullScreen === 'function') {
+            anyVideo.webkitExitFullScreen();
+        } else if (
+            document.fullscreenElement === video &&
+            document.exitFullscreen
+        ) {
+            document.exitFullscreen();
+        }
+    } catch {
+        // ignore
+    }
+    iosVideoFsActive = false;
+    teardownIosFsStream();
+    updateFullscreenButtons();
+    return true;
 }
 
 function getFullscreenCandidates() {
@@ -2310,9 +2496,15 @@ async function enterFullscreen() {
         updateFullscreenButtons();
         return true;
     }
-    // iPhone WebKit: skip native API (missing / no-ops) and go straight to immersive
-    // so we don't burn the user-gesture turn on a useless await.
-    if (!isIosLikeBrowser() && canRequestNativeFullscreen()) {
+    // iPhone: YouTube-style video fullscreen (only real system FS on iOS).
+    // Must stay synchronous with the tap — handled in toggleFullscreen.
+    if (isIosLikeBrowser()) {
+        if (canUseIosVideoFullscreen() && enterIosVideoFullscreen()) {
+            return true;
+        }
+        return enterImmersiveFullscreen();
+    }
+    if (canRequestNativeFullscreen()) {
         const ok = await tryNativeFullscreen();
         if (ok) {
             await new Promise((r) => setTimeout(r, 50));
@@ -2327,6 +2519,9 @@ async function enterFullscreen() {
 
 async function exitFullscreen() {
     if (typeof document === 'undefined') return false;
+    if (isIosVideoFullscreenActive()) {
+        exitIosVideoFullscreen();
+    }
     if (isNativeFullscreenActive()) {
         await exitNativeFullscreen();
     }
@@ -2338,17 +2533,39 @@ async function exitFullscreen() {
 }
 
 async function toggleFullscreen() {
-    // Native FS first: Mac sets display-mode:fullscreen while natively fullscreen,
-    // which must NOT be confused with an installed PWA (that bug made Exit a no-op).
-    if (isNativeFullscreenActive() || immersiveFullscreenActive) {
+    if (
+        isNativeFullscreenActive() ||
+        isIosVideoFullscreenActive() ||
+        immersiveFullscreenActive
+    ) {
         await exitFullscreen();
-    } else if (isStandaloneDisplayMode()) {
-        // Home-screen / installed PWAs are already fullscreen.
+        updateFullscreenButtons();
+        if (typeof resizeCanvas === 'function') {
+            setTimeout(() => resizeCanvas(), 80);
+        }
+        return;
+    }
+    if (isStandaloneDisplayMode()) {
         updateFullscreenButtons();
         return;
-    } else {
-        await enterFullscreen();
     }
+
+    // iOS: call video.webkitEnterFullscreen in this same turn as the tap.
+    // Any await before it drops the user-gesture and FS silently fails.
+    if (isIosLikeBrowser()) {
+        if (canUseIosVideoFullscreen() && enterIosVideoFullscreen()) {
+            updateFullscreenButtons();
+            return;
+        }
+        enterImmersiveFullscreen();
+        updateFullscreenButtons();
+        if (typeof resizeCanvas === 'function') {
+            setTimeout(() => resizeCanvas(), 80);
+        }
+        return;
+    }
+
+    await enterFullscreen();
     updateFullscreenButtons();
     if (typeof resizeCanvas === 'function') {
         setTimeout(() => resizeCanvas(), 80);
