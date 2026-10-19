@@ -267,12 +267,19 @@ class JoystickController {
         );
         let x;
         let y;
+        const layout =
+            typeof getLayoutViewportSize === 'function'
+                ? getLayoutViewportSize()
+                : {
+                      w: window.innerWidth,
+                      h: window.innerHeight,
+                  };
         if (landscape) {
-            x = window.innerWidth - Math.max(24, half) - half;
-            y = window.innerHeight / 2;
+            x = layout.w - Math.max(24, half) - half;
+            y = layout.h / 2;
         } else {
-            x = window.innerWidth / 2;
-            y = window.innerHeight - 16 - half;
+            x = layout.w / 2;
+            y = layout.h - 16 - half;
         }
         this.placeVisualAt(x, y);
     }

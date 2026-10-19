@@ -459,8 +459,11 @@ function updateRotateHint() {
         GAME_STATE.gameMode === 'online' &&
         typeof netManager !== 'undefined' &&
         netManager?.isClient;
-    const isPortrait =
-        typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+    const layoutSize =
+        typeof getLayoutViewportSize === 'function'
+            ? getLayoutViewportSize()
+            : { w: window.innerWidth, h: window.innerHeight };
+    const isPortrait = layoutSize.h > layoutSize.w;
     const hostIsWidescreen =
         typeof GAME_STATE !== 'undefined' &&
         (GAME_STATE.hostW || 1512) > (GAME_STATE.hostH || 900);
@@ -481,26 +484,57 @@ function updateRotateHint() {
     }
 }
 
+/**
+ * Visible layout size. Prefer visualViewport so iOS Chrome/Safari toolbar
+ * show/hide matches what the player actually sees (same idea as 100dvh).
+ * @returns {{ w: number, h: number }}
+ */
+function getLayoutViewportSize() {
+    if (typeof window === 'undefined') return { w: 1512, h: 900 };
+    const vv = window.visualViewport;
+    if (vv && vv.width > 0 && vv.height > 0) {
+        return {
+            w: Math.max(1, Math.round(vv.width)),
+            h: Math.max(1, Math.round(vv.height)),
+        };
+    }
+    return {
+        w: Math.max(
+            1,
+            Math.round(
+                window.innerWidth ||
+                    document.documentElement?.clientWidth ||
+                    1512,
+            ),
+        ),
+        h: Math.max(
+            1,
+            Math.round(
+                window.innerHeight ||
+                    document.documentElement?.clientHeight ||
+                    900,
+            ),
+        ),
+    };
+}
+
+/** Keep CSS --app-* in sync with visualViewport (100dvh-equivalent). */
+function syncAppViewportCss(layout = getLayoutViewportSize()) {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    root.style.setProperty('--app-width', `${layout.w}px`);
+    root.style.setProperty('--app-height', `${layout.h}px`);
+    root.style.setProperty('--app-vh', `${layout.h * 0.01}px`);
+}
+
 function resizeCanvas() {
     initCanvasElements();
     if (!canvas) return;
 
-    // Prefer visualViewport while immersive FS is active so iPhone Chrome/Safari
-    // size to the chrome-collapsed viewport (works on any deployment host).
-    const useImmersiveVv =
-        typeof window !== 'undefined' &&
-        window._immersiveFullscreenActive &&
-        window.visualViewport;
-    const rawW = useImmersiveVv
-        ? Math.max(1, Math.round(window.visualViewport.width))
-        : typeof window !== 'undefined'
-          ? window.innerWidth || document.documentElement.clientWidth || 1512
-          : 1512;
-    const rawH = useImmersiveVv
-        ? Math.max(1, Math.round(window.visualViewport.height))
-        : typeof window !== 'undefined'
-          ? window.innerHeight || document.documentElement.clientHeight || 900
-          : 900;
+    const layout = getLayoutViewportSize();
+    syncAppViewportCss(layout);
+    const rawW = layout.w;
+    const rawH = layout.h;
     const isOnlineClient =
         typeof GAME_STATE !== 'undefined' &&
         GAME_STATE.gameMode === 'online' &&
@@ -682,10 +716,15 @@ function resizeCanvas() {
 }
 
 if (typeof window !== 'undefined') {
-    window.addEventListener('resize', resizeCanvas);
+    const onViewportChange = () => resizeCanvas();
+    window.addEventListener('resize', onViewportChange);
     window.addEventListener('orientationchange', () => {
         setTimeout(resizeCanvas, 120);
     });
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', onViewportChange);
+        window.visualViewport.addEventListener('scroll', onViewportChange);
+    }
     if (document.readyState === 'loading') {
         window.addEventListener('DOMContentLoaded', resizeCanvas);
     } else {
@@ -1935,6 +1974,8 @@ if (typeof window !== 'undefined') {
     window.STANDARD_ARENA_W = STANDARD_ARENA_W;
     window.STANDARD_ARENA_H = STANDARD_ARENA_H;
     window.resizeCanvas = resizeCanvas;
+    window.getLayoutViewportSize = getLayoutViewportSize;
+    window.syncAppViewportCss = syncAppViewportCss;
     window.dismissRotateHint = dismissRotateHint;
     window.updateRotateHint = updateRotateHint;
     window.shadeHex = shadeHex;

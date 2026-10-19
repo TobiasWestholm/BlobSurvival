@@ -1467,7 +1467,11 @@ function adjustTipTextLayout() {
     }
 
     // Multi-panel layout (2+ players on PC)
-    const midX = window.innerWidth / 2;
+    const layoutW =
+        typeof getLayoutViewportSize === 'function'
+            ? getLayoutViewportSize().w
+            : window.innerWidth;
+    const midX = layoutW / 2;
     const leftPanels = panels.filter((p) => {
         const r = p.getBoundingClientRect();
         return r.left + r.width / 2 < midX;
@@ -1483,7 +1487,7 @@ function adjustTipTextLayout() {
         if (r.right > maxLeftEdge) maxLeftEdge = r.right;
     }
 
-    let minRightEdge = window.innerWidth;
+    let minRightEdge = layoutW;
     for (const p of rightPanels) {
         const r = p.getBoundingClientRect();
         if (r.left < minRightEdge) minRightEdge = r.left;
@@ -2331,21 +2335,21 @@ function ensureImmersiveSpacer() {
 
 function syncImmersiveViewportCss() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
-    const vv = window.visualViewport;
-    // Prefer the largest useful height so the canvas fills chrome-collapsed space.
-    const layoutH =
-        window.innerHeight || document.documentElement.clientHeight || 0;
-    const vvH = vv ? vv.height : 0;
-    const vvW = vv ? vv.width : 0;
-    const w = Math.max(
-        1,
-        Math.round(vvW || window.innerWidth || document.documentElement.clientWidth || 1),
-    );
-    const h = Math.max(1, Math.round(Math.max(layoutH, vvH) || 1));
-    const root = document.documentElement;
-    root.style.setProperty('--app-width', `${w}px`);
-    root.style.setProperty('--app-height', `${h}px`);
-    root.style.setProperty('--app-vh', `${h * 0.01}px`);
+    if (typeof syncAppViewportCss === 'function') {
+        syncAppViewportCss();
+    } else {
+        const layout =
+            typeof getLayoutViewportSize === 'function'
+                ? getLayoutViewportSize()
+                : {
+                      w: window.innerWidth || 1,
+                      h: window.innerHeight || 1,
+                  };
+        const root = document.documentElement;
+        root.style.setProperty('--app-width', `${layout.w}px`);
+        root.style.setProperty('--app-height', `${layout.h}px`);
+        root.style.setProperty('--app-vh', `${layout.h * 0.01}px`);
+    }
     window._immersiveFullscreenActive = immersiveFullscreenActive;
 }
 
