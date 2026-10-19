@@ -1467,11 +1467,7 @@ function adjustTipTextLayout() {
     }
 
     // Multi-panel layout (2+ players on PC)
-    const layoutW =
-        typeof getLayoutViewportSize === 'function'
-            ? getLayoutViewportSize().w
-            : window.innerWidth;
-    const midX = layoutW / 2;
+    const midX = window.innerWidth / 2;
     const leftPanels = panels.filter((p) => {
         const r = p.getBoundingClientRect();
         return r.left + r.width / 2 < midX;
@@ -1487,7 +1483,7 @@ function adjustTipTextLayout() {
         if (r.right > maxLeftEdge) maxLeftEdge = r.right;
     }
 
-    let minRightEdge = layoutW;
+    let minRightEdge = window.innerWidth;
     for (const p of rightPanels) {
         const r = p.getBoundingClientRect();
         if (r.left < minRightEdge) minRightEdge = r.left;
@@ -1938,24 +1934,9 @@ function updateFpsToggleBtn() {
     }
 }
 
-// ---------------- Full screen (native API + iOS video fullscreen) ----------------
-// Desktop/Android: Element.requestFullscreen().
-// iPhone: WebKit blocks element fullscreen. YouTube-style FS uses
-// HTMLVideoElement.webkitEnterFullscreen() with a canvas.captureStream() feed.
-// Immersive scroll is only a last-resort fallback if video FS is unavailable.
-
-/** @type {boolean} */
-let immersiveFullscreenActive = false;
-/** @type {ReturnType<typeof setTimeout>|null} */
-let immersiveFsLockTimer = null;
-/** @type {boolean} */
-let immersiveFsListenersBound = false;
-/** @type {HTMLVideoElement|null} */
-let iosFsVideo = null;
-/** @type {MediaStream|null} */
-let iosFsStream = null;
-/** @type {boolean} */
-let iosVideoFsActive = false;
+// ---------------- Full screen (native Fullscreen API only) ----------------
+// Shown only when the browser supports Element.requestFullscreen (desktop/Android).
+// iPhone/WebKit lacks this API — no button, no video/immersive fallbacks.
 
 function getFullscreenElement() {
     if (typeof document === 'undefined') return null;
@@ -1973,226 +1954,8 @@ function isNativeFullscreenActive() {
     return Boolean(getFullscreenElement() || document.webkitIsFullScreen);
 }
 
-/** Installed home-screen / PWA only — NOT browser fullscreen display-mode. */
-function isStandaloneDisplayMode() {
-    try {
-        const nav = /** @type {Navigator & { standalone?: boolean }} */ (
-            typeof window !== 'undefined' ? window.navigator : null
-        );
-        if (nav?.standalone) return true;
-        if (
-            typeof window !== 'undefined' &&
-            window.matchMedia &&
-            window.matchMedia('(display-mode: standalone)').matches
-        ) {
-            return true;
-        }
-    } catch {
-        // ignore
-    }
-    return false;
-}
-
-/** iPhone/iPod (and iPad pretending to be Mac). Native FS is unusable here. */
-function isIosLikeBrowser() {
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent || '';
-    if (/iPhone|iPod/i.test(ua)) return true;
-    // iPadOS 13+ desktop UA
-    if (
-        navigator.platform === 'MacIntel' &&
-        typeof navigator.maxTouchPoints === 'number' &&
-        navigator.maxTouchPoints > 1
-    ) {
-        return true;
-    }
-    return /iPad/i.test(ua);
-}
-
-function isIosVideoFullscreenActive() {
-    if (iosVideoFsActive) return true;
-    const v = iosFsVideo;
-    if (v && /** @type {any} */ (v).webkitDisplayingFullscreen) return true;
-    return false;
-}
-
 function isFullscreenActive() {
-    if (typeof document === 'undefined') return false;
-    if (isNativeFullscreenActive()) return true;
-    if (isIosVideoFullscreenActive()) return true;
-    if (immersiveFullscreenActive) return true;
-    return isStandaloneDisplayMode();
-}
-
-function canUseIosVideoFullscreen() {
-    if (!isIosLikeBrowser() || typeof document === 'undefined') return false;
-    const canvas = /** @type {HTMLCanvasElement|null} */ (
-        document.getElementById('gameCanvas')
-    );
-    if (!canvas || typeof canvas.captureStream !== 'function') return false;
-    const probe = document.createElement('video');
-    const anyProbe = /** @type {any} */ (probe);
-    return (
-        typeof anyProbe.webkitEnterFullscreen === 'function' ||
-        typeof anyProbe.webkitEnterFullScreen === 'function' ||
-        typeof probe.requestFullscreen === 'function'
-    );
-}
-
-function teardownIosFsStream() {
-    if (iosFsStream) {
-        for (const track of iosFsStream.getTracks()) {
-            try {
-                track.stop();
-            } catch {
-                // ignore
-            }
-        }
-        iosFsStream = null;
-    }
-    if (iosFsVideo) {
-        try {
-            iosFsVideo.pause();
-        } catch {
-            // ignore
-        }
-        iosFsVideo.removeAttribute('src');
-        iosFsVideo.srcObject = null;
-        try {
-            iosFsVideo.load();
-        } catch {
-            // ignore
-        }
-    }
-}
-
-function ensureIosFsVideo() {
-    if (typeof document === 'undefined') return null;
-    if (iosFsVideo) return iosFsVideo;
-    const video = document.createElement('video');
-    video.id = 'iosFsVideo';
-    video.muted = true;
-    video.defaultMuted = true;
-    video.playsInline = true;
-    video.setAttribute('playsinline', '');
-    video.setAttribute('webkit-playsinline', '');
-    video.setAttribute('muted', '');
-    video.setAttribute('autoplay', '');
-    // Keep in DOM but invisible until native video fullscreen takes over.
-    video.style.cssText =
-        'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;';
-    document.body.appendChild(video);
-
-    const onBegin = () => {
-        iosVideoFsActive = true;
-        updateFullscreenButtons();
-        if (typeof resizeCanvas === 'function') resizeCanvas();
-    };
-    const onEnd = () => {
-        iosVideoFsActive = false;
-        teardownIosFsStream();
-        updateFullscreenButtons();
-        if (typeof resizeCanvas === 'function') {
-            setTimeout(() => resizeCanvas(), 80);
-        }
-    };
-    video.addEventListener('webkitbeginfullscreen', onBegin);
-    video.addEventListener('webkitendfullscreen', onEnd);
-    video.addEventListener('fullscreenchange', () => {
-        if (document.fullscreenElement === video) onBegin();
-        else if (iosVideoFsActive) onEnd();
-    });
-
-    iosFsVideo = video;
-    return video;
-}
-
-/**
- * YouTube-style iOS fullscreen: stream the game canvas into a <video> and call
- * webkitEnterFullscreen(). Must run directly from a user gesture (no awaits before).
- */
-function enterIosVideoFullscreen() {
-    if (typeof document === 'undefined' || typeof window === 'undefined') {
-        return false;
-    }
-    const canvas = /** @type {HTMLCanvasElement|null} */ (
-        document.getElementById('gameCanvas')
-    );
-    if (!canvas || typeof canvas.captureStream !== 'function') return false;
-
-    const video = ensureIosFsVideo();
-    if (!video) return false;
-    const anyVideo = /** @type {any} */ (video);
-
-    teardownIosFsStream();
-    try {
-        iosFsStream = canvas.captureStream(60);
-    } catch {
-        try {
-            iosFsStream = canvas.captureStream();
-        } catch {
-            return false;
-        }
-    }
-    video.srcObject = iosFsStream;
-
-    // Start playback; do not await — awaiting can drop the iOS user-gesture token
-    // required by webkitEnterFullscreen.
-    try {
-        const playResult = video.play();
-        if (playResult && typeof playResult.catch === 'function') {
-            playResult.catch(() => {});
-        }
-    } catch {
-        // continue — some WebKit builds still allow enterFullscreen
-    }
-
-    try {
-        if (typeof anyVideo.webkitEnterFullscreen === 'function') {
-            anyVideo.webkitEnterFullscreen();
-        } else if (typeof anyVideo.webkitEnterFullScreen === 'function') {
-            anyVideo.webkitEnterFullScreen();
-        } else if (typeof video.requestFullscreen === 'function') {
-            video.requestFullscreen();
-        } else {
-            teardownIosFsStream();
-            return false;
-        }
-    } catch {
-        teardownIosFsStream();
-        return false;
-    }
-
-    iosVideoFsActive = true;
-    updateFullscreenButtons();
-    return true;
-}
-
-function exitIosVideoFullscreen() {
-    const video = iosFsVideo;
-    if (!video) {
-        iosVideoFsActive = false;
-        return false;
-    }
-    const anyVideo = /** @type {any} */ (video);
-    try {
-        if (typeof anyVideo.webkitExitFullscreen === 'function') {
-            anyVideo.webkitExitFullscreen();
-        } else if (typeof anyVideo.webkitExitFullScreen === 'function') {
-            anyVideo.webkitExitFullScreen();
-        } else if (
-            document.fullscreenElement === video &&
-            document.exitFullscreen
-        ) {
-            document.exitFullscreen();
-        }
-    } catch {
-        // ignore
-    }
-    iosVideoFsActive = false;
-    teardownIosFsStream();
-    updateFullscreenButtons();
-    return true;
+    return isNativeFullscreenActive();
 }
 
 function getFullscreenCandidates() {
@@ -2216,13 +1979,35 @@ function elementSupportsFullscreenRequest(el) {
     );
 }
 
+/** Feature-detect: true when the page can enter native fullscreen. */
 function canRequestNativeFullscreen() {
-    if (isIosLikeBrowser()) return false;
+    if (typeof document === 'undefined') return false;
+    // Prefer explicit enabled flags (iPhone reports false).
+    if (typeof document.fullscreenEnabled === 'boolean') {
+        if (!document.fullscreenEnabled) return false;
+    } else if (typeof document.webkitFullscreenEnabled === 'boolean') {
+        if (!document.webkitFullscreenEnabled) return false;
+    } else if (typeof document.mozFullScreenEnabled === 'boolean') {
+        if (!document.mozFullScreenEnabled) return false;
+    } else if (typeof document.msFullscreenEnabled === 'boolean') {
+        if (!document.msFullscreenEnabled) return false;
+    }
     return getFullscreenCandidates().some(elementSupportsFullscreenRequest);
+}
+
+function syncFullscreenCapabilityClass() {
+    if (typeof document === 'undefined') return;
+    document.documentElement.classList.toggle(
+        'can-fullscreen',
+        canRequestNativeFullscreen(),
+    );
 }
 
 function updateFullscreenButtons() {
     if (typeof document === 'undefined') return;
+    syncFullscreenCapabilityClass();
+    if (!canRequestNativeFullscreen()) return;
+
     const active = isFullscreenActive();
     const label = active ? 'Exit Full screen' : 'Enter Full screen';
 
@@ -2321,255 +2106,35 @@ async function exitNativeFullscreen() {
     }
 }
 
-function ensureImmersiveSpacer() {
-    if (typeof document === 'undefined') return null;
-    let spacer = document.getElementById('immersiveFsSpacer');
-    if (!spacer) {
-        spacer = document.createElement('div');
-        spacer.id = 'immersiveFsSpacer';
-        spacer.setAttribute('aria-hidden', 'true');
-        document.body.appendChild(spacer);
-    }
-    return spacer;
-}
-
-function syncImmersiveViewportCss() {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-    if (typeof syncAppViewportCss === 'function') {
-        syncAppViewportCss();
-    } else {
-        const layout =
-            typeof getLayoutViewportSize === 'function'
-                ? getLayoutViewportSize()
-                : {
-                      w: window.innerWidth || 1,
-                      h: window.innerHeight || 1,
-                  };
-        const root = document.documentElement;
-        root.style.setProperty('--app-width', `${layout.w}px`);
-        root.style.setProperty('--app-height', `${layout.h}px`);
-        root.style.setProperty('--app-vh', `${layout.h * 0.01}px`);
-    }
-    window._immersiveFullscreenActive = immersiveFullscreenActive;
-}
-
-function onImmersiveViewportChange() {
-    if (!immersiveFullscreenActive) return;
-    syncImmersiveViewportCss();
-    if (typeof resizeCanvas === 'function') resizeCanvas();
-    updateFullscreenButtons();
-}
-
-function bindImmersiveViewportListeners() {
-    if (immersiveFsListenersBound || typeof window === 'undefined') return;
-    immersiveFsListenersBound = true;
-    const opts = { passive: true };
-    window.addEventListener('resize', onImmersiveViewportChange, opts);
-    window.addEventListener('orientationchange', onImmersiveViewportChange, opts);
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener(
-            'resize',
-            onImmersiveViewportChange,
-            opts,
-        );
-        window.visualViewport.addEventListener(
-            'scroll',
-            onImmersiveViewportChange,
-            opts,
-        );
-    }
-}
-
-function collapseMobileBrowserChrome() {
-    if (typeof window === 'undefined') return;
-    try {
-        // Non-zero scroll is what triggers iOS/Chrome URL-bar collapse.
-        const vv = window.visualViewport;
-        const delta = Math.max(
-            24,
-            Math.round(
-                (window.innerHeight || 0) - (vv?.height || window.innerHeight || 0) + 24,
-            ),
-        );
-        window.scrollTo(0, 0);
-        window.scrollTo(0, delta);
-        document.documentElement.scrollTop = delta;
-        document.body.scrollTop = delta;
-    } catch {
-        // ignore
-    }
-}
-
-function enterImmersiveFullscreen() {
-    if (typeof document === 'undefined' || typeof window === 'undefined') {
-        return false;
-    }
-    if (isStandaloneDisplayMode()) {
-        immersiveFullscreenActive = true;
-        window._immersiveFullscreenActive = true;
-        syncImmersiveViewportCss();
-        updateFullscreenButtons();
-        if (typeof resizeCanvas === 'function') resizeCanvas();
-        return true;
-    }
-
-    immersiveFullscreenActive = true;
-    window._immersiveFullscreenActive = true;
-    bindImmersiveViewportListeners();
-    ensureImmersiveSpacer();
-
-    const root = document.documentElement;
-    root.classList.remove('immersive-fs');
-    root.classList.add('immersive-fs-prep');
-
-    // Collapse chrome while the document is still scrollable. Do NOT scroll back
-    // to 0 afterward — that restores the iOS address bar.
-    collapseMobileBrowserChrome();
-    requestAnimationFrame(() => {
-        collapseMobileBrowserChrome();
-        syncImmersiveViewportCss();
-        if (typeof resizeCanvas === 'function') resizeCanvas();
-    });
-
-    if (immersiveFsLockTimer) clearTimeout(immersiveFsLockTimer);
-    let passes = 0;
-    const finishLock = () => {
-        if (!immersiveFullscreenActive) return;
-        passes += 1;
-        collapseMobileBrowserChrome();
-        syncImmersiveViewportCss();
-        if (typeof resizeCanvas === 'function') resizeCanvas();
-        updateFullscreenButtons();
-
-        if (passes < 4) {
-            immersiveFsLockTimer = window.setTimeout(finishLock, 100);
-            return;
-        }
-        immersiveFsLockTimer = null;
-        // Keep a tiny scroll offset while locking overflow so chrome stays down.
-        root.classList.remove('immersive-fs-prep');
-        root.classList.add('immersive-fs');
-        syncImmersiveViewportCss();
-        if (typeof resizeCanvas === 'function') resizeCanvas();
-        updateFullscreenButtons();
-    };
-    immersiveFsLockTimer = window.setTimeout(finishLock, 50);
-
-    syncImmersiveViewportCss();
-    updateFullscreenButtons();
-    if (typeof resizeCanvas === 'function') resizeCanvas();
-    return true;
-}
-
-function exitImmersiveFullscreen() {
-    if (typeof document === 'undefined') return false;
-    immersiveFullscreenActive = false;
-    if (typeof window !== 'undefined') {
-        window._immersiveFullscreenActive = false;
-    }
-    if (immersiveFsLockTimer) {
-        clearTimeout(immersiveFsLockTimer);
-        immersiveFsLockTimer = null;
-    }
-    const root = document.documentElement;
-    root.classList.remove('immersive-fs-prep', 'immersive-fs');
-    root.style.removeProperty('--app-width');
-    root.style.removeProperty('--app-height');
-    root.style.removeProperty('--app-vh');
-    const spacer = document.getElementById('immersiveFsSpacer');
-    if (spacer) spacer.remove();
-    try {
-        window.scrollTo(0, 0);
-    } catch {
-        // ignore
-    }
-    updateFullscreenButtons();
-    if (typeof resizeCanvas === 'function') {
-        setTimeout(() => resizeCanvas(), 80);
-    }
-    return true;
-}
-
 async function enterFullscreen() {
-    if (typeof document === 'undefined') return false;
-    if (isStandaloneDisplayMode()) {
-        immersiveFullscreenActive = true;
-        if (typeof window !== 'undefined') {
-            window._immersiveFullscreenActive = true;
-        }
-        updateFullscreenButtons();
-        return true;
-    }
-    // iPhone: YouTube-style video fullscreen (only real system FS on iOS).
-    // Must stay synchronous with the tap — handled in toggleFullscreen.
-    if (isIosLikeBrowser()) {
-        if (canUseIosVideoFullscreen() && enterIosVideoFullscreen()) {
+    if (!canRequestNativeFullscreen()) return false;
+    const ok = await tryNativeFullscreen();
+    if (ok) {
+        await new Promise((r) => setTimeout(r, 50));
+        if (isNativeFullscreenActive()) {
+            updateFullscreenButtons();
             return true;
         }
-        return enterImmersiveFullscreen();
     }
-    if (canRequestNativeFullscreen()) {
-        const ok = await tryNativeFullscreen();
-        if (ok) {
-            await new Promise((r) => setTimeout(r, 50));
-            if (isNativeFullscreenActive()) {
-                updateFullscreenButtons();
-                return true;
-            }
-        }
-    }
-    return enterImmersiveFullscreen();
+    return false;
 }
 
 async function exitFullscreen() {
     if (typeof document === 'undefined') return false;
-    if (isIosVideoFullscreenActive()) {
-        exitIosVideoFullscreen();
-    }
     if (isNativeFullscreenActive()) {
         await exitNativeFullscreen();
-    }
-    if (immersiveFullscreenActive) {
-        exitImmersiveFullscreen();
     }
     updateFullscreenButtons();
     return true;
 }
 
 async function toggleFullscreen() {
-    if (
-        isNativeFullscreenActive() ||
-        isIosVideoFullscreenActive() ||
-        immersiveFullscreenActive
-    ) {
+    if (!canRequestNativeFullscreen()) return;
+    if (isNativeFullscreenActive()) {
         await exitFullscreen();
-        updateFullscreenButtons();
-        if (typeof resizeCanvas === 'function') {
-            setTimeout(() => resizeCanvas(), 80);
-        }
-        return;
+    } else {
+        await enterFullscreen();
     }
-    if (isStandaloneDisplayMode()) {
-        updateFullscreenButtons();
-        return;
-    }
-
-    // iOS: call video.webkitEnterFullscreen in this same turn as the tap.
-    // Any await before it drops the user-gesture and FS silently fails.
-    if (isIosLikeBrowser()) {
-        if (canUseIosVideoFullscreen() && enterIosVideoFullscreen()) {
-            updateFullscreenButtons();
-            return;
-        }
-        enterImmersiveFullscreen();
-        updateFullscreenButtons();
-        if (typeof resizeCanvas === 'function') {
-            setTimeout(() => resizeCanvas(), 80);
-        }
-        return;
-    }
-
-    await enterFullscreen();
     updateFullscreenButtons();
     if (typeof resizeCanvas === 'function') {
         setTimeout(() => resizeCanvas(), 80);
@@ -2579,8 +2144,10 @@ async function toggleFullscreen() {
 function initFullscreenControls() {
     if (typeof document === 'undefined') return;
 
-    if (typeof window !== 'undefined') {
-        window._immersiveFullscreenActive = false;
+    syncFullscreenCapabilityClass();
+    if (!canRequestNativeFullscreen()) {
+        updateFullscreenButtons();
+        return;
     }
 
     const onFsChange = () => {
@@ -2594,18 +2161,12 @@ function initFullscreenControls() {
     document.addEventListener('mozfullscreenchange', onFsChange);
     document.addEventListener('MSFullscreenChange', onFsChange);
 
-    /** @type {number} */
-    let lastFsToggleAt = 0;
     const bindToggle = (id) => {
         const btn = document.getElementById(id);
         if (!btn) return;
         const handler = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            // Debounce: iOS can synthesize click after touchend.
-            const now = Date.now();
-            if (now - lastFsToggleAt < 350) return;
-            lastFsToggleAt = now;
             toggleFullscreen();
         };
         btn.addEventListener('click', handler);
