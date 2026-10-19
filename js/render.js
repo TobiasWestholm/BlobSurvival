@@ -23,19 +23,19 @@ const MOBILE_BLOB_WORLD_R = 15;
 const MOBILE_ZOOM_IN_BLOB_RADIUS_PX = 15;
 /** Soft follow: higher = snappier. Deadzone keeps the blob off strict center. */
 const MOBILE_CAM_FOLLOW = 5.5;
-const MOBILE_CAM_DEADZONE = 0.4; // fraction of view from each edge before camera moves
+const MOBILE_CAM_DEADZONE = 0.3; // fraction of view from each edge before camera moves
 /** Assertive zoom step lerp (higher = snappier snap between discrete levels). */
 const MOBILE_ZOOM_FOLLOW = 9;
-/** Discrete zoom levels: 0 = max out (fit one arena dim), last = max in. */
-const MOBILE_ZOOM_STEP_COUNT = 3;
+/** Discrete zoom levels: 0 = max out (fit one arena dim), 1 = max in. */
+const MOBILE_ZOOM_STEP_COUNT = 2;
 /**
  * Hysteresis gates (total alive battlefield entities).
  * UP[i] = count needed to leave step i toward zoom-in (i → i+1).
  * DOWN[i] = count needed to leave step i+1 toward zoom-out (i+1 → i).
  * DOWN < UP so the zoom does not chatter at band edges.
  */
-const MOBILE_ZOOM_STEP_UP = [70, 200];
-const MOBILE_ZOOM_STEP_DOWN = [40, 140];
+const MOBILE_ZOOM_STEP_UP = [70];
+const MOBILE_ZOOM_STEP_DOWN = [40];
 const MOBILE_ZOOM_STEP_COOLDOWN_MS = 550;
 
 /** Canvas buffer size (phone pixels when mobile camera is on; else equals W/H). */
@@ -213,8 +213,9 @@ function getMobileMaxZoomIn() {
     const zBlob =
         MOBILE_ZOOM_IN_BLOB_RADIUS_PX / Math.max(1, MOBILE_BLOB_WORLD_R);
     const zOut = getMobileMaxZoomOut();
-    // Cover can exceed the blob target on large tablets — stay tighter than out
-    return Math.max(zBlob, zOut * 1.06);
+    // Former 3-step middle (halfway to the old blob/cover max-in) is now max-in.
+    const oldMaxIn = Math.max(zBlob, zOut * 1.06);
+    return zOut + (oldMaxIn - zOut) * 0.5;
 }
 
 function getMobileZoomForStep(step) {
@@ -732,8 +733,16 @@ function drawBattlefieldBorder(now) {
     const hostW = GAME_STATE.hostW || W;
     const hostH = GAME_STATE.hostH || H;
 
-    // Render boundary on clients or whenever battlefield bounds differ from canvas
-    if (!isOnlineClient && hostW === W && hostH === H) return;
+    // Online clients + letterboxed hosts need the host bounds mark.
+    // Mobile camera (solo included) pans/zooms a window onto the arena — always show edges.
+    if (
+        !mobileCameraActive &&
+        !isOnlineClient &&
+        hostW === W &&
+        hostH === H
+    ) {
+        return;
+    }
 
     ctx.save();
 
