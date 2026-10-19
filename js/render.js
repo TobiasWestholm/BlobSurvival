@@ -23,7 +23,8 @@ const MOBILE_BLOB_WORLD_R = 15;
 const MOBILE_ZOOM_IN_BLOB_RADIUS_PX = 15;
 /** Soft follow: higher = snappier. Deadzone keeps the blob off strict center. */
 const MOBILE_CAM_FOLLOW = 5.5;
-const MOBILE_CAM_DEADZONE = 0.3; // fraction of view from each edge before camera moves
+const MOBILE_CAM_DEADZONE = 0.3; // fraction of view from each edge (zoomed out)
+const MOBILE_CAM_DEADZONE_ZOOMED_IN = 0.4; // looser band when zoomed in
 /** Assertive zoom step lerp (higher = snappier snap between discrete levels). */
 const MOBILE_ZOOM_FOLLOW = 9;
 /** Discrete zoom levels: 0 = max out (fit one arena dim), 1 = max in. */
@@ -34,7 +35,7 @@ const MOBILE_ZOOM_STEP_COUNT = 2;
  * DOWN[i] = count needed to leave step i+1 toward zoom-out (i+1 → i).
  * DOWN < UP so the zoom does not chatter at band edges.
  */
-const MOBILE_ZOOM_STEP_UP = [70];
+const MOBILE_ZOOM_STEP_UP = [120];
 const MOBILE_ZOOM_STEP_DOWN = [40];
 const MOBILE_ZOOM_STEP_COOLDOWN_MS = 550;
 
@@ -311,8 +312,29 @@ function applyMobileZoomToward(targetZoom, dt, focusX, focusY) {
         next = targetZoom;
     }
     if (focusX != null && focusY != null) {
-        const sx = (focusX - camX) * oldZ;
-        const sy = (focusY - camY) * oldZ;
+        let sx = (focusX - camX) * oldZ;
+        let sy = (focusY - camY) * oldZ;
+
+        // Zooming in keeps screen focus locked — pull it into the 40% deadzone
+        // so a blob on the 30% edge does not stay there after the zoom.
+        const zoomInTarget = getMobileZoomForStep(MOBILE_ZOOM_STEP_COUNT - 1);
+        if (targetZoom >= zoomInTarget - 1e-9 && next > oldZ) {
+            const dz = MOBILE_CAM_DEADZONE_ZOOMED_IN;
+            const minSx = viewW * dz;
+            const maxSx = viewW * (1 - dz);
+            const minSy = viewH * dz;
+            const maxSy = viewH * (1 - dz);
+            const wantSx = Math.max(minSx, Math.min(maxSx, sx));
+            const wantSy = Math.max(minSy, Math.min(maxSy, sy));
+            if (next === targetZoom) {
+                sx = wantSx;
+                sy = wantSy;
+            } else {
+                sx += (wantSx - sx) * k;
+                sy += (wantSy - sy) * k;
+            }
+        }
+
         camZoom = next;
         camX = focusX - sx / camZoom;
         camY = focusY - sy / camZoom;
@@ -376,7 +398,10 @@ function updateMobileCamera(now) {
     }
 
     const { vw, vh } = getViewWorldSize();
-    const dz = MOBILE_CAM_DEADZONE;
+    const dz =
+        mobileZoomStep >= MOBILE_ZOOM_STEP_COUNT - 1
+            ? MOBILE_CAM_DEADZONE_ZOOMED_IN
+            : MOBILE_CAM_DEADZONE;
     const deadL = vw * dz;
     const deadR = vw * (1 - dz);
     const deadT = vh * dz;
@@ -931,7 +956,7 @@ function draw(now) {
     }
 
     // subtle grid (single path / single stroke) — only cells overlapping the view
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
     ctx.lineWidth = 1;
     const grid = 80;
     const vb = getViewCullBounds();
@@ -1267,6 +1292,8 @@ function draw(now) {
 
     // Offline teammates: edge arrows on the phone bezel (online + mobile camera only)
     drawOffscreenPlayerEdgeIndicators(now);
+    // Off-screen health packs: same bezel arrows whenever the phone camera is active
+    drawOffscreenHealthPackEdgeIndicators();
 }
 
 /**
@@ -1399,6 +1426,68 @@ function drawOffscreenPlayerEdgeIndicators(now) {
             ctx.lineTo(blobX - xArm, xArm);
             ctx.stroke();
         }
+        ctx.restore();
+    }
+}
+
+/**
+ * Point to off-screen HealthPacks along the phone bezel (solo + multiplayer mobile).
+ */
+function drawOffscreenHealthPackEdgeIndicators() {
+    if (!mobileCameraActive || !ctx) return;
+    if (typeof GAME_STATE === 'undefined' || !GAME_STATE.gems) return;
+    if (typeof HealthPack === 'undefined') return;
+    const state = GAME_STATE.current;
+    if (
+        state !== STATES.GAMEPLAY &&
+        state !== STATES.COUNTDOWN &&
+        state !== STATES.LEVEL_UP &&
+        state !== STATES.WEAPON_SELECT
+    ) {
+        return;
+    }
+
+    resetScreenTransform();
+    const arrowLen = 6;
+    const packR = 5;
+    const gems = GAME_STATE.gems;
+
+    for (let i = 0; i < gems.length; i++) {
+        const g = gems[i];
+        if (!(g instanceof HealthPack)) continue;
+
+        const edge = worldToScreenEdge(g.x, g.y, 0);
+        if (!edge) continue;
+
+        ctx.save();
+        ctx.translate(edge.x, edge.y);
+        ctx.rotate(edge.angle);
+
+        // Arrow flush with the bezel
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-arrowLen, -4.5);
+        ctx.lineTo(-arrowLen, 4.5);
+        ctx.closePath();
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = '#ff1155';
+        ctx.fill();
+        ctx.strokeStyle = '#0a0a0f';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Mini health-pack cross just inside the arrow
+        const cx = -(arrowLen + packR + 0.5);
+        const size = packR * 1.6;
+        ctx.fillStyle = '#ff1155';
+        ctx.shadowColor = '#ff1155';
+        ctx.shadowBlur = 6;
+        ctx.fillRect(cx - size / 2, -size / 2, size, size);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(cx - size * 0.35, -size * 0.1, size * 0.7, size * 0.2);
+        ctx.fillRect(cx - size * 0.1, -size * 0.35, size * 0.2, size * 0.7);
+
         ctx.restore();
     }
 }
@@ -1952,6 +2041,8 @@ if (typeof window !== 'undefined') {
     window.drawPlayerFocusArrow = drawPlayerFocusArrow;
     window.drawOffscreenPlayerEdgeIndicators =
         drawOffscreenPlayerEdgeIndicators;
+    window.drawOffscreenHealthPackEdgeIndicators =
+        drawOffscreenHealthPackEdgeIndicators;
     window.drawKeyboardKeyCluster = drawKeyboardKeyCluster;
     window.drawKeyCapCanvas = drawKeyCapCanvas;
     window.noteMovementHintFirstMove = noteMovementHintFirstMove;

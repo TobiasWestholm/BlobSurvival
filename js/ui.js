@@ -1934,6 +1934,29 @@ function updateFpsToggleBtn() {
     }
 }
 
+function isFpsCapEnabled() {
+    return typeof window === 'undefined' || window.FPS_CAP_ENABLED !== false;
+}
+
+function updateFpsCapToggleBtn() {
+    const btn = document.getElementById('fpsCapToggleBtn');
+    const label = document.getElementById('fpsCapToggleBtnLabel');
+    if (!btn) return;
+    const capped = isFpsCapEnabled();
+    if (label) {
+        label.textContent = `60 FPS Cap: ${capped ? 'ON' : 'OFF'}`;
+    }
+    if (capped) {
+        btn.classList.remove('disabled-state');
+    } else {
+        btn.classList.add('disabled-state');
+    }
+    btn.title = capped
+        ? 'Unlock frame rate (display refresh)'
+        : 'Cap simulation & draw at 60 FPS';
+    btn.setAttribute('aria-label', btn.title);
+}
+
 // ---------------- Full screen (native Fullscreen API only) ----------------
 // Shown only when the browser supports Element.requestFullscreen (desktop/Android).
 // iPhone/WebKit lacks this API — no button, no video/immersive fallbacks.
@@ -2253,6 +2276,7 @@ function togglePause() {
             }
 
             updateFpsToggleBtn();
+            updateFpsCapToggleBtn();
             const zone =
                 document.getElementById('joystickZone') ||
                 (typeof joystickZone !== 'undefined'
@@ -2283,6 +2307,7 @@ function togglePause() {
                   : null);
         if (zone) zone.style.display = 'none';
         updateFpsToggleBtn();
+        updateFpsCapToggleBtn();
 
         const modal = document.getElementById('pauseModal');
         if (modal) {
@@ -2812,6 +2837,18 @@ function initUISystem() {
         };
     }
 
+    const fpsCapToggleBtn = document.getElementById('fpsCapToggleBtn');
+    if (fpsCapToggleBtn) {
+        fpsCapToggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (typeof window !== 'undefined') {
+                window.FPS_CAP_ENABLED = !isFpsCapEnabled();
+                updateFpsCapToggleBtn();
+            }
+        };
+    }
+    updateFpsCapToggleBtn();
+
     const pauseMenuBtn = document.getElementById('pauseMenuBtn');
     if (pauseMenuBtn) {
         pauseMenuBtn.onclick = togglePause;
@@ -2906,6 +2943,7 @@ if (typeof window !== 'undefined') {
     window.showStartMenu = showStartMenu;
     window.joinOnlineRoom = joinOnlineRoom;
     window.updateFpsToggleBtn = updateFpsToggleBtn;
+    window.updateFpsCapToggleBtn = updateFpsCapToggleBtn;
     window.togglePause = togglePause;
     window.updatePauseMenuButtonIcon = updatePauseMenuButtonIcon;
     window.isFullscreenActive = isFullscreenActive;

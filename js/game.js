@@ -202,8 +202,12 @@ function startGame(playerCount, difficultyKey) {
 let lastFrameTime = performance.now();
 let mainRafId = null;
 // Cap both simulation and canvas draws at 60 Hz (ProMotion/120 Hz displays skip surplus frames).
+// Mutable via window.FPS_CAP_ENABLED (pause menu); network send rates stay independent.
 const TARGET_SIM_DRAW_HZ = 60;
 const TARGET_FRAME_MS = 1000 / TARGET_SIM_DRAW_HZ;
+if (typeof window !== 'undefined' && window.FPS_CAP_ENABLED === undefined) {
+    window.FPS_CAP_ENABLED = true;
+}
 // Gameplay clock: only advances during GAMEPLAY, so meteor falls, shooter cooldowns,
 // revive timers, weapon/projectile/hazard timing all freeze on the upgrade/countdown screens.
 let gameClock = 0;
@@ -570,9 +574,11 @@ function loop(now) {
         mainRafId = requestAnimationFrame(loop);
     }
 
-    // Drop surplus frames above 60 Hz (sim + draw share this gate)
+    // Drop surplus frames above 60 Hz (sim + draw share this gate) unless uncapped
     const elapsed = now - lastFrameTime;
-    if (elapsed < TARGET_FRAME_MS - 1) {
+    const fpsCapOn =
+        typeof window === 'undefined' || window.FPS_CAP_ENABLED !== false;
+    if (fpsCapOn && elapsed < TARGET_FRAME_MS - 1) {
         return;
     }
 

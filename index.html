@@ -234,7 +234,8 @@
         min-width: 0;
         box-sizing: border-box;
     }
-    #fpsToggleBtn {
+    #fpsToggleBtn,
+    #fpsCapToggleBtn {
         background: rgba(20, 20, 20, 0.85);
         color: #00ffcc;
         border: 1px solid #00ffcc;
@@ -255,12 +256,14 @@
         pointer-events: auto;
         box-sizing: border-box;
     }
-    #fpsToggleBtn:hover {
+    #fpsToggleBtn:hover,
+    #fpsCapToggleBtn:hover {
         background: #00ffcc;
         color: #000;
         box-shadow: 0 0 14px rgba(0, 255, 204, 0.6);
     }
-    #fpsToggleBtn.disabled-state {
+    #fpsToggleBtn.disabled-state,
+    #fpsCapToggleBtn.disabled-state {
         color: #888;
         border-color: #555;
         box-shadow: none;
@@ -1829,6 +1832,9 @@
     </div>
     <button type="button" id="fpsToggleBtn" class="disabled-state" title="Toggle FPS & Enemy Counter (1)" aria-label="Toggle FPS & Enemy Counter">
         <span>📊</span> <span id="fpsToggleBtnLabel">FPS & Stats: OFF</span>
+    </button>
+    <button type="button" id="fpsCapToggleBtn" title="Toggle 60 FPS cap" aria-label="Toggle 60 FPS cap">
+        <span>⏱</span> <span id="fpsCapToggleBtnLabel">60 FPS Cap: ON</span>
     </button>
     <button type="button" class="fullscreen-action-btn" id="fullscreenPauseBtn" title="Enter Full screen" aria-label="Enter Full screen">
         <span aria-hidden="true">⛶</span> <span class="fullscreen-label">Enter Full screen</span>
