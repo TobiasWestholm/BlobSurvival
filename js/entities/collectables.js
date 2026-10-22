@@ -64,7 +64,14 @@ class Collectible extends Entity {
             range,
             (p) => p?.isActive?.() && (!filterFn || filterFn(p)),
         );
-        if (!player) return null;
+        if (!player) {
+            // Conditional magnets (e.g. health packs only pull when damaged) must
+            // drop the lock when no eligible target remains. Otherwise a pack that
+            // briefly attracted while mid-air keeps Infinite range forever and
+            // vacuums across the map the next time someone loses HP.
+            if (filterFn) this.attracted = false;
+            return null;
+        }
 
         this.attracted = true;
         const angle = this.angleTo(player);

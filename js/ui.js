@@ -15,6 +15,119 @@ const WEAPON_LABELS = {
     turret: 'Structures',
 };
 
+function getDifficultyKey(diff) {
+    const value = diff !== undefined ? diff : GAME_STATE?.difficulty;
+    if (!value) return 'normal';
+    const raw =
+        typeof value === 'string'
+            ? value
+            : value && typeof value === 'object' && value.name
+              ? value.name
+              : 'normal';
+    const key = String(raw).toLowerCase();
+    return typeof DIFFICULTIES !== 'undefined' && DIFFICULTIES[key]
+        ? key
+        : 'normal';
+}
+
+/** Apply difficulty in lobby/game setup and refresh co-op scaling + accuracy. */
+function applyGameDifficulty(diffKey) {
+    if (typeof GAME_STATE === 'undefined' || typeof DIFFICULTIES === 'undefined')
+        return getDifficultyKey();
+    const key = getDifficultyKey(diffKey);
+    const diff = DIFFICULTIES[key] || DIFFICULTIES.normal;
+    GAME_STATE.difficulty = diff;
+    for (const p of GAME_STATE.players || []) {
+        if (!p) continue;
+        // Preserve Perfect Accuracy (0); everyone else tracks the preset spread
+        if (p.accuracyModifier !== 0) {
+            p.accuracyModifier = diff.accuracy;
+        }
+    }
+    if (typeof recalculateDynamicDifficulty === 'function') {
+        recalculateDynamicDifficulty();
+    }
+    return key;
+}
+
+/**
+ * Host-only: change online lobby difficulty and sync to clients.
+ * Clients ignore this and wait for DIFFICULTY_CHANGED / LOBBY_STATE.
+ */
+function setOnlineLobbyDifficulty(diffKey, { fromNetwork = false } = {}) {
+    if (typeof GAME_STATE === 'undefined') return;
+    if (GAME_STATE.gameMode !== 'online') return;
+    if (
+        GAME_STATE.current !== STATES.WEAPON_SELECT &&
+        GAME_STATE.current !== STATES.START_MENU
+    ) {
+        return;
+    }
+    const isHost =
+        typeof netManager !== 'undefined' && netManager && netManager.isHost;
+    const isClient =
+        typeof netManager !== 'undefined' && netManager && netManager.isClient;
+    if (!fromNetwork && isClient) return;
+    if (!fromNetwork && !isHost && !GAME_STATE.isHost) return;
+
+    const prev = getDifficultyKey();
+    const key = applyGameDifficulty(diffKey);
+    updateLobbyDifficultyUI();
+
+    if (!fromNetwork && isHost && key !== prev) {
+        if (typeof netManager !== 'undefined' && netManager?.broadcast) {
+            netManager.broadcast({
+                type: 'DIFFICULTY_CHANGED',
+                difficulty: key,
+            });
+        }
+        if (typeof showToast === 'function') {
+            const label =
+                (typeof DIFFICULTIES !== 'undefined' &&
+                    DIFFICULTIES[key]?.name) ||
+                key;
+            showToast(`Difficulty set to ${label}`, 2200);
+        }
+    }
+}
+
+function updateLobbyDifficultyUI() {
+    const banner = document.getElementById('lobbyDifficultyBanner');
+    if (!banner) return;
+    const isOnline =
+        typeof GAME_STATE !== 'undefined' && GAME_STATE.gameMode === 'online';
+    const inWeaponSelect =
+        typeof GAME_STATE !== 'undefined' &&
+        typeof STATES !== 'undefined' &&
+        GAME_STATE.current === STATES.WEAPON_SELECT;
+    const isHost =
+        isOnline &&
+        typeof netManager !== 'undefined' &&
+        netManager &&
+        netManager.isHost;
+    const isClient =
+        isOnline &&
+        typeof netManager !== 'undefined' &&
+        netManager &&
+        netManager.isClient;
+
+    if (!isOnline || !inWeaponSelect || (!isHost && !isClient)) {
+        banner.style.display = 'none';
+        banner.classList.remove('is-host');
+        return;
+    }
+
+    banner.style.display = 'block';
+    banner.classList.toggle('is-host', !!isHost);
+    const activeKey = getDifficultyKey();
+    banner.querySelectorAll('[data-lobby-difficulty]').forEach((btn) => {
+        const key = btn.getAttribute('data-lobby-difficulty');
+        btn.classList.toggle('is-active', key === activeKey);
+        btn.disabled = !isHost;
+        btn.setAttribute('aria-pressed', key === activeKey ? 'true' : 'false');
+    });
+}
+
 function startWeaponSelectFlow() {
     if (typeof GAME_STATE === 'undefined') return;
     GAME_STATE.current = STATES.WEAPON_SELECT;
@@ -216,10 +329,13 @@ function renderLobbyWeaponPanels() {
     const lobbyActionStack = document.getElementById('lobbyActionStack');
     const tipEl = document.getElementById('tipText');
 
+    const difficultyBanner = document.getElementById('lobbyDifficultyBanner');
+
     if (isSingle) {
         if (lobbyStartBtn) lobbyStartBtn.style.display = 'none';
         if (inviteBanner) inviteBanner.style.display = 'none';
         if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+        if (difficultyBanner) difficultyBanner.style.display = 'none';
         if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.remove('is-visible');
         if (lobbyActionStack) lobbyActionStack.classList.remove('is-visible');
         const player = GAME_STATE.players?.[0] ? GAME_STATE.players[0] : null;
@@ -234,6 +350,7 @@ function renderLobbyWeaponPanels() {
             lobbyStartBtn.onclick = () => {
                 lobbyStartBtn.style.display = 'none';
                 if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+                if (difficultyBanner) difficultyBanner.style.display = 'none';
                 if (fullscreenLobbyBtn)
                     fullscreenLobbyBtn.classList.remove('is-visible');
                 if (lobbyActionStack)
@@ -244,6 +361,7 @@ function renderLobbyWeaponPanels() {
             };
         }
         if (inviteBanner) inviteBanner.style.display = 'none';
+        if (difficultyBanner) difficultyBanner.style.display = 'none';
         if (howToPlayBanner) howToPlayBanner.style.display = 'block';
         if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.add('is-visible');
         if (lobbyActionStack) lobbyActionStack.classList.add('is-visible');
@@ -283,6 +401,7 @@ function renderLobbyWeaponPanels() {
                     fullscreenLobbyBtn.classList.remove('is-visible');
                 if (lobbyActionStack)
                     lobbyActionStack.classList.remove('is-visible');
+                if (difficultyBanner) difficultyBanner.style.display = 'none';
                 layer.classList.remove('show');
                 if (tipEl) tipEl.style.display = 'none';
                 if (typeof netManager !== 'undefined' && netManager) {
@@ -388,6 +507,7 @@ function renderLobbyWeaponPanels() {
     layer.classList.add('show');
     adjustTipTextLayout();
     updateFullscreenButtons();
+    updateLobbyDifficultyUI();
     if (typeof requestAnimationFrame !== 'undefined') {
         requestAnimationFrame(() => adjustTipTextLayout());
     }
@@ -1802,22 +1922,29 @@ function showStartMenu() {
         GAME_STATE.isHost = false;
         GAME_STATE.isClient = false;
         GAME_STATE.victoryTriggered = false;
-        GAME_STATE.enemies = [];
-        GAME_STATE.activeSentries = [];
-        GAME_STATE.shieldBearers = [];
-        GAME_STATE.attractingVipers = [];
-        GAME_STATE.projectiles = [];
-        GAME_STATE.enemyProjectiles = [];
-        GAME_STATE.hazards = [];
-        GAME_STATE.iceTrails = [];
-        GAME_STATE.terrains = [];
-        GAME_STATE.turrets = [];
-        GAME_STATE.gems = [];
-        GAME_STATE.particles = [];
-        GAME_STATE.firstXpGem = null;
-        GAME_STATE.xpArrowDone = false;
+        GAME_STATE.gameMode = null;
+        GAME_STATE.players = [];
         GAME_STATE.hostW = null;
         GAME_STATE.hostH = null;
+        if (typeof clearBattlefieldState === 'function') {
+            clearBattlefieldState();
+        } else {
+            GAME_STATE.enemies = [];
+            GAME_STATE.activeSentries = [];
+            GAME_STATE.shieldBearers = [];
+            GAME_STATE.attractingVipers = [];
+            GAME_STATE.projectiles = [];
+            GAME_STATE.enemyProjectiles = [];
+            GAME_STATE.hazards = [];
+            GAME_STATE.iceTrails = [];
+            GAME_STATE.terrains = [];
+            GAME_STATE.magneticMines = [];
+            GAME_STATE.turrets = [];
+            GAME_STATE.gems = [];
+            GAME_STATE.particles = [];
+            GAME_STATE.firstXpGem = null;
+            GAME_STATE.xpArrowDone = false;
+        }
     }
     if (typeof netManager !== 'undefined' && netManager) netManager.reset();
 
@@ -1902,6 +2029,11 @@ function showStartMenu() {
     if (inviteBanner) inviteBanner.style.display = 'none';
     const howToPlayBanner = document.getElementById('howToPlayBanner');
     if (howToPlayBanner) howToPlayBanner.style.display = 'none';
+    const difficultyBanner = document.getElementById('lobbyDifficultyBanner');
+    if (difficultyBanner) {
+        difficultyBanner.style.display = 'none';
+        difficultyBanner.classList.remove('is-host');
+    }
     const fullscreenLobbyBtn = document.getElementById('fullscreenLobbyBtn');
     if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.remove('is-visible');
     const lobbyActionStack = document.getElementById('lobbyActionStack');
@@ -2761,6 +2893,17 @@ function initUISystem() {
         }
     }
 
+    // Online lobby difficulty (host can change after room is created)
+    const lobbyDiffBanner = document.getElementById('lobbyDifficultyBanner');
+    if (lobbyDiffBanner) {
+        lobbyDiffBanner.addEventListener('click', (e) => {
+            const btn = e.target?.closest?.('[data-lobby-difficulty]');
+            if (!btn || !lobbyDiffBanner.classList.contains('is-host')) return;
+            const key = btn.getAttribute('data-lobby-difficulty');
+            if (key) setOnlineLobbyDifficulty(key);
+        });
+    }
+
     // Invite Code Banner Click -> Copy URL & Code to clipboard
     const inviteBanner = document.getElementById('inviteCodeBanner');
     if (inviteBanner) {
@@ -2941,6 +3084,10 @@ if (typeof window !== 'undefined') {
     window.getBestScore = getBestScore;
     window.showStartStep = showStartStep;
     window.showStartMenu = showStartMenu;
+    window.getDifficultyKey = getDifficultyKey;
+    window.applyGameDifficulty = applyGameDifficulty;
+    window.setOnlineLobbyDifficulty = setOnlineLobbyDifficulty;
+    window.updateLobbyDifficultyUI = updateLobbyDifficultyUI;
     window.joinOnlineRoom = joinOnlineRoom;
     window.updateFpsToggleBtn = updateFpsToggleBtn;
     window.updateFpsCapToggleBtn = updateFpsCapToggleBtn;

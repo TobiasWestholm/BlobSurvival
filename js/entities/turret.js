@@ -5,6 +5,11 @@ class TurretEntity extends Unit {
             (player?.buildingHealthModifier || 1.0);
         super(x, y, 12, turretMaxHp);
         this.player = player;
+        // Durable owner slot — never reassign via live player-ref fallbacks.
+        // Disconnect despawn keys off this so another player's turrets cannot
+        // be wiped if .player was briefly pointed at the wrong blob.
+        this.ownerIndex =
+            player && typeof player.index === 'number' ? player.index : -1;
         this.spawnTime = now;
         this.duration =
             GAME_CONFIG.TURRET.LIFETIME_SEC *
@@ -44,6 +49,25 @@ class TurretEntity extends Unit {
             this.linkWalls();
         }
     }
+
+    /** Stable ownership check for despawn / network (ignores stale .player refs). */
+    belongsToPlayerIndex(playerIndex) {
+        if (typeof playerIndex !== 'number' || playerIndex < 0) return false;
+        if (typeof this.ownerIndex === 'number' && this.ownerIndex >= 0) {
+            return this.ownerIndex === playerIndex;
+        }
+        return !!(this.player && this.player.index === playerIndex);
+    }
+
+    getOwnerIndex() {
+        if (typeof this.ownerIndex === 'number' && this.ownerIndex >= 0) {
+            return this.ownerIndex;
+        }
+        if (this.player && typeof this.player.index === 'number') {
+            return this.player.index;
+        }
+        return -1;
+    }
     get flameRange() {
         return this.player?.turretFullSweepEnabled
             ? GAME_CONFIG.TURRET.FLAME_SWEEP_RANGE
@@ -57,6 +81,7 @@ class TurretEntity extends Unit {
 
     linkWalls() {
         const MAX_DIST = 300;
+        const myOwner = this.getOwnerIndex();
         const candidates = [];
         for (const tur of GAME_STATE.turrets) {
             if (
@@ -65,6 +90,15 @@ class TurretEntity extends Unit {
                 tur.connections &&
                 tur.connections.length < 2
             ) {
+                // Never cross-link other players' turrets — shared links made
+                // ownership / network expansion look shared on disconnect.
+                if (
+                    myOwner >= 0 &&
+                    typeof tur.getOwnerIndex === 'function' &&
+                    tur.getOwnerIndex() !== myOwner
+                ) {
+                    continue;
+                }
                 const dx = tur.x - this.x;
                 const dy = tur.y - this.y;
                 const d2 = dx * dx + dy * dy;

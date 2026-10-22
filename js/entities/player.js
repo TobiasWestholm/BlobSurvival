@@ -787,7 +787,9 @@ class Player extends Unit {
             const eligibleTurrets = GAME_STATE.turrets.filter(
                 (tur) =>
                     tur.alive &&
-                    tur.player === this &&
+                    (typeof tur.belongsToPlayerIndex === 'function'
+                        ? tur.belongsToPlayerIndex(this.index)
+                        : tur.player === this) &&
                     now - tur.spawnTime > 50,
             );
 
@@ -909,7 +911,11 @@ class Player extends Unit {
 
             const expandingTurrets = GAME_STATE.turrets.filter(
                 (tur) =>
-                    tur.alive && tur.player === this && tur.pendingExpansion,
+                    tur.alive &&
+                    (typeof tur.belongsToPlayerIndex === 'function'
+                        ? tur.belongsToPlayerIndex(this.index)
+                        : tur.player === this) &&
+                    tur.pendingExpansion,
             );
 
             for (const orig of expandingTurrets) {

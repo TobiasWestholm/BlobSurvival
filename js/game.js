@@ -20,6 +20,38 @@ function trimKeepLast(arr, maxLen) {
 }
 
 // ---------------- State control ----------------
+/**
+ * Wipe every entity / attractor list so a new run never inherits leftover
+ * multiplayer client world (esp. magnetic mines that keep pulling monsters
+ * toward old player positions after hazards were discarded).
+ */
+function clearBattlefieldState() {
+    if (typeof GAME_STATE === 'undefined' || !GAME_STATE) return;
+    GAME_STATE.enemies = [];
+    GAME_STATE.activeSentries = [];
+    GAME_STATE.shieldBearers = [];
+    GAME_STATE.attractingVipers = [];
+    GAME_STATE.projectiles = [];
+    GAME_STATE.enemyProjectiles = [];
+    GAME_STATE.hazards = [];
+    GAME_STATE.iceTrails = [];
+    GAME_STATE.terrains = [];
+    GAME_STATE.magneticMines = [];
+    GAME_STATE.turrets = [];
+    GAME_STATE.gems = [];
+    GAME_STATE.particles = [];
+    GAME_STATE.firstXpGem = null;
+    GAME_STATE.xpArrowDone = false;
+    GAME_STATE.siphonCellsOwner = null;
+    if (typeof Enemy !== 'undefined' && Enemy._targetFrame) {
+        Enemy._targetFrame.clock = -1;
+        Enemy._targetFrame.targetable.length = 0;
+        Enemy._targetFrame.martyrAura.length = 0;
+        Enemy._targetFrame.martyrPresence.length = 0;
+        Enemy._targetFrame.hasMartyrPresence = false;
+    }
+}
+
 function startGame(playerCount, difficultyKey) {
     // Local / menu starts stay at MAX_LOCAL_PLAYERS; online lobby grows via net joins.
     const maxLocal =
@@ -27,15 +59,34 @@ function startGame(playerCount, difficultyKey) {
     const n = Math.max(1, Math.min(maxLocal, playerCount));
     const diff = DIFFICULTIES[difficultyKey] || DIFFICULTIES.normal;
     GAME_STATE.difficulty = diff;
-    GAME_STATE.siphonCellsOwner = null;
     GAME_STATE.victoryTriggered = false;
     GAME_STATE.showFps = Boolean(GAME_STATE.testingMode);
 
-    // Reset host dimensions when starting non-client game
-    if (typeof netManager === 'undefined' || !netManager.isClient) {
+    // Offline / local starts must not keep client net flags, sparse remote
+    // player slots, or host arena size from a previous online session.
+    const startingOnline =
+        GAME_STATE.gameMode === 'online' &&
+        typeof netManager !== 'undefined' &&
+        netManager &&
+        (netManager.isHost || netManager.isClient);
+    if (!startingOnline) {
+        if (typeof netManager !== 'undefined' && netManager?.reset) {
+            netManager.reset();
+        }
+        GAME_STATE.isOnline = false;
+        GAME_STATE.isHost = false;
+        GAME_STATE.isClient = false;
+        GAME_STATE.hostW = null;
+        GAME_STATE.hostH = null;
+        if (!GAME_STATE.gameMode || GAME_STATE.gameMode === 'online') {
+            GAME_STATE.gameMode = n > 1 ? 'local' : 'single';
+        }
+    } else if (!netManager.isClient) {
         GAME_STATE.hostW = null;
         GAME_STATE.hostH = null;
     }
+
+    clearBattlefieldState();
 
     // Co-op speed: 1p=1.00, 2p=1.10, 3p=1.15, 4p=1.20, … (then × difficulty).
     // Same formula is used online up to MAX_ONLINE_PLAYERS via recalculateDynamicDifficulty.
@@ -71,22 +122,8 @@ function startGame(playerCount, difficultyKey) {
 
     // Co-op damage scale: 1.5/(n+0.5) × difficulty (identical for 1–4; online uses same via recalculateDynamicDifficulty)
     GAME_STATE.dmgFactor = (1.5 / (n + 0.5)) * diff.dmgMult;
-    GAME_STATE.enemies = [];
-    GAME_STATE.activeSentries = [];
-    GAME_STATE.shieldBearers = [];
-    GAME_STATE.attractingVipers = [];
-    GAME_STATE.projectiles = [];
-    GAME_STATE.enemyProjectiles = [];
-    GAME_STATE.hazards = [];
-    GAME_STATE.iceTrails = [];
-    GAME_STATE.terrains = [];
-    GAME_STATE.turrets = [];
-    GAME_STATE.gems = [];
-    GAME_STATE.firstXpGem = null; // Track first gem for tutorial arrow
-    GAME_STATE.xpArrowDone = false;
     GAME_STATE.movementHintFirstMoveAt = null;
     GAME_STATE.movementHintsDone = false;
-    GAME_STATE.particles = [];
 
     // Recalculate canvas and reset canvas rendering context
     if (typeof resizeCanvas === 'function') {
@@ -1070,6 +1107,7 @@ function setupHostBackgroundKeepAlive() {
 
 if (typeof window !== 'undefined') {
     window.startGame = startGame;
+    window.clearBattlefieldState = clearBattlefieldState;
     window.update = update;
     window.loop = loop;
     window.addXp = addXp;

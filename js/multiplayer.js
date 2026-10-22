@@ -1053,7 +1053,17 @@ class NetworkManager {
             case 'LOBBY_STATE':
                 // Updates connected player list and weapon picks in the lobby
                 if (typeof window.onLobbyStateUpdated === 'function') {
-                    window.onLobbyStateUpdated(data.players, data.allReady);
+                    window.onLobbyStateUpdated(
+                        data.players,
+                        data.allReady,
+                        data.difficulty,
+                    );
+                }
+                break;
+
+            case 'DIFFICULTY_CHANGED':
+                if (typeof window.onLobbyDifficultyChanged === 'function') {
+                    window.onLobbyDifficultyChanged(data.difficulty);
                 }
                 break;
 
@@ -1448,10 +1458,17 @@ class NetworkManager {
     // Host sends lobby status (who is connected and ready)
     broadcastLobbyState(playersState, allReady) {
         if (!this.isHost) return;
+        const difficulty =
+            typeof getDifficultyKey === 'function'
+                ? getDifficultyKey()
+                : typeof GAME_STATE !== 'undefined' && GAME_STATE.difficulty
+                  ? String(GAME_STATE.difficulty.name || 'normal').toLowerCase()
+                  : 'normal';
         const msg = {
             type: 'LOBBY_STATE',
             players: playersState,
             allReady: allReady,
+            difficulty,
         };
         for (const conn of this.connections.values()) {
             if (conn?.open) {
@@ -1574,18 +1591,24 @@ function despawnPlayerEntities(playerIndex) {
     player.wasAliveOnDisconnect = player.alive;
     player.lastInputSeq = 0;
 
-    // 2. Despawn all turrets owned by this player
+    // 2. Despawn all turrets owned by this player (stable ownerIndex first)
     if (GAME_STATE.turrets) {
         for (let i = GAME_STATE.turrets.length - 1; i >= 0; i--) {
             const t = GAME_STATE.turrets[i];
-            if (
-                t.player === player ||
-                (t.player && t.player.index === playerIndex)
-            ) {
+            const owned =
+                typeof t.belongsToPlayerIndex === 'function'
+                    ? t.belongsToPlayerIndex(playerIndex)
+                    : t.ownerIndex === playerIndex ||
+                      t.player === player ||
+                      (t.player && t.player.index === playerIndex);
+            if (!owned) continue;
+            // Prefer despawn/onDeath so laser-wall links unlink cleanly
+            if (typeof t.despawn === 'function') t.despawn();
+            else {
                 t.alive = false;
-                if (typeof t.cleanup === 'function') t.cleanup();
-                GAME_STATE.turrets.splice(i, 1);
+                if (typeof t.onDeath === 'function') t.onDeath();
             }
+            GAME_STATE.turrets.splice(i, 1);
         }
     }
 
@@ -1593,15 +1616,16 @@ function despawnPlayerEntities(playerIndex) {
     if (GAME_STATE.hazards) {
         for (let i = GAME_STATE.hazards.length - 1; i >= 0; i--) {
             const h = GAME_STATE.hazards[i];
-            if (
+            const owned =
+                h.ownerIndex === playerIndex ||
+                h.playerIndex === playerIndex ||
                 h.player === player ||
                 (h.player && h.player.index === playerIndex) ||
-                h.owner === player
-            ) {
-                h.alive = false;
-                if (typeof h.despawn === 'function') h.despawn();
-                GAME_STATE.hazards.splice(i, 1);
-            }
+                h.owner === player;
+            if (!owned) continue;
+            h.alive = false;
+            if (typeof h.despawn === 'function') h.despawn();
+            GAME_STATE.hazards.splice(i, 1);
         }
     }
 
@@ -1611,6 +1635,8 @@ function despawnPlayerEntities(playerIndex) {
             compactAlive(
                 GAME_STATE.magneticMines,
                 (m) =>
+                    m.ownerIndex !== playerIndex &&
+                    m.playerIndex !== playerIndex &&
                     m.player !== player &&
                     (!m.player || m.player.index !== playerIndex),
             );
@@ -1621,14 +1647,15 @@ function despawnPlayerEntities(playerIndex) {
     if (GAME_STATE.projectiles) {
         for (let i = GAME_STATE.projectiles.length - 1; i >= 0; i--) {
             const proj = GAME_STATE.projectiles[i];
-            if (
+            const owned =
+                proj.ownerIndex === playerIndex ||
+                proj.playerIndex === playerIndex ||
                 proj.player === player ||
                 (proj.player && proj.player.index === playerIndex) ||
-                proj.owner === player
-            ) {
-                proj.alive = false;
-                GAME_STATE.projectiles.splice(i, 1);
-            }
+                proj.owner === player;
+            if (!owned) continue;
+            proj.alive = false;
+            GAME_STATE.projectiles.splice(i, 1);
         }
     }
 
@@ -2233,7 +2260,28 @@ window.onUpgradeChosenSync = (playerIndex, upgradeId, upgradeName) => {
     }
 };
 
-window.onLobbyStateUpdated = (playersData, allReady) => {
+window.onLobbyDifficultyChanged = (difficultyName) => {
+    if (typeof setOnlineLobbyDifficulty === 'function') {
+        setOnlineLobbyDifficulty(difficultyName, { fromNetwork: true });
+    } else if (typeof applyGameDifficulty === 'function') {
+        applyGameDifficulty(difficultyName);
+        if (typeof updateLobbyDifficultyUI === 'function') {
+            updateLobbyDifficultyUI();
+        }
+    }
+    if (typeof showToast === 'function' && difficultyName) {
+        const key =
+            typeof getDifficultyKey === 'function'
+                ? getDifficultyKey(difficultyName)
+                : String(difficultyName).toLowerCase();
+        const label =
+            (typeof DIFFICULTIES !== 'undefined' && DIFFICULTIES[key]?.name) ||
+            key;
+        showToast(`Difficulty set to ${label}`, 2200);
+    }
+};
+
+window.onLobbyStateUpdated = (playersData, allReady, difficulty) => {
     if (!playersData) return;
     const activeIndices = new Set(playersData.map((pd) => pd.index));
     const maxOnline =
@@ -2273,6 +2321,14 @@ window.onLobbyStateUpdated = (playersData, allReady) => {
             needsFullRerender = true;
         }
     }
+    // Apply after players exist so new slots get accuracy/dmgFactor for this preset
+    if (difficulty) {
+        if (typeof setOnlineLobbyDifficulty === 'function') {
+            setOnlineLobbyDifficulty(difficulty, { fromNetwork: true });
+        } else if (typeof applyGameDifficulty === 'function') {
+            applyGameDifficulty(difficulty);
+        }
+    }
     if (needsFullRerender) {
         // Full rebuild (join/leave/weapon) — open name edits are restored inside
         renderLobbyWeaponPanels();
@@ -2287,6 +2343,9 @@ window.onLobbyStateUpdated = (playersData, allReady) => {
         if (lobbyStartBtn && typeof allReady === 'boolean') {
             lobbyStartBtn.disabled = !allReady;
         }
+        if (typeof updateLobbyDifficultyUI === 'function') {
+            updateLobbyDifficultyUI();
+        }
     }
 };
 
@@ -2296,6 +2355,13 @@ window.onOnlineCountdownStarted = (isNewGame) => {
     if (tipEl) tipEl.style.display = 'none';
     const inviteBanner = document.getElementById('inviteCodeBanner');
     if (inviteBanner) inviteBanner.style.display = 'none';
+    const difficultyBanner = document.getElementById('lobbyDifficultyBanner');
+    if (difficultyBanner) {
+        difficultyBanner.style.display = 'none';
+        difficultyBanner.classList.remove('is-host');
+    }
+    const lobbyActionStack = document.getElementById('lobbyActionStack');
+    if (lobbyActionStack) lobbyActionStack.classList.remove('is-visible');
     const hostOverlay = document.getElementById('hostPauseOverlay');
     if (hostOverlay) hostOverlay.style.display = 'none';
     if (isNewGame) {
@@ -4443,9 +4509,13 @@ function packWorldSnapshotBinary() {
 
         const tMaxHp = Math.min(65535, Math.round(t.maxHp || 100));
         const tOwner =
-            t.player && t.player.index !== undefined
-                ? t.player.index
-                : t.playerIndex || 0;
+            typeof t.getOwnerIndex === 'function'
+                ? Math.max(0, t.getOwnerIndex())
+                : typeof t.ownerIndex === 'number' && t.ownerIndex >= 0
+                  ? t.ownerIndex
+                  : t.player && t.player.index !== undefined
+                    ? t.player.index
+                    : 0;
         const tSpawn = Math.round(t.spawnTime || 0);
         const hasStatic = netStaticFieldsDue(
             t,
@@ -6897,17 +6967,33 @@ window.onWorldSnapshotReceived = (snapshot) => {
             // Owner/spawn time only arrive on first sight / refresh; wait for them if lost
             if (!turret && st.pi === undefined) continue;
             seenTurretIds.add(st.id);
-            const owner =
+            // Prefer durable ownerIndex from the packet — never fall back to
+            // players[0], which mis-attributed turrets and wiped the wrong
+            // player's network on disconnect.
+            const ownerIndex =
                 st.pi !== undefined
-                    ? GAME_STATE.players[st.pi] || GAME_STATE.players[0]
-                    : turret.player;
+                    ? st.pi
+                    : turret && typeof turret.ownerIndex === 'number'
+                      ? turret.ownerIndex
+                      : -1;
+            const owner =
+                ownerIndex >= 0 && GAME_STATE.players
+                    ? GAME_STATE.players[ownerIndex] || null
+                    : turret
+                      ? turret.player
+                      : null;
             if (owner) {
                 if (st.lw) owner.laserWallsEnabled = true;
                 if (st.sw) owner.slowWallsEnabled = true;
                 if (st.ts) owner.turretSawEnabled = true;
             }
             if (!turret) {
-                turret = new TurretEntity(st.x, st.y, owner, st.st || nowTime);
+                turret = new TurretEntity(
+                    st.x,
+                    st.y,
+                    owner,
+                    st.st || nowTime,
+                );
                 turret._nid = st.id;
                 turret.spawnTime = st.st || nowTime;
                 turret.x = st.x;
@@ -6929,7 +7015,9 @@ window.onWorldSnapshotReceived = (snapshot) => {
             turret.isFlamethrower = st.fl === 1;
             turret.flameActiveUntil = st.faU || 0;
             turret.flameCenterAngle = st.fcA || 0;
-            turret.player = owner;
+            if (ownerIndex >= 0) turret.ownerIndex = ownerIndex;
+            // Only rebind .player when the owning slot exists — never steal P0
+            if (owner) turret.player = owner;
             turret.laserWallsEnabled = Boolean(st.lw);
             turret.slowWallsEnabled = Boolean(st.sw);
             turret.turretSawEnabled = Boolean(st.ts);

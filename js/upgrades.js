@@ -146,7 +146,14 @@ const UPGRADE_POOL = [
             p.laserWallsEnabled = true;
             p.slowWallsEnabled = true;
             for (const t of GAME_STATE.turrets) {
-                if (t.alive && t.player === p) t.linkWalls();
+                if (
+                    t.alive &&
+                    (typeof t.belongsToPlayerIndex === 'function'
+                        ? t.belongsToPlayerIndex(p.index)
+                        : t.player === p)
+                ) {
+                    t.linkWalls();
+                }
             }
         },
     },
@@ -508,7 +515,9 @@ function getTurretStructureUpgradeMaxStacks() {
             ? GAME_STATE.players.filter((p) => p && !p.disconnected && !p.kicked)
                   .length
             : 1;
-    return active > 4 ? 2 : 3;
+    if (active > 6) return 1;
+    if (active > 2) return 2;
+    return 3;
 }
 
 function pickThreeFor(player) {
@@ -915,12 +924,12 @@ const UPGRADE_DETAILS = {
         caveats: 'Requires at least 2 active turrets within link range.',
     },
     building_duration_upgrade: {
-        stacking: `Can be selected up to 3 times (2 times when more than 4 players). Each selection adds +${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% turret duration and +${GAME_CONFIG.TURRET.FORTIFIED_HP_BOOST_PCT}% turret HP.`,
+        stacking: `Can be selected up to 3 times (2 times with 3–6 players, 1 time with more than 6). Each selection adds +${GAME_CONFIG.TURRET.FORTIFIED_DURATION_BOOST_PCT}% turret duration and +${GAME_CONFIG.TURRET.FORTIFIED_HP_BOOST_PCT}% turret HP.`,
         how: 'Extends how long turrets stay alive before expiring and increases their maximum health to survive heavy blob swarms.',
         caveats: 'Applies to all currently placed and future turrets.',
     },
     turret_cooldown_upgrade: {
-        stacking: `Can be selected up to 3 times (2 times when more than 4 players). Reduces cooldowns by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
+        stacking: `Can be selected up to 3 times (2 times with 3–6 players, 1 time with more than 6). Reduces cooldowns by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
         how: `Reduces the placement cooldown between dropping turrets, dispenser drop timers, and Autonomous Network expansion intervals by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
         caveats: 'Multiplies cooldown modifiers down exponentially.',
     },

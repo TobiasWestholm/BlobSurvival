@@ -960,6 +960,14 @@
         gap: 12px !important;
         z-index: 140 !important;
     }
+    body.mobile-device #lobbyDifficultyBanner {
+        padding: 5px 10px !important;
+        font-size: 11px !important;
+    }
+    body.mobile-device #lobbyDifficultyBanner .diff-option {
+        padding: 4px 10px !important;
+        font-size: 11px !important;
+    }
     body.mobile-device #inviteCodeBanner {
         padding: 5px 12px !important;
         font-size: 11px !important;
@@ -1380,6 +1388,63 @@
         pointer-events: auto;
         margin: 0;
     }
+    #lobbyDifficultyBanner {
+        display: none;
+        margin: 0;
+        min-inline-size: auto;
+        background: rgba(14, 14, 22, 0.94);
+        border: 1.5px solid rgba(255, 255, 255, 0.22);
+        border-radius: 8px;
+        padding: 8px 14px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 500;
+        box-shadow: 0 0 14px rgba(0, 0, 0, 0.35);
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+        white-space: nowrap;
+        text-align: center;
+    }
+    #lobbyDifficultyBanner .diff-label {
+        padding: 0;
+        font-size: 10px;
+        color: #aaa;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+    }
+    #lobbyDifficultyBanner .diff-options {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+    }
+    #lobbyDifficultyBanner .diff-option {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.06);
+        color: #ccc;
+        border-radius: 999px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: default;
+        pointer-events: none;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+    #lobbyDifficultyBanner.is-host .diff-option {
+        cursor: pointer;
+        pointer-events: auto;
+    }
+    #lobbyDifficultyBanner.is-host .diff-option:hover {
+        border-color: #00ffcc;
+        color: #fff;
+    }
+    #lobbyDifficultyBanner .diff-option.is-active {
+        background: rgba(0, 255, 204, 0.18);
+        border-color: #00ffcc;
+        color: #00ffcc;
+    }
     #inviteCodeBanner {
         display: none;
         background: rgba(14, 14, 22, 0.94);
@@ -1632,6 +1697,14 @@
         <span aria-hidden="true">⛶</span> <span class="fullscreen-label">Enter Full screen</span>
     </button>
     <button type="button" id="howToPlayBanner">How to play</button>
+    <fieldset id="lobbyDifficultyBanner">
+        <legend class="diff-label">Difficulty</legend>
+        <div class="diff-options">
+            <button type="button" class="diff-option" data-lobby-difficulty="easy">Easy</button>
+            <button type="button" class="diff-option" data-lobby-difficulty="normal">Normal</button>
+            <button type="button" class="diff-option" data-lobby-difficulty="hard">Hard</button>
+        </div>
+    </fieldset>
     <div id="inviteCodeBanner">
         <div style="font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px;">Invite Code</div>
         <div class="code-text" id="inviteCodeText">XXXX</div>

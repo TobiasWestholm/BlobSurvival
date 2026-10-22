@@ -46,8 +46,8 @@ class Enemy extends Unit {
     }
 
     /**
-     * After the Horde (minute 12+ / horde cleared): +20% HP & damage per player beyond 2.
-     * 1–2p → 1.0, 3p → 1.2, 4p → 1.4, … 12p → 3.0
+     * After the Horde (minute 12+ / horde cleared): +25% HP & damage per player beyond 2.
+     * 1–2p → 1.0, 3p → 1.25, 4p → 1.5, … 12p → 3.5
      */
     static getPostHordeCoopScale() {
         if (typeof GAME_STATE === 'undefined' || !GAME_STATE) return 1;
@@ -60,7 +60,7 @@ class Enemy extends Unit {
                 (p) => p && !p.disconnected && !p.kicked,
             ).length || 1;
         if (n <= 2) return 1;
-        return 1 + 0.2 * (n - 2);
+        return 1 + 0.25 * (n - 2);
     }
 
     static applyPostHordeCoopScale(enemy) {
@@ -350,7 +350,7 @@ class Enemy extends Unit {
                 typeof GAME_STATE !== 'undefined'
                     ? GAME_STATE.magneticMines
                     : null;
-            if (!mines || mines.length === 0) return false;
+            if (!mines || mines.length === 0 || t.alive === false) return false;
             for (let i = 0; i < mines.length; i++) {
                 if (mines[i] === t) return true;
             }
@@ -560,6 +560,7 @@ class Enemy extends Unit {
                     const mines = GAME_STATE.magneticMines;
                     for (let i = 0; i < mines.length; i++) {
                         const m = mines[i];
+                        if (!m || m.alive === false) continue;
                         const dx = m.x - this.x,
                             dy = m.y - this.y;
                         const d2 = dx * dx + dy * dy;

@@ -267,12 +267,30 @@ function pickMobileZoomStepFromCount(count) {
     return 0;
 }
 
+function isBossWaveActiveForCamera() {
+    return (
+        typeof GAME_STATE !== 'undefined' &&
+        !!GAME_STATE &&
+        !!GAME_STATE.activeBoss
+    );
+}
+
 /**
  * Pick discrete zoom step from total entity density with hysteresis + cooldown
  * so zoom snaps assertively and does not flicker between levels.
  * Same path for singleplayer and online on phone.
+ * Boss waves always force max zoom-out so the fight stays on screen.
  */
 function updateMobileZoomStep(nowMs) {
+    if (isBossWaveActiveForCamera()) {
+        if (mobileZoomStep !== 0) {
+            mobileZoomStep = 0;
+            _zoomStepCooldownUntil = nowMs + MOBILE_ZOOM_STEP_COOLDOWN_MS;
+        }
+        mobileZoomTarget = getMobileZoomForStep(0);
+        return;
+    }
+
     const count = countBattlefieldEntitiesForZoom();
     const maxStep = MOBILE_ZOOM_STEP_COUNT - 1;
     if (mobileZoomStep > maxStep) mobileZoomStep = maxStep;
@@ -345,10 +363,11 @@ function applyMobileZoomToward(targetZoom, dt, focusX, focusY) {
 
 function snapMobileCameraToFollow() {
     if (!mobileCameraActive) return;
-    // Place at the density-appropriate step immediately (solo early game = zoomed out)
-    mobileZoomStep = pickMobileZoomStepFromCount(
-        countBattlefieldEntitiesForZoom(),
-    );
+    // Place at the density-appropriate step immediately (solo early game = zoomed out);
+    // boss waves always start fully zoomed out.
+    mobileZoomStep = isBossWaveActiveForCamera()
+        ? 0
+        : pickMobileZoomStepFromCount(countBattlefieldEntitiesForZoom());
     mobileZoomTarget = getMobileZoomForStep(mobileZoomStep);
     camZoom = mobileZoomTarget;
     _zoomStepCooldownUntil = 0;
