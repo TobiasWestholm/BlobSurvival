@@ -508,16 +508,26 @@ function isUpgradeBlockedOnMobile(upgradeId, player) {
     );
 }
 
-/** Fortified Structures / Rapid Deployment: 3 stacks at ≤4p, 2 stacks at 5+. */
-function getTurretStructureUpgradeMaxStacks() {
-    const active =
-        typeof GAME_STATE !== 'undefined' && GAME_STATE.players
-            ? GAME_STATE.players.filter((p) => p && !p.disconnected && !p.kicked)
-                  .length
-            : 1;
+function getActivePlayerCountForUpgradeCaps() {
+    return typeof GAME_STATE !== 'undefined' && GAME_STATE.players
+        ? GAME_STATE.players.filter((p) => p && !p.disconnected && !p.kicked)
+              .length
+        : 1;
+}
+
+/** Fortified Structures: 3 stacks at 1–2p, 2 at 3–6p, 1 at 7+. */
+function getFortifiedStructuresMaxStacks() {
+    const active = getActivePlayerCountForUpgradeCaps();
     if (active > 6) return 1;
     if (active > 2) return 2;
     return 3;
+}
+
+/** Rapid Deployment: 2 stacks at 1–6p, 1 at 7+. */
+function getRapidDeploymentMaxStacks() {
+    const active = getActivePlayerCountForUpgradeCaps();
+    if (active > 6) return 1;
+    return 2;
 }
 
 function pickThreeFor(player) {
@@ -549,16 +559,18 @@ function pickThreeFor(player) {
         if (u.id === 'unlock_mine' && hasMine) return false;
         if (u.id === 'unlock_turret' && hasTurret) return false;
         if (u.id === 'laser_walls_upgrade' && !hasTurret) return false;
-        const turretStructMax = getTurretStructureUpgradeMaxStacks();
         if (
             u.id === 'building_duration_upgrade' &&
             (!hasTurret ||
-                (player.buildingDurationCount || 0) >= turretStructMax)
+                (player.buildingDurationCount || 0) >=
+                    getFortifiedStructuresMaxStacks())
         )
             return false;
         if (
             u.id === 'turret_cooldown_upgrade' &&
-            (!hasTurret || (player.turretCooldownCount || 0) >= turretStructMax)
+            (!hasTurret ||
+                (player.turretCooldownCount || 0) >=
+                    getRapidDeploymentMaxStacks())
         )
             return false;
         if (u.id === 'turret_flamethrower_upgrade' && !hasTurret) return false;
@@ -929,7 +941,7 @@ const UPGRADE_DETAILS = {
         caveats: 'Applies to all currently placed and future turrets.',
     },
     turret_cooldown_upgrade: {
-        stacking: `Can be selected up to 3 times (2 times with 3–6 players, 1 time with more than 6). Reduces cooldowns by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
+        stacking: `Can be selected up to 2 times (1 time with more than 6 players). Reduces cooldowns by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
         how: `Reduces the placement cooldown between dropping turrets, dispenser drop timers, and Autonomous Network expansion intervals by ${GAME_CONFIG.TURRET.RAPID_DEPLOYMENT_REDUCTION_PCT}% per stack.`,
         caveats: 'Multiplies cooldown modifiers down exponentially.',
     },

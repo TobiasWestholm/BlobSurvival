@@ -769,6 +769,36 @@ function brightenColor(hex, factor = 1.8) {
     return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
 }
 
+/** Blend player body color toward soft crimson for hit blush (t in 0..1). */
+function mixPlayerHitBlushColor(hex, t) {
+    const amount = Math.max(0, Math.min(1, t)) * 0.72;
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex || '');
+    let r = 80;
+    let g = 200;
+    let b = 220;
+    if (m) {
+        let h = m[1];
+        if (h.length === 3)
+            h = h
+                .split('')
+                .map((c) => c + c)
+                .join('');
+        const num = parseInt(h, 16);
+        r = (num >> 16) & 255;
+        g = (num >> 8) & 255;
+        b = num & 255;
+    }
+    const rr = Math.round(r + (255 - r) * amount * 0.85);
+    const gg = Math.round(g + (70 - g) * amount);
+    const bb = Math.round(b + (95 - b) * amount);
+    return (
+        '#' +
+        [rr, gg, bb].map((v) =>
+            Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0'),
+        ).join('')
+    );
+}
+
 function drawBattlefieldBorder(now) {
     const isOnlineClient =
         GAME_STATE.gameMode === 'online' &&
@@ -1152,6 +1182,8 @@ function draw(now) {
     if (mobileCameraActive) resetScreenTransform();
     const hudCX = bufW / 2;
     const hudCY = bufH / 2;
+
+    drawLocalDamageVignette(now, bufW, bufH);
 
     // 1. Boss pre-warning banners (5 seconds BEFORE boss minute starts)
     for (const key of Object.keys(BOSS_CONFIGS)) {
@@ -1568,6 +1600,61 @@ function getLocalPlayerIndex() {
         return Number(nm.localPlayerIndex);
     }
     return 0;
+}
+
+/**
+ * Soft crimson edge vignette for the damaged player's own screen only.
+ * Online: local player index. Local co-op: any damaged player on the shared screen.
+ */
+function drawLocalDamageVignette(now, bufW, bufH) {
+    if (
+        typeof GAME_STATE === 'undefined' ||
+        !GAME_STATE ||
+        GAME_STATE.current !== STATES.GAMEPLAY ||
+        !GAME_STATE.players
+    ) {
+        return;
+    }
+    const vignetteMs =
+        typeof GAME_CONFIG !== 'undefined'
+            ? GAME_CONFIG.PLAYER.HIT_VIGNETTE_MS
+            : 320;
+    const maxAlpha =
+        typeof GAME_CONFIG !== 'undefined'
+            ? GAME_CONFIG.PLAYER.HIT_VIGNETTE_MAX_ALPHA
+            : 0.2;
+
+    let remain = 0;
+    if (GAME_STATE.gameMode === 'local') {
+        for (const p of GAME_STATE.players) {
+            if (!p || p.disconnected || p.kicked) continue;
+            const until = p.damageVignetteUntil || 0;
+            if (until > now) remain = Math.max(remain, until - now);
+        }
+    } else {
+        const p = GAME_STATE.players[getLocalPlayerIndex()];
+        const until = p?.damageVignetteUntil || 0;
+        if (until > now) remain = until - now;
+    }
+    if (remain <= 0 || vignetteMs <= 0) return;
+
+    const t = Math.max(0, Math.min(1, remain / vignetteMs));
+    const alpha = maxAlpha * t * t;
+    if (alpha < 0.004) return;
+
+    const cx = bufW * 0.5;
+    const cy = bufH * 0.5;
+    const inner = Math.min(bufW, bufH) * 0.42;
+    const outer = Math.hypot(bufW, bufH) * 0.62;
+    const grad = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    grad.addColorStop(0, 'rgba(160, 0, 24, 0)');
+    grad.addColorStop(0.55, `rgba(160, 0, 24, ${alpha * 0.35})`);
+    grad.addColorStop(1, `rgba(140, 0, 18, ${alpha})`);
+
+    ctx.save();
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, bufW, bufH);
+    ctx.restore();
 }
 
 function isLocalFocusPlayer(p) {
@@ -2048,6 +2135,7 @@ if (typeof window !== 'undefined') {
     window.updateRotateHint = updateRotateHint;
     window.shadeHex = shadeHex;
     window.brightenColor = brightenColor;
+    window.mixPlayerHitBlushColor = mixPlayerHitBlushColor;
     window.isInView = isInView;
     window.isEntityInView = isEntityInView;
     window.shouldUseMobileCamera = shouldUseMobileCamera;

@@ -34,6 +34,7 @@ const _blobPathCache = {
  * @param {Object} [rocketDeform=null] - Rocket launch muscular recoil descriptor
  * @param {Object} [dashLaunchDeform=null] - Phase dash warp elongation descriptor
  * @param {Object} [laserSnailDeform=null] - Laser snail teardrop tail descriptor
+ * @param {Object} [hitImpactDeform=null] - Incoming damage impact dent descriptor
  * @returns {Array<{x: number, y: number}>} Calculated perimeter boundary points
  */
 function drawOrganicBlobPath(
@@ -55,6 +56,7 @@ function drawOrganicBlobPath(
     rocketDeform = null,
     dashLaunchDeform = null,
     laserSnailDeform = null,
+    hitImpactDeform = null,
 ) {
     const segments = 32;
     // Include deform/bud state so a still blob mid-animation never reuses a stale path
@@ -78,7 +80,7 @@ function drawOrganicBlobPath(
               )
               .join(';')
         : '0';
-    const cacheKey = `${centerX.toFixed(1)}_${centerY.toFixed(1)}_${radius.toFixed(1)}_${now.toFixed(1)}_${facingAngle.toFixed(2)}_${moveSpeed.toFixed(2)}_${budPart}_${dPart(pseudopod, ['angle', 'reach'])}_${dPart(flagellum, ['angle', 'tension'])}_${dPart(sniperDeform, ['angle', 'intensity'])}_${dPart(hatchDeform, ['angle', 'intensity'])}_${dPart(sledgeDeform, ['angle', 'intensity'])}_${dPart(mineLaunchDeform, ['angle', 'intensity'])}_${dPart(rocketDeform, ['angle', 'intensity'])}_${dPart(dashLaunchDeform, ['angle', 'intensity'])}_${dPart(laserSnailDeform, ['facingAngle', 'intensity'])}_${rootPart}`;
+    const cacheKey = `${centerX.toFixed(1)}_${centerY.toFixed(1)}_${radius.toFixed(1)}_${now.toFixed(1)}_${facingAngle.toFixed(2)}_${moveSpeed.toFixed(2)}_${budPart}_${dPart(pseudopod, ['angle', 'reach'])}_${dPart(flagellum, ['angle', 'tension'])}_${dPart(sniperDeform, ['angle', 'intensity'])}_${dPart(hatchDeform, ['angle', 'intensity'])}_${dPart(sledgeDeform, ['angle', 'intensity'])}_${dPart(mineLaunchDeform, ['angle', 'intensity'])}_${dPart(rocketDeform, ['angle', 'intensity'])}_${dPart(dashLaunchDeform, ['angle', 'intensity'])}_${dPart(laserSnailDeform, ['facingAngle', 'intensity'])}_${dPart(hitImpactDeform, ['angle', 'intensity'])}_${rootPart}`;
     let points;
 
     if (_blobPathCache.key === cacheKey) {
@@ -463,6 +465,27 @@ function drawOrganicBlobPath(
                 }
             }
 
+            // 14. Incoming hit impact: soft dent on strike side + mild lateral bulge
+            let hitImpactOffset = 0;
+            if (hitImpactDeform && Math.abs(hitImpactDeform.intensity) > 0) {
+                let diff = angle - hitImpactDeform.angle;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                const distAngle = Math.abs(diff);
+                const cosDiff = Math.cos(distAngle);
+                if (cosDiff > 0) {
+                    hitImpactOffset -=
+                        hitImpactDeform.intensity *
+                        (radius * 0.32) *
+                        Math.pow(cosDiff, 1.8);
+                } else {
+                    hitImpactOffset +=
+                        hitImpactDeform.intensity *
+                        (radius * 0.16) *
+                        Math.sin(distAngle * 2);
+                }
+            }
+
             const r = Math.max(
                 2,
                 radius +
@@ -479,7 +502,8 @@ function drawOrganicBlobPath(
                     mineLaunchOffset +
                     rocketOffset +
                     dashLaunchOffset +
-                    laserSnailOffset,
+                    laserSnailOffset +
+                    hitImpactOffset,
             );
             points.push({
                 x: centerX + Math.cos(angle) * r,

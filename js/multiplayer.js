@@ -2921,6 +2921,29 @@ function applyNetworkBlobDeform(playerIndex, deformType, angleRad) {
                 duration: 150,
             });
             break;
+        case 7: {
+            // HIT_IMPACT — membrane dent + blush window (draw() expires animation)
+            const flashMs =
+                typeof GAME_CONFIG !== 'undefined'
+                    ? GAME_CONFIG.PLAYER.HIT_FLASH_MS
+                    : 250;
+            const impactMs =
+                typeof GAME_CONFIG !== 'undefined'
+                    ? GAME_CONFIG.PLAYER.HIT_IMPACT_DURATION_MS
+                    : 250;
+            const vignetteMs =
+                typeof GAME_CONFIG !== 'undefined'
+                    ? GAME_CONFIG.PLAYER.HIT_VIGNETTE_MS
+                    : 320;
+            p.hitImpactAnimation = {
+                startTime: nowTime,
+                duration: impactMs,
+                angle: angleRad,
+            };
+            p.hitFlashUntil = nowTime + flashMs;
+            p.damageVignetteUntil = nowTime + vignetteMs;
+            break;
+        }
     }
 }
 window.applyNetworkBlobDeform = applyNetworkBlobDeform;

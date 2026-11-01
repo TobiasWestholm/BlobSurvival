@@ -102,6 +102,8 @@ class Player extends Unit {
         this.iceTrailEnabled = false;
         this.lastMeleeHitTime = new Map();
         this.hitFlashUntil = 0;
+        this.damageVignetteUntil = 0;
+        this.hitImpactAnimation = null;
         this.slowUntil = 0; // Marauder Concussive Shells slow expiry timestamp
         this.aegisUntil = 0; // Dispensed Aegis invulnerability timestamp
         this.secondWindCount = 0;
@@ -1234,10 +1236,6 @@ class Player extends Unit {
             }
         }
 
-        if (isRedirected) {
-            spawnHitParticles(this.x, this.y, '#ff4455');
-        }
-
         this.hp = Math.max(0, this.hp - effectiveDmg);
         this.onTakeDamage(effectiveDmg, now, source, isRedirected);
 
@@ -1262,8 +1260,50 @@ class Player extends Unit {
     }
 
     onTakeDamage(amount, now, source, isRedirected = false) {
-        this.hitFlashUntil = now + 150;
+        const flashMs =
+            typeof GAME_CONFIG !== 'undefined'
+                ? GAME_CONFIG.PLAYER.HIT_FLASH_MS
+                : 250;
+        const impactMs =
+            typeof GAME_CONFIG !== 'undefined'
+                ? GAME_CONFIG.PLAYER.HIT_IMPACT_DURATION_MS
+                : 250;
+        const vignetteMs =
+            typeof GAME_CONFIG !== 'undefined'
+                ? GAME_CONFIG.PLAYER.HIT_VIGNETTE_MS
+                : 320;
+        const particleCount =
+            typeof GAME_CONFIG !== 'undefined'
+                ? GAME_CONFIG.PLAYER.HIT_PARTICLE_COUNT
+                : 5;
+
+        this.hitFlashUntil = now + flashMs;
+        this.damageVignetteUntil = now + vignetteMs;
         this.lastDamagedTime = now;
+
+        let impactAngle = Math.random() * Math.PI * 2;
+        const src =
+            source && typeof source.x === 'number' && typeof source.y === 'number'
+                ? source
+                : source?.sourceEnemy &&
+                    typeof source.sourceEnemy.x === 'number'
+                  ? source.sourceEnemy
+                  : null;
+        if (src) {
+            impactAngle = Math.atan2(src.y - this.y, src.x - this.x);
+        }
+        this.hitImpactAnimation = {
+            startTime: now,
+            duration: impactMs,
+            angle: impactAngle,
+        };
+        if (typeof spawnHitParticles === 'function') {
+            spawnHitParticles(this.x, this.y, '#ff4455', particleCount);
+        }
+        if (typeof queueNetworkBlobDeform === 'function') {
+            queueNetworkBlobDeform(this.index, 7, impactAngle);
+        }
+
         if (this.carapaceHealerEnabled) {
             const healAmt =
                 this.maxHp *
@@ -1627,9 +1667,7 @@ class Player extends Unit {
 
             ctx.save();
             const isFlashed =
-                (this.invuln > 0 && Math.floor(this.invuln / 60) % 2 === 0) ||
-                (this.hitFlashUntil > now &&
-                    Math.floor((this.hitFlashUntil - now) / 30) % 2 === 0);
+                this.invuln > 0 && Math.floor(this.invuln / 60) % 2 === 0;
             if (isFlashed) ctx.globalAlpha = 0.5;
             // Hero Ground Beacon & Rotating Halo
             ctx.save();
@@ -2402,12 +2440,53 @@ class Player extends Unit {
                 };
             }
 
+            // 11. Incoming damage impact dent (expires in draw for remote clients)
+            let hitImpactDeform = null;
+            if (this.hitImpactAnimation) {
+                const elapsed = now - this.hitImpactAnimation.startTime;
+                if (elapsed < this.hitImpactAnimation.duration) {
+                    const t = elapsed / this.hitImpactAnimation.duration;
+                    let intensity = 0;
+                    if (t < 0.28) {
+                        intensity = Math.sin((t / 0.28) * (Math.PI * 0.5));
+                    } else {
+                        const post = (t - 0.28) / 0.72;
+                        intensity =
+                            (1 - post) * Math.cos(post * Math.PI * 1.25);
+                    }
+                    if (Math.abs(intensity) > 0.001) {
+                        hitImpactDeform = {
+                            angle: this.hitImpactAnimation.angle,
+                            intensity: Math.max(0, intensity),
+                        };
+                    }
+                } else {
+                    this.hitImpactAnimation = null;
+                }
+            }
+
             // Filter out expired budding ripples
             if (this.mitosisBuds && this.mitosisBuds.length > 0) {
                 this.mitosisBuds = this.mitosisBuds.filter(
                     (b) => now - b.time < b.duration,
                 );
             }
+
+            const hitFlashMs =
+                typeof GAME_CONFIG !== 'undefined'
+                    ? GAME_CONFIG.PLAYER.HIT_FLASH_MS
+                    : 250;
+            const hitBlush =
+                this.hitFlashUntil > now
+                    ? Math.max(
+                          0,
+                          Math.min(1, (this.hitFlashUntil - now) / hitFlashMs),
+                      )
+                    : 0;
+            const bodyFill =
+                hitBlush > 0
+                    ? mixPlayerHitBlushColor(this.color, hitBlush)
+                    : this.color;
 
             // Draw reshapable organic fluid blob — unified contour extending roots, limbs, hammer, hatching pouch, mine nozzle, exocytic crater, dash thrust socket & teardrop laser tail!
             drawOrganicBlobPath(
@@ -2429,8 +2508,9 @@ class Player extends Unit {
                 rocketDeform,
                 dashLaunchDeform,
                 laserSnailDeform,
+                hitImpactDeform,
             );
-            ctx.fillStyle = this.color;
+            ctx.fillStyle = bodyFill;
             ctx.fill();
             ctx.strokeStyle = this.ring;
             ctx.lineWidth = 2;
@@ -2460,6 +2540,7 @@ class Player extends Unit {
                     rocketDeform,
                     dashLaunchDeform,
                     laserSnailDeform,
+                    hitImpactDeform,
                 );
                 ctx.clip();
 
@@ -2764,6 +2845,7 @@ class Player extends Unit {
                     rocketDeform,
                     dashLaunchDeform,
                     laserSnailDeform,
+                    hitImpactDeform,
                 );
                 ctx.clip();
 
@@ -3204,6 +3286,7 @@ class Player extends Unit {
                     rocketDeform,
                     dashLaunchDeform,
                     laserSnailDeform,
+                    hitImpactDeform,
                 );
                 const surfaceRadiusAt = (ang) => {
                     let a = ang % (Math.PI * 2);
@@ -3513,6 +3596,7 @@ class Player extends Unit {
                     rocketDeform,
                     dashLaunchDeform,
                     laserSnailDeform,
+                    hitImpactDeform,
                 );
                 ctx.clip();
 

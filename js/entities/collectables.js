@@ -5,7 +5,7 @@ class Collectible extends Entity {
         r = 6,
         vx = 0,
         vy = 0,
-        magnetRange = 120,
+        magnetRange = 90,
         pullSpeed = 5.0,
         lifespan = Infinity,
         now = typeof gameClock !== 'undefined' ? gameClock : performance.now(),
@@ -41,7 +41,7 @@ class Collectible extends Entity {
         if (this.vx || this.vy) {
             this.x += this.vx * dtFactor;
             this.y += this.vy * dtFactor;
-            const decay = Math.pow(0.85, dtFactor);
+            const decay = 0.85 ** dtFactor;
             this.vx *= decay;
             this.vy *= decay;
             if (Math.abs(this.vx) < 0.05) this.vx = 0;
@@ -183,7 +183,7 @@ class HealthPack extends Collectible {
             ? gameClock
             : performance.now(),
     ) {
-        super(x, y, 10, 0, 0, 120, 5.5, 180000, nowTime);
+        super(x, y, 10, 0, 0, 90, 5.5, 180000, nowTime);
     }
     update(dtFactor = 1.0, now = gameClock) {
         this.updatePhysics(dtFactor);
@@ -255,7 +255,7 @@ class SupplyDrop extends Collectible {
             ? gameClock
             : performance.now(),
     ) {
-        super(x, y, 11, 0, 0, 120, 6.0, 120000, nowTime);
+        super(x, y, 11, 0, 0, 90, 6.0, 120000, nowTime);
         this.type = type; // 'aegis', 'nitro', 'magnet', 'nuke', 'freeze', 'overclock'
     }
     update(dtFactor = 1.0, now = gameClock) {
