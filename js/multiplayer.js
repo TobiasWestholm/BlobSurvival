@@ -1919,6 +1919,10 @@ window.onAssignedSlot = (
             const p = GAME_STATE.players[idx];
             if (p) {
                 p.currentLevelUpgradeName = chosenUpgradesMap[idx];
+                p.selectedUpgradeId =
+                    typeof upgradeIdFromName === 'function'
+                        ? upgradeIdFromName(chosenUpgradesMap[idx])
+                        : null;
             }
         }
     }
@@ -2091,9 +2095,11 @@ window.onRemoteWeaponSelected = (playerIndex, weaponId) => {
         );
         return;
     }
+    // A null/empty weaponId means the client changed their mind and cleared it.
+    const isDeselect = !weaponId;
     if (
-        typeof WEAPON_LABELS === 'undefined' ||
-        !WEAPON_LABELS[weaponId]
+        !isDeselect &&
+        (typeof WEAPON_LABELS === 'undefined' || !WEAPON_LABELS[weaponId])
     ) {
         console.warn(
             `[Net] Rejected invalid weaponId "${weaponId}" from P${playerIndex + 1}.`,
@@ -2102,10 +2108,15 @@ window.onRemoteWeaponSelected = (playerIndex, weaponId) => {
     }
     const p = GAME_STATE.players?.[playerIndex];
     if (p && !p.disconnected && !p.kicked) {
-        p.selectedWeapon = weaponId;
-        p.selectedWeaponLabel = WEAPON_LABELS[weaponId];
         p.weapons = [];
-        p.unlockWeapon(weaponId);
+        if (isDeselect) {
+            p.selectedWeapon = null;
+            p.selectedWeaponLabel = null;
+        } else {
+            p.selectedWeapon = weaponId;
+            p.selectedWeaponLabel = WEAPON_LABELS[weaponId];
+            p.unlockWeapon(weaponId);
+        }
 
         if (typeof renderLobbyWeaponPanels === 'function') {
             renderLobbyWeaponPanels();
@@ -2184,24 +2195,35 @@ window.onRemoteUpgradeSelected = (playerIndex, upgradeId) => {
     const p = GAME_STATE.players?.[playerIndex];
     if (!p || p.disconnected || p.kicked) return;
 
+    const panel = document.getElementById(`levelPanel_${playerIndex}`);
+    const notifyPickChanged = () => {
+        if (panel) {
+            onPlayerChose(panel, p);
+        } else if (typeof onPlayerChoseVirtual === 'function') {
+            onPlayerChoseVirtual(p);
+        }
+    };
+
+    // A null/empty upgradeId means the pick was undone; nothing is applied yet.
+    if (!upgradeId) {
+        p.selectedUpgradeId = null;
+        p.currentLevelUpgradeName = null;
+        netManager.broadcast({
+            type: 'UPGRADE_CHOSEN_SYNC',
+            playerIndex: playerIndex,
+            upgradeId: null,
+            upgradeName: null,
+        });
+        notifyPickChanged();
+        return;
+    }
+
     if (
         typeof isUpgradeBlockedOnMobile === 'function' &&
         isUpgradeBlockedOnMobile(upgradeId, p)
     ) {
         console.warn(
             `[Net] Rejected mobile-blocked upgrade "${upgradeId}" from P${playerIndex + 1}.`,
-        );
-        return;
-    }
-
-    const panel = document.getElementById(`levelPanel_${playerIndex}`);
-    if (
-        p._virtualPickDone ||
-        (panel && panel.dataset.pickDone === 'true') ||
-        p.currentLevelUpgradeName
-    ) {
-        console.warn(
-            `[Net] Rejected duplicate upgrade pick from P${playerIndex + 1}.`,
         );
         return;
     }
@@ -2223,9 +2245,10 @@ window.onRemoteUpgradeSelected = (playerIndex, upgradeId) => {
         return;
     }
 
+    // Picks may be changed (or undone) until every player has locked one in,
+    // so re-picking is accepted here. Effects are applied when the round ends.
+    p.selectedUpgradeId = upgrade.id;
     p.currentLevelUpgradeName = upgrade.name;
-    upgrade.effect(p);
-    if (upgrade.oneShot) p.takenOneShots.add(upgrade.id);
 
     netManager.broadcast({
         type: 'UPGRADE_CHOSEN_SYNC',
@@ -2233,30 +2256,19 @@ window.onRemoteUpgradeSelected = (playerIndex, upgradeId) => {
         upgradeId: upgradeId,
         upgradeName: upgrade.name,
     });
-    if (panel) {
-        onPlayerChose(panel, p);
-    } else if (typeof onPlayerChoseVirtual === 'function') {
-        onPlayerChoseVirtual(p);
-    }
+    notifyPickChanged();
 };
 
 window.onUpgradeChosenSync = (playerIndex, upgradeId, upgradeName) => {
-    const p = GAME_STATE.players[playerIndex];
-    if (p) {
-        p.currentLevelUpgradeName = upgradeName;
-        if (upgradeId) {
-            const upgrade = UPGRADE_POOL.find((item) => item.id === upgradeId);
-            if (
-                upgrade &&
-                (!netManager.isClient ||
-                    playerIndex !== netManager.localPlayerIndex)
-            ) {
-                upgrade.effect(p);
-                if (upgrade.oneShot) p.takenOneShots.add(upgrade.id);
-            }
-        }
-        const panel = document.getElementById(`levelPanel_${playerIndex}`);
-        if (panel) onPlayerChose(panel, p);
+    const p = GAME_STATE.players?.[playerIndex];
+    if (!p) return;
+    p.selectedUpgradeId = upgradeId || null;
+    p.currentLevelUpgradeName = upgradeName || null;
+    const panel = document.getElementById(`levelPanel_${playerIndex}`);
+    if (panel && typeof onPlayerChose === 'function') {
+        onPlayerChose(panel, p);
+    } else if (typeof onPlayerChoseVirtual === 'function') {
+        onPlayerChoseVirtual(p);
     }
 };
 
@@ -2351,6 +2363,7 @@ window.onLobbyStateUpdated = (playersData, allReady, difficulty) => {
 
 window.onOnlineCountdownStarted = (isNewGame) => {
     document.getElementById('levelUpLayer').classList.remove('show');
+    if (typeof hideConnectionWarning === 'function') hideConnectionWarning();
     const tipEl = document.getElementById('tipText');
     if (tipEl) tipEl.style.display = 'none';
     const inviteBanner = document.getElementById('inviteCodeBanner');
@@ -3771,6 +3784,14 @@ function ensureUpgradeByteMaps() {
         BYTE_TO_UPGRADE_ID[i + 1] = id;
     }
 }
+function upgradeIdFromName(name) {
+    if (!name || typeof UPGRADE_POOL === 'undefined') return null;
+    const u = UPGRADE_POOL.find(
+        (item) => item.id === name || item.name === name,
+    );
+    return u ? u.id : null;
+}
+
 function upgradeNameFromByte(b) {
     ensureUpgradeByteMaps();
     const id = BYTE_TO_UPGRADE_ID[b];
@@ -6384,7 +6405,10 @@ window.onWorldSnapshotReceived = (snapshot) => {
             } else if (p.weapons && p.index !== netManager.localPlayerIndex) {
                 p.weapons = p.weapons.filter((w) => w.id !== 'player_flail');
             }
-            if (sp.up !== undefined) p.currentLevelUpgradeName = sp.up || null;
+            if (sp.up !== undefined) {
+                p.currentLevelUpgradeName = sp.up || null;
+                p.selectedUpgradeId = upgradeIdFromName(sp.up);
+            }
             if (sp.cv !== undefined) p.campervanUntil = sp.cv || 0;
             if (sp.iv !== undefined) p.invuln = sp.iv || 0;
             p.martyrdomAuraEnabled = sp.ma === 1;
@@ -7445,6 +7469,8 @@ window.onWorldSnapshotReceived = (snapshot) => {
                 GAME_STATE.current === STATES.COUNTDOWN)
         ) {
             GAME_STATE.current = STATES.GAMEPLAY;
+            if (typeof hideConnectionWarning === 'function')
+                hideConnectionWarning();
             const tipEl = document.getElementById('tipText');
             if (tipEl) tipEl.style.display = 'none';
             if (typeof stopTipRotation === 'function') stopTipRotation();

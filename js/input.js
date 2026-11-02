@@ -572,6 +572,31 @@ function initInputSystem() {
         keys[e.key.toLowerCase()] = false;
     });
 
+    // Release every held key when this page stops receiving events. Switching
+    // apps (Cmd+Tab), focusing another window, or hiding the tab swallows the
+    // keyup for whatever was held, so the key state would otherwise stay true
+    // and the blob keeps moving until that key is tapped again.
+    const releaseAllInput = () => {
+        for (const k in keys) keys[k] = false;
+        if (typeof GAME_STATE !== 'undefined' && GAME_STATE.players) {
+            // Drop pending double-tap candidates so no stray dash fires on
+            // refocus.
+            for (const p of GAME_STATE.players) {
+                if (p) p.lastTapDir = null;
+            }
+        }
+        // A finger can also be lost mid-drag (touch cancel is not delivered on
+        // occlusion), leaving the joystick vector active.
+        if (joystickInstance?.active) {
+            joystickInstance.onPointerUp(null);
+        }
+    };
+
+    window.addEventListener('blur', releaseAllInput);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) releaseAllInput();
+    });
+
     // Sound toggle buttons
     const soundBtn = document.getElementById('soundToggleBtn');
     if (soundBtn) {

@@ -103,13 +103,11 @@ function updateLobbyDifficultyUI() {
     const isHost =
         isOnline &&
         typeof netManager !== 'undefined' &&
-        netManager &&
-        netManager.isHost;
+        Boolean(netManager?.isHost);
     const isClient =
         isOnline &&
         typeof netManager !== 'undefined' &&
-        netManager &&
-        netManager.isClient;
+        Boolean(netManager?.isClient);
 
     if (!isOnline || !inWeaponSelect || (!isHost && !isClient)) {
         banner.style.display = 'none';
@@ -153,6 +151,13 @@ function startWeaponSelectFlow() {
     if (timerEl) timerEl.style.display = 'none';
 
     startTipRotation();
+
+    // Online lobby: warn every player (host and clients) about connection quality.
+    if (GAME_STATE.gameMode === 'online') {
+        showConnectionWarning();
+    } else {
+        hideConnectionWarning();
+    }
 
     renderLobbyWeaponPanels();
 }
@@ -438,16 +443,18 @@ function renderLobbyWeaponPanels() {
                           connectedCount + (empty.length > 0 ? 1 : 0),
                       );
             const others = connected.filter((i) => i !== 0);
-            const displaySlots = others.slice();
+            // Local player (host is slot 0) leads the layout so their panel is
+            // the first one — top-left — instead of sitting at the end.
+            const displaySlots = connected.includes(0) ? [0] : [];
+            displaySlots.push(...others);
             for (const i of empty) {
-                if (displaySlots.length + 1 >= panelCount) break;
+                if (displaySlots.length >= panelCount) break;
                 displaySlots.push(i);
             }
-            if (connected.includes(0)) displaySlots.push(0);
             while (displaySlots.length < panelCount) {
                 const nextEmpty = empty.find((i) => !displaySlots.includes(i));
                 if (nextEmpty === undefined) break;
-                displaySlots.splice(displaySlots.length - 1, 0, nextEmpty);
+                displaySlots.push(nextEmpty);
             }
             for (let s = 0; s < displaySlots.length; s++) {
                 const i = displaySlots[s];
@@ -482,9 +489,10 @@ function renderLobbyWeaponPanels() {
                 .map((p) => p.index)
                 .sort((a, b) => a - b);
             if (!connected.includes(myIndex)) connected.push(myIndex);
-            const orderedSlots = connected
-                .filter((i) => i !== myIndex)
-                .concat([myIndex]);
+            // Own panel first (top-left); the rest follow in slot order.
+            const orderedSlots = [myIndex].concat(
+                connected.filter((i) => i !== myIndex),
+            );
             const panelCount = Math.max(orderedSlots.length, 1);
             for (let s = 0; s < orderedSlots.length; s++) {
                 const i = orderedSlots[s];
@@ -771,26 +779,38 @@ function buildStartingWeaponPanel(
 
 function selectStartingWeapon(player, weaponId, weaponLabel, panel) {
     if (!player) return;
-    player.selectedWeapon = weaponId;
-    player.selectedWeaponLabel = weaponLabel;
-    player.weapons = [];
-    if (player.unlockWeapon) player.unlockWeapon(weaponId);
-
-    if (panel) panel.classList.add('chosen');
+    // Clicking the weapon that is already picked clears the pick again, so a
+    // player can keep thinking while the host waits (start stays disabled).
+    const isDeselect = player.selectedWeapon === weaponId;
+    if (isDeselect) {
+        player.selectedWeapon = null;
+        player.selectedWeaponLabel = null;
+        player.weapons = [];
+    } else {
+        player.selectedWeapon = weaponId;
+        player.selectedWeaponLabel = weaponLabel;
+        player.weapons = [];
+        if (player.unlockWeapon) player.unlockWeapon(weaponId);
+    }
 
     if (panel) {
+        panel.classList.toggle('chosen', !isDeselect);
         panel.querySelectorAll('.upgrade-btn').forEach((b) => {
             b.classList.remove('selected-weapon');
-            if (b.dataset.weaponId === weaponId)
+            if (!isDeselect && b.dataset.weaponId === weaponId)
                 b.classList.add('selected-weapon');
         });
     }
     const statusDiv = document.getElementById(`panelStatus_${player.index}`);
-    if (statusDiv) statusDiv.textContent = `✓ Ready: ${weaponLabel}`;
+    if (statusDiv) {
+        statusDiv.textContent = isDeselect ? '' : `✓ Ready: ${weaponLabel}`;
+    }
 
     const tipEl = document.getElementById('tipText');
 
     if (GAME_STATE.gameMode === 'single') {
+        // Single player has no lobby window to reconsider in.
+        if (isDeselect) return;
         const layer = document.getElementById('levelUpLayer');
         if (layer) layer.classList.remove('show');
         if (tipEl) tipEl.style.display = 'none';
@@ -804,7 +824,7 @@ function selectStartingWeapon(player, weaponId, weaponLabel, panel) {
         netManager
     ) {
         if (netManager.isClient) {
-            netManager.sendWeaponSelection(weaponId);
+            netManager.sendWeaponSelection(isDeselect ? null : weaponId);
         } else if (netManager.isHost) {
             const activePlayers = GAME_STATE.players.filter(
                 (p) => p && !p.disconnected,
@@ -866,6 +886,10 @@ function startLevelUpFlow() {
 
     for (const p of GAME_STATE.players) {
         if (p && !p.disconnected && !p.kicked) {
+            // A fresh round starts with nobody locked in.
+            p.selectedUpgradeId = null;
+            p.currentLevelUpgradeName = null;
+            p._virtualPickDone = false;
             if (
                 !p.currentUpgradeOptions &&
                 typeof pickThreeFor === 'function'
@@ -918,9 +942,9 @@ function beginSelectionRound() {
         (p) => p && !p.disconnected && !p.kicked,
     );
     for (const p of activePlayers) {
-        p._virtualPickDone = false;
+        p._virtualPickDone = Boolean(p.selectedUpgradeId);
     }
-    GAME_STATE.pendingPicks = activePlayers.length;
+    recomputePendingPicks();
 
     if (isOnline && typeof isMobile !== 'undefined' && isMobile) {
         const player = GAME_STATE.players?.[myIndex] || GAME_STATE.players?.[0];
@@ -930,22 +954,22 @@ function beginSelectionRound() {
         const allActive = (GAME_STATE.players || []).filter(
             (p) => p && !p.disconnected && !p.kicked,
         );
-        const otherPlayers = isOnline
-            ? allActive.filter((p) => p.index !== myIndex)
-            : allActive;
+        // Online: own panel leads the layout (top-left) instead of trailing it.
         const myPlayer = isOnline
             ? allActive.find((p) => p.index === myIndex)
             : null;
+        const orderedPlayers = isOnline
+            ? (myPlayer ? [myPlayer] : []).concat(
+                  allActive.filter((p) => p.index !== myIndex),
+              )
+            : allActive;
 
         let layoutIdx = 0;
-        for (const player of otherPlayers) {
+        for (const player of orderedPlayers) {
             const isInteractive = !isOnline || player.index === myIndex;
             layer.appendChild(
                 buildPlayerPanel(player, count, isInteractive, layoutIdx++),
             );
-        }
-        if (myPlayer) {
-            layer.appendChild(buildPlayerPanel(myPlayer, count, true, layoutIdx));
         }
     }
     layer.classList.add('show');
@@ -959,6 +983,71 @@ function beginSelectionRound() {
         kickTimeoutId = setTimeout(() => {
             showKickButtonsForUnpickedPlayers();
         }, 60000);
+    }
+}
+
+// ---------------- 2b. Level-up pick state (changeable until all picked) ----------------
+
+function activeRoundPlayers() {
+    return (GAME_STATE.players || []).filter(
+        (p) => p && !p.disconnected && !p.kicked,
+    );
+}
+
+/** Recount how many players still have no upgrade locked in. */
+function recomputePendingPicks() {
+    if (typeof GAME_STATE === 'undefined') return 0;
+    GAME_STATE.pendingPicks = activeRoundPlayers().filter(
+        (p) => !p.selectedUpgradeId,
+    ).length;
+    return GAME_STATE.pendingPicks;
+}
+
+function isSelectionRoundComplete() {
+    return recomputePendingPicks() <= 0;
+}
+
+function clearPlayerUpgradePick(player) {
+    if (!player) return;
+    player.selectedUpgradeId = null;
+    player.currentLevelUpgradeName = null;
+    player._virtualPickDone = false;
+}
+
+/**
+ * Mirror a player's pending upgrade pick in their panel. Buttons stay live so
+ * the pick can still be changed (or undone) until the last player locks in.
+ */
+function updateUpgradePanelState(panel, player) {
+    if (!player || !panel) return;
+    const hasPick = Boolean(player.selectedUpgradeId);
+    const isPassive =
+        panel.dataset.interactive === '0' &&
+        GAME_STATE.gameMode === 'online';
+
+    panel.dataset.pickDone = hasPick ? 'true' : 'false';
+    if (hasPick || isPassive) panel.classList.add('chosen');
+    else panel.classList.remove('chosen');
+
+    panel.querySelectorAll('.upgrade-btn').forEach((b) => {
+        const isSelected =
+            hasPick && b.dataset.upgradeId === player.selectedUpgradeId;
+        b.classList.toggle('selected-upgrade', Boolean(isSelected));
+    });
+
+    let doneEl = panel.querySelector('.panel-done');
+    if (hasPick) {
+        if (!doneEl) {
+            doneEl = document.createElement('div');
+            doneEl.className = 'panel-done';
+            panel.appendChild(doneEl);
+        }
+        doneEl.style.color = player.color;
+        doneEl.textContent = isPassive
+            ? `✓ Ready: ${player.currentLevelUpgradeName}`
+            : `✓ ${player.currentLevelUpgradeName} — click it again to undo`;
+    } else if (doneEl) {
+        doneEl.remove();
     }
 }
 
@@ -980,7 +1069,7 @@ function showKickButtonsForUnpickedPlayers() {
         if (
             !panel ||
             panel.dataset.pickDone === 'true' ||
-            player.currentLevelUpgradeName
+            player.selectedUpgradeId
         )
             continue;
         if (panel.querySelector('.kick-player-btn')) continue;
@@ -1003,8 +1092,8 @@ function showKickButtonsForUnpickedPlayers() {
 }
 
 /**
- * Drop a player's pending level-up pick so the round never stalls on them.
- * Host advances pendingPicks / finishSelectionRound; clients only update UI.
+ * Drop a player from the round so it never stalls on them. The remaining
+ * players' picks are recounted from scratch.
  */
 function releaseDisconnectedPlayerPick(
     playerIndex,
@@ -1015,40 +1104,23 @@ function releaseDisconnectedPlayerPick(
 
     const p = GAME_STATE.players?.[playerIndex];
     const panel = document.getElementById(`levelPanel_${playerIndex}`);
-    const isHost =
-        !(
-            GAME_STATE.gameMode === 'online' &&
-            typeof netManager !== 'undefined' &&
-            netManager?.isClient
-        );
 
-    let pickWasPending = false;
+    const pickWasPending = Boolean(p) && !p.selectedUpgradeId;
+    if (p) {
+        p.selectedUpgradeId = null;
+        p.currentLevelUpgradeName = null;
+        p._virtualPickDone = true;
+    }
     if (panel) {
-        if (panel.dataset.pickDone !== 'true') {
-            panel.dataset.pickDone = 'true';
-            pickWasPending = true;
-        }
+        panel.dataset.pickDone = 'true';
         panel.classList.add('chosen');
         panel.innerHTML = `<h3 class="panel-title" style="color: #ff4444;">Player ${playerIndex + 1}</h3><div style="color: #ff6666; font-size: 13px; margin-top: 10px; font-weight: bold;">✕ ${statusText}</div>`;
-    } else if (p && !p._virtualPickDone && !p.currentLevelUpgradeName) {
-        pickWasPending = true;
     }
-
-    if (p) p._virtualPickDone = true;
 
     if (!pickWasPending) return false;
 
-    if (isHost) {
-        GAME_STATE.pendingPicks--;
-        if (GAME_STATE.pendingPicks <= 0) {
-            finishSelectionRound();
-        }
-    } else {
-        GAME_STATE.pendingPicks--;
-        if (GAME_STATE.pendingPicks <= 0) {
-            const layer = document.getElementById('levelUpLayer');
-            if (layer) layer.classList.remove('show');
-        }
+    if (isSelectionRoundComplete()) {
+        finishSelectionRound();
     }
     return true;
 }
@@ -1160,6 +1232,7 @@ function buildPlayerPanel(
     } else if (isOnline) {
         panel.style.zIndex = '142';
     }
+    panel.dataset.interactive = isInteractive ? '1' : '0';
 
     if (
         player.currentLevelUpgradeName ||
@@ -1222,33 +1295,31 @@ function buildPlayerPanel(
 
         if (isInteractive) {
             btn.onclick = () => {
-                u.effect(player);
-                if (u.oneShot && player.takenOneShots)
-                    player.takenOneShots.add(u.id);
-                player.currentLevelUpgradeName = u.name;
+                // Clicking the locked-in upgrade again releases the pick so the
+                // player can keep thinking; effects apply when everyone is done.
+                const deselect = player.selectedUpgradeId === u.id;
+                if (deselect) {
+                    clearPlayerUpgradePick(player);
+                } else {
+                    player.selectedUpgradeId = u.id;
+                    player.currentLevelUpgradeName = u.name;
+                }
 
-                panel.querySelectorAll('.upgrade-btn').forEach((b) => {
-                    b.classList.remove('selected-upgrade');
-                });
-                btn.classList.add('selected-upgrade');
-
-                if (
+                const isOnlineNet =
                     GAME_STATE.gameMode === 'online' &&
                     typeof netManager !== 'undefined' &&
-                    netManager.isClient
-                ) {
-                    netManager.sendUpgradeSelection(u.id);
-                } else if (
-                    GAME_STATE.gameMode === 'online' &&
-                    typeof netManager !== 'undefined' &&
-                    netManager.isHost
-                ) {
-                    netManager.broadcast({
-                        type: 'UPGRADE_CHOSEN_SYNC',
-                        playerIndex: player.index,
-                        upgradeId: u.id,
-                        upgradeName: u.name,
-                    });
+                    netManager;
+                if (isOnlineNet) {
+                    if (netManager.isClient) {
+                        netManager.sendUpgradeSelection(deselect ? null : u.id);
+                    } else if (netManager.isHost) {
+                        netManager.broadcast({
+                            type: 'UPGRADE_CHOSEN_SYNC',
+                            playerIndex: player.index,
+                            upgradeId: deselect ? null : u.id,
+                            upgradeName: deselect ? null : u.name,
+                        });
+                    }
                 }
                 onPlayerChose(panel, player);
             };
@@ -1259,16 +1330,14 @@ function buildPlayerPanel(
         panel.appendChild(btn);
     }
 
-    if (player.currentLevelUpgradeName) {
-        onPlayerChose(panel, player);
-    }
+    updateUpgradePanelState(panel, player);
 
     return panel;
 }
 
 function onPlayerChoseVirtual(player) {
-    if (!player || player._virtualPickDone) return;
-    player._virtualPickDone = true;
+    if (!player) return;
+    player._virtualPickDone = Boolean(player.selectedUpgradeId);
 
     // In online multiplayer, Host is the authoritative coordinator for level-up completion and countdowns
     if (
@@ -1279,43 +1348,35 @@ function onPlayerChoseVirtual(player) {
         return;
     }
 
-    GAME_STATE.pendingPicks--;
-    if (GAME_STATE.pendingPicks > 0) return;
-    finishSelectionRound();
+    if (isSelectionRoundComplete()) finishSelectionRound();
 }
 
+/**
+ * A player's pending pick changed (picked, switched, or undone). Only once every
+ * active player has a pick does the round apply the upgrades and move on.
+ */
 function onPlayerChose(panel, player) {
-    if (panel.dataset.pickDone === 'true') return;
-    panel.dataset.pickDone = 'true';
-    panel.classList.add('chosen');
-    panel.querySelectorAll('.upgrade-btn').forEach((b) => {
-        b.disabled = true;
-        if (
-            player.currentLevelUpgradeName &&
-            (b.dataset.upgradeName === player.currentLevelUpgradeName ||
-                b.dataset.upgradeId === player.currentLevelUpgradeName)
-        ) {
-            b.classList.add('selected-upgrade');
+    if (player) player._virtualPickDone = Boolean(player.selectedUpgradeId);
+    updateUpgradePanelState(panel, player);
+    if (isSelectionRoundComplete()) finishSelectionRound();
+}
+
+/** Apply every locked-in upgrade for this round, then clear the picks. */
+function applyRoundUpgradePicks() {
+    for (const pl of GAME_STATE.players || []) {
+        if (!pl?.selectedUpgradeId) continue;
+        const options = Array.isArray(pl.currentUpgradeOptions)
+            ? pl.currentUpgradeOptions
+            : [];
+        const upgrade = options.find((o) => o && o.id === pl.selectedUpgradeId);
+        if (upgrade && typeof upgrade.effect === 'function') {
+            upgrade.effect(pl);
+            if (upgrade.oneShot && pl.takenOneShots) {
+                pl.takenOneShots.add(upgrade.id);
+            }
         }
-    });
-    const tag = document.createElement('div');
-    tag.className = 'panel-done';
-    tag.textContent = '✓ Ready — Waiting for other players...';
-    tag.style.color = player.color;
-    panel.appendChild(tag);
-
-    // In online multiplayer, Host is the authoritative coordinator for level-up completion and countdowns
-    if (
-        GAME_STATE.gameMode === 'online' &&
-        typeof netManager !== 'undefined' &&
-        netManager?.isClient
-    ) {
-        return;
+        pl.selectedUpgradeId = null;
     }
-
-    GAME_STATE.pendingPicks--;
-    if (GAME_STATE.pendingPicks > 0) return;
-    finishSelectionRound();
 }
 
 function finishSelectionRound() {
@@ -1324,9 +1385,13 @@ function finishSelectionRound() {
         kickTimeoutId = null;
     }
 
+    // Picks are only committed once nobody is still deciding.
+    applyRoundUpgradePicks();
+
     for (const pl of GAME_STATE.players || []) {
         if (pl) {
             pl.currentUpgradeOptions = null;
+            pl.selectedUpgradeId = null;
             pl._virtualPickDone = false;
         }
     }
@@ -1399,6 +1464,8 @@ function startCountdown(isNewGame = false) {
     if (tBtn) tBtn.style.display = 'none';
     const layer = document.getElementById('levelUpLayer');
     if (layer) layer.classList.remove('show');
+    // Dismiss the lobby connection warning before the tip banner is parked.
+    if (typeof hideConnectionWarning === 'function') hideConnectionWarning();
     const tipEl = document.getElementById('tipText');
     if (tipEl) tipEl.style.display = 'none';
     const hostOverlay = document.getElementById('hostPauseOverlay');
@@ -1659,6 +1726,117 @@ function stopTipRotation() {
     const tipEl = document.getElementById('tipText');
     if (tipEl) {
         tipEl.classList.remove('fade-out');
+    }
+}
+
+// ---------------- 3b. Online Lobby Connection Warning ----------------
+
+const CONNECTION_WARNING_AUTO_HIDE_MS = 5000;
+let connectionWarningTimer = null;
+let connectionWarningWired = false;
+let connectionWarningHidTips = false;
+
+function cancelConnectionWarningAutoHide() {
+    if (connectionWarningTimer) {
+        clearTimeout(connectionWarningTimer);
+        connectionWarningTimer = null;
+    }
+}
+
+function wireConnectionWarning() {
+    if (connectionWarningWired) return;
+    const popup = document.getElementById('connectionWarningPopup');
+    if (!popup) return;
+    connectionWarningWired = true;
+
+    const closeBtn = document.getElementById('connectionWarningClose');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideConnectionWarning();
+        });
+    }
+
+    const moreBtn = document.getElementById('connectionWarningMore');
+    if (moreBtn) {
+        moreBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            cancelConnectionWarningAutoHide();
+            const detail = document.getElementById('connectionWarningDetail');
+            if (detail) detail.hidden = false;
+            moreBtn.setAttribute('aria-expanded', 'true');
+            // Nothing left to expand, so retire the button.
+            moreBtn.hidden = true;
+        });
+    }
+
+    // Only an explicit click — the box itself or "Read more" — holds the popup
+    // open. Hovering or focusing past it does not stop the auto-dismiss.
+    popup.addEventListener('click', (e) => {
+        e.stopPropagation();
+        cancelConnectionWarningAutoHide();
+    });
+    // Keep taps on the box from reaching the joystick layer underneath.
+    popup.addEventListener('pointerdown', (e) => e.stopPropagation());
+}
+
+/** Show the connection warning on entering an online lobby. No-op when up. */
+function showConnectionWarning() {
+    const popup = document.getElementById('connectionWarningPopup');
+    if (!popup) return;
+    wireConnectionWarning();
+    if (popup.classList.contains('show')) return;
+
+    const detail = document.getElementById('connectionWarningDetail');
+    if (detail) detail.hidden = true;
+    const moreBtn = document.getElementById('connectionWarningMore');
+    if (moreBtn) {
+        moreBtn.hidden = false;
+        moreBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    // The popup occupies the tip banner's spot, so park the tips meanwhile.
+    const tipEl = document.getElementById('tipText');
+    if (tipEl && tipEl.style.display !== 'none') {
+        connectionWarningHidTips = true;
+        tipEl.style.display = 'none';
+        stopTipRotation();
+    }
+
+    popup.classList.add('show');
+    popup.setAttribute('aria-hidden', 'false');
+
+    cancelConnectionWarningAutoHide();
+    connectionWarningTimer = setTimeout(() => {
+        connectionWarningTimer = null;
+        hideConnectionWarning();
+    }, CONNECTION_WARNING_AUTO_HIDE_MS);
+}
+
+function hideConnectionWarning() {
+    cancelConnectionWarningAutoHide();
+    const popup = document.getElementById('connectionWarningPopup');
+    if (!popup) return;
+    popup.classList.remove('show');
+    popup.setAttribute('aria-hidden', 'true');
+    const detail = document.getElementById('connectionWarningDetail');
+    if (detail) detail.hidden = true;
+    const moreBtn = document.getElementById('connectionWarningMore');
+    if (moreBtn) {
+        moreBtn.hidden = false;
+        moreBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    if (connectionWarningHidTips) {
+        connectionWarningHidTips = false;
+        // Only restore tips if we are still sitting in the lobby (other flows
+        // hide the tip banner themselves right after this).
+        if (
+            typeof GAME_STATE !== 'undefined' &&
+            GAME_STATE.current === STATES.WEAPON_SELECT
+        ) {
+            startTipRotation();
+        }
     }
 }
 
@@ -2017,6 +2195,8 @@ function showStartMenu() {
               ? window.joystickZone
               : null);
     if (zone) zone.style.display = 'none';
+    // Dismiss the lobby connection warning before the tip banner is parked.
+    if (typeof hideConnectionWarning === 'function') hideConnectionWarning();
     const tipEl = document.getElementById('tipText');
     if (tipEl) tipEl.style.display = 'none';
     stopTipRotation();
@@ -3076,6 +3256,8 @@ if (typeof window !== 'undefined') {
     window.adjustTipTextLayout = adjustTipTextLayout;
     window.startTipRotation = startTipRotation;
     window.stopTipRotation = stopTipRotation;
+    window.showConnectionWarning = showConnectionWarning;
+    window.hideConnectionWarning = hideConnectionWarning;
     window.gameOver = gameOver;
     window.showVictory = showVictory;
     window.formatTime = formatTime;
