@@ -448,20 +448,44 @@
         transition: transform 0.15s ease, opacity 0.15s ease;
         user-select: none;
         padding-bottom: 2px;
-        border-bottom: 1.5px dashed transparent;
+        /* Always visible so the name reads as an editable field, not just on hover. */
+        border-bottom: 1.5px dashed currentColor;
     }
     .panel-title.editable-name:hover {
-        border-bottom-color: currentColor;
         transform: translateY(-1px);
     }
-    .player-name-edit-icon {
-        font-size: 0.8em;
-        opacity: 0.65;
-        transition: opacity 0.15s ease, transform 0.15s ease;
+    /* Labelled "Rename" chip — a bare pencil was too easy to miss, especially
+       on touch devices where nothing hovers. */
+    .player-name-edit-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        flex-shrink: 0;
+        white-space: nowrap;
+        padding: 1px 7px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        font-size: 0.55em;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        opacity: 0.75;
+        transition: opacity 0.15s ease, background 0.15s ease;
     }
-    .panel-title.editable-name:hover .player-name-edit-icon {
+    .panel-title.editable-name:hover .player-name-edit-chip {
         opacity: 1;
-        transform: scale(1.15);
+        background: rgba(255, 255, 255, 0.16);
+    }
+    .player-name-edit-icon {
+        font-size: 1.05em;
+        line-height: 1;
+    }
+    body.mobile-device .player-name-edit-chip {
+        font-size: 9px !important;
+        padding: 2px 7px !important;
+        gap: 4px !important;
+        opacity: 0.85;
     }
     .player-name-input {
         background: rgba(14, 16, 24, 0.95);
@@ -845,12 +869,6 @@
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), 0 0 15px rgba(0, 255, 204, 0.2) !important;
         z-index: 142 !important;
     }
-    /* Before making the first weapon pick, the player's own dialog must stay on
-       top of the lobby action buttons (they sit at 190 on mobile). Once picked
-       the panel becomes .chosen and drops to 130, so the buttons win. */
-    body.mobile-device .player-panel.weapon-select-grid.local-player-panel:not(.chosen) {
-        z-index: 200 !important;
-    }
     body.mobile-device .panel-title {
         font-size: 14px !important;
         margin: 0 0 1px 0 !important;
@@ -1056,8 +1074,10 @@
     }
     #joystickZone.joystick-active #joystickBase,
     #joystickZone.joystick-active #joystickThumb {
-        opacity: 1;
-        transition: none;
+        /* While the stick is in use it fades further into the background
+           instead of lighting up, so it never hides the action under your
+           finger. */
+        opacity: 0.3;
     }
     
     /* Mobile Virtual Joystick: Compact 82px pad (repositioned in JS on press) */
@@ -1080,14 +1100,10 @@
     }
     body.mobile-device #lobbyActionStack {
         bottom: calc(max(14px, env(safe-area-inset-bottom, 14px)) + 148px) !important;
-        left: 50% !important;
-        right: auto !important;
-        transform: translateX(-50%) !important;
+        left: 0 !important;
+        right: 0 !important;
+        transform: none !important;
         gap: 12px !important;
-        /* Full screen / How to play / Difficulty / Invite code sit above every
-           weapon-select dialog (142, chosen 130) and are only topped by the
-           player's own not-yet-picked dialog at 200. */
-        z-index: 190 !important;
     }
     body.mobile-device #lobbyDifficultyBanner {
         padding: 5px 10px !important;
@@ -1112,15 +1128,15 @@
         padding: 8px 12px !important;
         font-size: 12px !important;
     }
-    body.mobile-device #lobbyStartBtn {
-        position: fixed !important;
-        bottom: calc(max(14px, env(safe-area-inset-bottom, 14px)) + 92px) !important;
-        left: 50% !important;
-        top: auto !important;
-        transform: translateX(-50%) !important;
+    /* Start Game leads the action column on mobile (moved into the stack in JS),
+       so it sits above How to play instead of under the invite code. */
+    body.mobile-device #lobbyActionStack #lobbyStartBtn {
+        position: static !important;
+        inset: auto !important;
+        transform: none !important;
+        margin: 0 !important;
         padding: 9px 26px !important;
         font-size: 14px !important;
-        z-index: 160 !important;
     }
     body.mobile-device #lobbyStartBtn:disabled {
         background: rgba(14, 16, 22, 0.75) !important;
@@ -1129,7 +1145,7 @@
         box-shadow: none !important;
         backdrop-filter: blur(8px) !important;
         -webkit-backdrop-filter: blur(8px) !important;
-        transform: translateX(-50%) scale(0.96) !important;
+        transform: scale(0.96) !important;
     }
     
     /* Mobile Landscape Ergonomics */
@@ -1176,21 +1192,16 @@
             font-size: 10px !important;
             line-height: 1.3 !important;
         }
-        body.mobile-device #lobbyStartBtn {
-            bottom: max(10px, env(safe-area-inset-bottom, 10px)) !important;
-            left: 50% !important;
-            transform: translateX(-50%) !important;
+        body.mobile-device #lobbyActionStack #lobbyStartBtn {
             padding: 7px 22px !important;
             font-size: 13px !important;
-            z-index: 160 !important;
         }
         body.mobile-device #lobbyActionStack {
             bottom: max(10px, env(safe-area-inset-bottom, 10px)) !important;
-            right: calc(50% + 94px) !important;
-            left: auto !important;
+            left: 0 !important;
+            right: 0 !important;
             transform: none !important;
             gap: 10px !important;
-            z-index: 190 !important;
         }
         body.mobile-device #inviteCodeBanner {
             padding: 4px 10px !important;
@@ -1465,7 +1476,7 @@
         bottom: auto;
         right: auto;
         transform: translate(-50%, -50%);
-        z-index: 160;
+        z-index: 210;
         padding: 14px 42px;
         font-size: 18px;
         font-weight: bold;
@@ -1496,16 +1507,21 @@
         transform: translate(-50%, -50%) scale(0.96);
     }
 
-    /* Stacked lobby actions: Full screen → How to play → Invite (host). Gap is shared. */
+    /* Stacked lobby actions: Start (mobile) → Full screen → How to play →
+       Difficulty → Invite (host). Gap is shared.
+       Must NOT be position:fixed or carry a transform/z-index: all three create
+       a stacking context, which would trap the per-button z-index values and
+       drop the whole column behind the fixed game canvas. Absolute positioning
+       keeps each action free to layer on its own against #levelUpLayer. */
     #lobbyActionStack {
         display: none;
-        position: fixed;
+        position: absolute;
         bottom: calc(max(16px, env(safe-area-inset-bottom, 16px)) + 14px);
-        left: 50%;
-        right: auto;
+        left: 0;
+        right: 0;
         top: auto;
-        transform: translateX(-50%);
-        z-index: 155;
+        width: fit-content;
+        margin: 0 auto;
         flex-direction: column;
         align-items: center;
         gap: 14px;
@@ -1515,7 +1531,7 @@
         display: flex;
     }
     #lobbyActionStack > * {
-        position: static;
+        position: relative;
         left: auto;
         right: auto;
         top: auto;
@@ -1523,6 +1539,13 @@
         transform: none;
         pointer-events: auto;
         margin: 0;
+        z-index: 210;
+    }
+    /* "Waiting" actions drop below the whole dialog layer; the rest stay in
+       front of it (Invite code always does). */
+    #lobbyActionStack > .lobby-behind-dialogs,
+    #lobbyStartBtn.lobby-behind-dialogs {
+        z-index: 120;
     }
     #lobbyDifficultyBanner {
         display: none;

@@ -32,7 +32,10 @@ function getDifficultyKey(diff) {
 
 /** Apply difficulty in lobby/game setup and refresh co-op scaling + accuracy. */
 function applyGameDifficulty(diffKey) {
-    if (typeof GAME_STATE === 'undefined' || typeof DIFFICULTIES === 'undefined')
+    if (
+        typeof GAME_STATE === 'undefined' ||
+        typeof DIFFICULTIES === 'undefined'
+    )
         return getDifficultyKey();
     const key = getDifficultyKey(diffKey);
     const diff = DIFFICULTIES[key] || DIFFICULTIES.normal;
@@ -126,6 +129,65 @@ function updateLobbyDifficultyUI() {
     });
 }
 
+// ---------------- 1b. Lobby action layering ----------------
+
+// Set once the player has used a lobby action (How to play / Full screen) in
+// this lobby session; such buttons then drop behind the weapon-select dialog.
+let lobbyActionUsed = false;
+
+/** True once the local seat (all seats in local co-op) picked a weapon. */
+function isLocalWeaponSelectionDone() {
+    if (typeof GAME_STATE === 'undefined') return false;
+    const players = (GAME_STATE.players || []).filter(
+        (p) => p && !p.disconnected && !p.kicked,
+    );
+    if (!players.length) return false;
+    if (GAME_STATE.gameMode === 'online') {
+        const myIndex =
+            typeof netManager !== 'undefined' && netManager
+                ? netManager.localPlayerIndex
+                : 0;
+        const me = GAME_STATE.players?.[myIndex];
+        return Boolean(me?.selectedWeapon);
+    }
+    // Local co-op shares one screen, so the lobby clears once every seat picked.
+    return players.every((p) => p.selectedWeapon);
+}
+
+/**
+ * Layer the lobby actions against the weapon-select dialogs:
+ * Difficulty / Full screen / Start game wait behind the dialog until the local
+ * pick is made, How to play drops behind once opened, Invite code stays in
+ * front throughout.
+ */
+function updateLobbyActionLayering() {
+    if (typeof document === 'undefined') return;
+    const picked = isLocalWeaponSelectionDone();
+    const setBehind = (id, behind) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('lobby-behind-dialogs', Boolean(behind));
+    };
+    setBehind('lobbyDifficultyBanner', !picked);
+    setBehind('fullscreenLobbyBtn', !picked);
+    setBehind('lobbyStartBtn', !picked);
+    setBehind('howToPlayBanner', lobbyActionUsed);
+    // Invite code is intentionally never pushed behind the dialog.
+}
+
+/** Mobile: Start Game leads the action column, above How to play. */
+function ensureMobileLobbyStartInStack() {
+    if (typeof document === 'undefined') return;
+    const isMobileDevice =
+        typeof isMobile !== 'undefined'
+            ? isMobile
+            : (typeof window !== 'undefined' && window.isMobile) || false;
+    if (!isMobileDevice) return;
+    const stack = document.getElementById('lobbyActionStack');
+    const startBtn = document.getElementById('lobbyStartBtn');
+    if (!stack || !startBtn || startBtn.parentElement === stack) return;
+    stack.insertBefore(startBtn, stack.firstChild);
+}
+
 function startWeaponSelectFlow() {
     if (typeof GAME_STATE === 'undefined') return;
     GAME_STATE.current = STATES.WEAPON_SELECT;
@@ -159,6 +221,7 @@ function startWeaponSelectFlow() {
         hideConnectionWarning();
     }
 
+    lobbyActionUsed = false;
     renderLobbyWeaponPanels();
 }
 
@@ -310,6 +373,7 @@ function restoreOpenLobbyNameEdits(edits) {
 function renderLobbyWeaponPanels() {
     const layer = document.getElementById('levelUpLayer');
     if (!layer) return;
+    ensureMobileLobbyStartInStack();
     const openNameEdits = captureOpenLobbyNameEdits();
     // Mark open inputs so their blur handlers do not commit while we rebuild
     document.querySelectorAll('.player-name-input').forEach((el) => {
@@ -341,7 +405,8 @@ function renderLobbyWeaponPanels() {
         if (inviteBanner) inviteBanner.style.display = 'none';
         if (howToPlayBanner) howToPlayBanner.style.display = 'none';
         if (difficultyBanner) difficultyBanner.style.display = 'none';
-        if (fullscreenLobbyBtn) fullscreenLobbyBtn.classList.remove('is-visible');
+        if (fullscreenLobbyBtn)
+            fullscreenLobbyBtn.classList.remove('is-visible');
         if (lobbyActionStack) lobbyActionStack.classList.remove('is-visible');
         const player = GAME_STATE.players?.[0] ? GAME_STATE.players[0] : null;
         if (player)
@@ -424,7 +489,9 @@ function renderLobbyWeaponPanels() {
                 layer.appendChild(buildStartingWeaponPanel(player, 1, true));
         } else {
             const maxOnline =
-                typeof MAX_ONLINE_PLAYERS === 'number' ? MAX_ONLINE_PLAYERS : 12;
+                typeof MAX_ONLINE_PLAYERS === 'number'
+                    ? MAX_ONLINE_PLAYERS
+                    : 12;
             const connected = [];
             const empty = [];
             for (let i = 0; i < maxOnline; i++) {
@@ -461,7 +528,12 @@ function renderLobbyWeaponPanels() {
                 const player = GAME_STATE.players[i];
                 if (player && !player.disconnected) {
                     layer.appendChild(
-                        buildStartingWeaponPanel(player, panelCount, i === 0, s),
+                        buildStartingWeaponPanel(
+                            player,
+                            panelCount,
+                            i === 0,
+                            s,
+                        ),
                     );
                 } else {
                     layer.appendChild(buildPlaceholderPanel(i, panelCount, s));
@@ -521,6 +593,7 @@ function renderLobbyWeaponPanels() {
     }
     // Keep concurrent name edits alive across lobby re-renders (weapon picks, etc.)
     restoreOpenLobbyNameEdits(openNameEdits);
+    updateLobbyActionLayering();
 }
 
 function buildPlaceholderPanel(index, count, layoutIndex = null) {
@@ -659,12 +732,17 @@ function buildStartingWeaponPanel(
 
         if (isEditable) {
             title.classList.add('editable-name');
-            title.title = 'Click to change name';
-            const editIcon = document.createElement('span');
-            editIcon.className = 'player-name-edit-icon';
-            editIcon.innerHTML = '&#9998;';
-            editIcon.title = 'Click to change name';
-            title.appendChild(editIcon);
+            const hint = isMobileDevice
+                ? 'Tap to change name'
+                : 'Click to change name';
+            title.title = hint;
+            const editChip = document.createElement('span');
+            editChip.className = 'player-name-edit-chip';
+            editChip.innerHTML =
+                '<span class="player-name-edit-icon" aria-hidden="true">&#9998;</span>' +
+                '<span class="player-name-edit-label">Rename</span>';
+            editChip.title = hint;
+            title.appendChild(editChip);
         } else {
             title.classList.remove('editable-name');
             title.removeAttribute('title');
@@ -805,6 +883,8 @@ function selectStartingWeapon(player, weaponId, weaponLabel, panel) {
     if (statusDiv) {
         statusDiv.textContent = isDeselect ? '' : `✓ Ready: ${weaponLabel}`;
     }
+    // Difficulty / Full screen / Start game come forward once the pick is made.
+    updateLobbyActionLayering();
 
     const tipEl = document.getElementById('tipText');
 
@@ -1022,8 +1102,7 @@ function updateUpgradePanelState(panel, player) {
     if (!player || !panel) return;
     const hasPick = Boolean(player.selectedUpgradeId);
     const isPassive =
-        panel.dataset.interactive === '0' &&
-        GAME_STATE.gameMode === 'online';
+        panel.dataset.interactive === '0' && GAME_STATE.gameMode === 'online';
 
     panel.dataset.pickDone = hasPick ? 'true' : 'false';
     if (hasPick || isPassive) panel.classList.add('chosen');
@@ -1198,9 +1277,7 @@ function getPanelPosition(index, count) {
     const leftPct = col * widthPct + widthPct / 2;
     const topPct = row * heightPct + heightPct / 2;
     const panelW =
-        count <= 6
-            ? 'clamp(200px, 28vw, 360px)'
-            : 'clamp(160px, 22vw, 280px)';
+        count <= 6 ? 'clamp(200px, 28vw, 360px)' : 'clamp(160px, 22vw, 280px)';
     return `top:${topPct}%; left:${leftPct}%; transform:translate(-50%,-50%); width:${panelW}; max-height:calc(${heightPct}vh - 16px);`;
 }
 
@@ -1644,8 +1721,7 @@ function adjustTipTextLayout() {
         const panelRect = panels[0].getBoundingClientRect();
         const tipRect = tipEl.getBoundingClientRect();
         if (panelRect.top < tipRect.bottom + 10) {
-            tipEl.style.top =
-                Math.max(8, panelRect.top - tipRect.height - 10) + 'px';
+            tipEl.style.top = `${Math.max(8, panelRect.top - tipRect.height - 10)}px`;
         } else {
             tipEl.style.top =
                 'calc(max(16px, env(safe-area-inset-top, 16px)) + 52px)';
@@ -1687,7 +1763,7 @@ function startTipRotation() {
     const tipEl = document.getElementById('tipText');
     if (!tipEl) return;
 
-    tipEl.textContent = 'Tip: ' + fetchTip();
+    tipEl.textContent = `Tip: ${fetchTip()}`;
     tipEl.classList.remove('fade-out');
     tipEl.style.display = 'block';
     adjustTipTextLayout();
@@ -1703,7 +1779,7 @@ function startTipRotation() {
             tipFadeTimer = setTimeout(() => {
                 const el2 = document.getElementById('tipText');
                 if (!el2 || el2.style.display === 'none') return;
-                el2.textContent = 'Tip: ' + fetchTip();
+                el2.textContent = `Tip: ${fetchTip()}`;
                 el2.classList.remove('fade-out');
                 adjustTipTextLayout();
                 scheduleNextTip();
@@ -2555,7 +2631,8 @@ function togglePause() {
             const isMobileDevice =
                 typeof isMobile !== 'undefined'
                     ? isMobile
-                    : (typeof window !== 'undefined' && window.isMobile) || false;
+                    : (typeof window !== 'undefined' && window.isMobile) ||
+                      false;
             const zone =
                 document.getElementById('joystickZone') ||
                 (typeof joystickZone !== 'undefined'
@@ -2690,7 +2767,7 @@ function updateUI() {
     const fpsCounterEl = document.getElementById('fpsCounter');
 
     if (xpBarEl && GAME_STATE.nextXp) {
-        xpBarEl.style.width = (GAME_STATE.xp / GAME_STATE.nextXp) * 100 + '%';
+        xpBarEl.style.width = `${(GAME_STATE.xp / GAME_STATE.nextXp) * 100}%`;
     }
     if (xpLevelLabelEl) {
         xpLevelLabelEl.textContent = `Level ${GAME_STATE.level || 1}`;
@@ -2840,6 +2917,15 @@ function getApproximateRunMinutes() {
 }
 
 function openHowToPlayModal() {
+    // In the weapon-select lobby the button drops behind the dialog once used.
+    if (
+        typeof GAME_STATE !== 'undefined' &&
+        typeof STATES !== 'undefined' &&
+        GAME_STATE.current === STATES.WEAPON_SELECT
+    ) {
+        lobbyActionUsed = true;
+        updateLobbyActionLayering();
+    }
     const winItem = document.getElementById('howToPlayWinItem');
     if (winItem) {
         const minutes = getApproximateRunMinutes();
@@ -2896,7 +2982,8 @@ function initUISystem() {
     bindHowToPlayOpen('btnHowToPlayMenu');
     bindHowToPlayOpen('howToPlayBanner');
     const closeHowToPlayBtn = document.getElementById('closeHowToPlayBtn');
-    if (closeHowToPlayBtn) closeHowToPlayBtn.onclick = () => closeHowToPlayModal();
+    if (closeHowToPlayBtn)
+        closeHowToPlayBtn.onclick = () => closeHowToPlayModal();
     const closeHowToPlayBtnBottom = document.getElementById(
         'closeHowToPlayBtnBottom',
     );
@@ -3046,7 +3133,11 @@ function initUISystem() {
                     }
                     if (typeof startGame === 'function') startGame(1, diffKey);
                 } catch (err) {
-                    showToast('Could not initialize P2P host: ' + err.message, 5000, true);
+                    showToast(
+                        `Could not initialize P2P host: ${err.message}`,
+                        5000,
+                        true,
+                    );
                 }
             } else {
                 if (typeof startGame === 'function')
