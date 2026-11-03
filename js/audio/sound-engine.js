@@ -732,7 +732,6 @@ const SoundEngine = {
             if (state === 'running') {
                 this.resumeNudged = false;
                 this.activeVoices = [];
-                this.musicNextNoteTime = this.ctx.currentTime + 0.02;
                 this.musicLastTickTime = performance.now();
             } else if (state && state !== 'closed' && !this.resumeNudged) {
                 // One nudge per outage: calling resume() while interrupted can
@@ -1853,9 +1852,29 @@ const SoundEngine = {
         if (!this.isMusicPaused) return;
         this.isMusicPaused = false;
         this.musicLastTickTime = performance.now();
-        if (this.ctx && this.musicNextNoteTime < this.ctx.currentTime) {
-            this.musicNextNoteTime = this.ctx.currentTime + 0.05;
+        // The grid is repaired by syncMusicGrid() on the next updateMusic()
+        // tick, where the per-mode step duration is known.
+    },
+
+    // Keep the melody grid in phase when the audio clock jumps past it. A
+    // suspended context freezes currentTime and resumes it where it stopped,
+    // but a WebKit-"interrupted" context or a throttled tab can leave the grid
+    // behind. Re-anchoring onto "now" (the old `currentTime + 0.02`) moves the
+    // next note earlier than the one already sounding, which audibly shortened
+    // the interval between the first two menu notes; skipping whole steps
+    // instead keeps the beat grid intact and the melody in phase, as if it had
+    // kept playing silently.
+    syncMusicGrid(stepDuration) {
+        if (!this.ctx || !Number.isFinite(stepDuration) || stepDuration <= 0) {
+            return;
         }
+        const behind = this.ctx.currentTime - this.musicNextNoteTime;
+        // Less than one step behind is ordinary scheduling jitter: play the
+        // note late rather than jumping the sequence forward.
+        if (behind < stepDuration) return;
+        const skipped = Math.ceil(behind / stepDuration);
+        this.musicNextNoteTime += skipped * stepDuration;
+        this.musicStep += skipped;
     },
 
     getSynthNoteBuffer(noteName, progress) {
@@ -1959,9 +1978,7 @@ const SoundEngine = {
 
             this.resumeIfAllowed();
 
-            if (this.musicNextNoteTime < this.ctx.currentTime) {
-                this.musicNextNoteTime = this.ctx.currentTime + 0.02;
-            }
+            this.syncMusicGrid(stepDuration);
 
             const lookahead = 0.15;
             while (this.musicNextNoteTime < this.ctx.currentTime + lookahead) {
@@ -2057,10 +2074,7 @@ const SoundEngine = {
             const stepDuration = 60 / (currentBpm * 4);
 
             this.resumeIfAllowed();
-
-            if (this.musicNextNoteTime < this.ctx.currentTime) {
-                this.musicNextNoteTime = this.ctx.currentTime + 0.02;
-            }
+            this.syncMusicGrid(stepDuration);
 
             const lookahead = 0.15;
             while (this.musicNextNoteTime < this.ctx.currentTime + lookahead) {
@@ -2203,10 +2217,12 @@ const SoundEngine = {
 
         this.resumeIfAllowed();
 
-        // Catch up safely if audio clock drifted ahead during any unhandled frame pause
-        if (this.musicNextNoteTime < this.ctx.currentTime) {
-            this.musicNextNoteTime = this.ctx.currentTime + 0.02;
-        }
+        // Catch up safely if the audio clock ran ahead during a suspended /
+        // interrupted context or a stalled frame, keeping the grid in phase.
+        const baseBpm = 10 + (140 - 10) * speedProg;
+        const bpm = baseBpm * this.tempoFactor;
+        const stepDuration = 60 / (bpm * 4);
+        this.syncMusicGrid(stepDuration);
 
         const lookahead = 0.15;
         while (this.musicNextNoteTime < this.ctx.currentTime + lookahead) {
@@ -2214,9 +2230,6 @@ const SoundEngine = {
                 this.ctx.currentTime,
                 this.musicNextNoteTime,
             );
-            const baseBpm = 10 + (140 - 10) * speedProg;
-            const bpm = baseBpm * this.tempoFactor;
-            const stepDuration = 60 / (bpm * 4);
 
             const noteName =
                 this.MELODY_SEQUENCE[
