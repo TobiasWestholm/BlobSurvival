@@ -76,7 +76,7 @@ const SoundEngine = {
             0.0,
             Math.min(1.0, (this.musicElapsedMs || 0) / this.SPEED_MAX_MS),
         );
-        return 1 - Math.pow(1 - p, 3);
+        return 1 - (1 - p) ** 3;
     },
     getFilterProgress() {
         return Math.max(
@@ -86,8 +86,8 @@ const SoundEngine = {
     },
     getFilterCutoff() {
         const fp = this.getFilterProgress();
-        const shapedProgress = Math.pow(fp, 2.1); // k = 2.1 stays warm early and accelerates towards late game
-        return Math.min(20000, 400 * Math.pow(20000 / 400, shapedProgress));
+        const shapedProgress = fp ** 2.1; // k = 2.1 stays warm early and accelerates towards late game
+        return Math.min(20000, 400 * (20000 / 400) ** shapedProgress);
     },
     getReverbProgress() {
         return Math.max(
@@ -283,7 +283,7 @@ const SoundEngine = {
         const right = impulse.getChannelData(1);
 
         for (let i = 0; i < length; i++) {
-            const env = Math.pow(1 - i / length, decay);
+            const env = (1 - i / length) ** decay;
             left[i] = (Math.random() * 2 - 1) * env;
             right[i] = (Math.random() * 2 - 1) * env;
         }
@@ -469,32 +469,32 @@ const SoundEngine = {
         let period = 100 / (ps.p_base_freq * ps.p_base_freq + 0.001);
         let periodMax = 100 / (ps.p_freq_limit * ps.p_freq_limit + 0.001);
         let enableFrequencyCutoff = ps.p_freq_limit > 0;
-        let periodMult = 1 - Math.pow(ps.p_freq_ramp, 3) * 0.01;
-        let periodMultSlide = -Math.pow(ps.p_freq_dramp, 3) * 0.000001;
+        let periodMult = 1 - ps.p_freq_ramp ** 3 * 0.01;
+        let periodMultSlide = -(ps.p_freq_dramp ** 3) * 0.000001;
 
         let dutyCycle = 0.5 - ps.p_duty * 0.5;
         let dutyCycleSlide = -ps.p_duty_ramp * 0.00005;
 
         let arpeggioMultiplier;
         if (ps.p_arp_mod >= 0)
-            arpeggioMultiplier = 1 - Math.pow(ps.p_arp_mod, 2) * 0.9;
-        else arpeggioMultiplier = 1 + Math.pow(ps.p_arp_mod, 2) * 10;
+            arpeggioMultiplier = 1 - ps.p_arp_mod ** 2 * 0.9;
+        else arpeggioMultiplier = 1 + ps.p_arp_mod ** 2 * 10;
         let arpeggioTime = Math.floor(
-            Math.pow(1 - ps.p_arp_speed, 2) * 20000 + 32,
+            (1 - ps.p_arp_speed) ** 2 * 20000 + 32,
         );
         if (ps.p_arp_speed === 1) arpeggioTime = 0;
 
         const waveShape = parseInt(ps.wave_type);
-        let fltw = Math.pow(ps.p_lpf_freq, 3) * 0.1;
+        let fltw = ps.p_lpf_freq ** 3 * 0.1;
         const enableLowPassFilter = ps.p_lpf_freq !== 1;
         const fltw_d = 1 + ps.p_lpf_ramp * 0.0001;
         let fltdmp =
-            (5 / (1 + Math.pow(ps.p_lpf_resonance, 2) * 20)) * (0.01 + fltw);
+            (5 / (1 + ps.p_lpf_resonance ** 2 * 20)) * (0.01 + fltw);
         if (fltdmp > 0.8) fltdmp = 0.8;
-        let flthp = Math.pow(ps.p_hpf_freq, 2) * 0.1;
+        let flthp = ps.p_hpf_freq ** 2 * 0.1;
         const flthp_d = 1 + ps.p_hpf_ramp * 0.0003;
 
-        const vibratoSpeed = Math.pow(ps.p_vib_speed, 2) * 0.01;
+        const vibratoSpeed = ps.p_vib_speed ** 2 * 0.01;
         const vibratoAmplitude = ps.p_vib_strength * 0.5;
 
         const envelopeLength = [
@@ -504,13 +504,13 @@ const SoundEngine = {
         ];
         const envelopePunch = ps.p_env_punch;
 
-        let flangerOffset = Math.pow(ps.p_pha_offset, 2) * 1020;
+        let flangerOffset = ps.p_pha_offset ** 2 * 1020;
         if (ps.p_pha_offset < 0) flangerOffset = -flangerOffset;
-        let flangerOffsetSlide = Math.pow(ps.p_pha_ramp, 2) * 1;
+        let flangerOffsetSlide = ps.p_pha_ramp ** 2 * 1;
         if (ps.p_pha_ramp < 0) flangerOffsetSlide = -flangerOffsetSlide;
 
         let repeatTime = Math.floor(
-            Math.pow(1 - ps.p_repeat_speed, 2) * 20000 + 32,
+            (1 - ps.p_repeat_speed) ** 2 * 20000 + 32,
         );
         if (ps.p_repeat_speed === 0) repeatTime = 0;
 
@@ -539,15 +539,15 @@ const SoundEngine = {
             period = 100 / (ps.p_base_freq * ps.p_base_freq + 0.001);
             periodMax = 100 / (ps.p_freq_limit * ps.p_freq_limit + 0.001);
             enableFrequencyCutoff = ps.p_freq_limit > 0;
-            periodMult = 1 - Math.pow(ps.p_freq_ramp, 3) * 0.01;
-            periodMultSlide = -Math.pow(ps.p_freq_dramp, 3) * 0.000001;
+            periodMult = 1 - ps.p_freq_ramp ** 3 * 0.01;
+            periodMultSlide = -(ps.p_freq_dramp ** 3) * 0.000001;
             dutyCycle = 0.5 - ps.p_duty * 0.5;
             dutyCycleSlide = -ps.p_duty_ramp * 0.00005;
             if (ps.p_arp_mod >= 0)
-                arpeggioMultiplier = 1 - Math.pow(ps.p_arp_mod, 2) * 0.9;
-            else arpeggioMultiplier = 1 + Math.pow(ps.p_arp_mod, 2) * 10;
+                arpeggioMultiplier = 1 - ps.p_arp_mod ** 2 * 0.9;
+            else arpeggioMultiplier = 1 + ps.p_arp_mod ** 2 * 10;
             arpeggioTime = Math.floor(
-                Math.pow(1 - ps.p_arp_speed, 2) * 20000 + 32,
+                (1 - ps.p_arp_speed) ** 2 * 20000 + 32,
             );
             if (ps.p_arp_speed === 1) arpeggioTime = 0;
         }
@@ -853,19 +853,19 @@ const SoundEngine = {
             this.fxReverbConvolverStart = this.ctx.createConvolver();
             this.fxReverbConvolverStart.buffer = this.buildImpulseResponse(
                 4.5,
-                Math.pow(2.2, 3),
+                2.2 ** 3,
             ); // 4.5s, cubic decay ~10.65
 
             this.fxReverbConvolverEnd = this.ctx.createConvolver();
             this.fxReverbConvolverEnd.buffer = this.buildImpulseResponse(
                 1.6,
-                Math.pow(1.7, 3),
+                1.7 ** 3,
             ); // 1.6s, cubic decay ~4.91
 
             this.fxReverbConvolverVictory = this.ctx.createConvolver();
             this.fxReverbConvolverVictory.buffer = this.buildImpulseResponse(
                 9.0,
-                Math.pow(1.8, 3),
+                1.8 ** 3,
             ); // 9.0s, cubic decay ~5.83
 
             this.fxWetGainStart = this.ctx.createGain();
@@ -1761,7 +1761,7 @@ const SoundEngine = {
                     this.ctx.currentTime,
                 );
                 this.musicWetGainStart.gain.setValueAtTime(
-                    0.68 * Math.pow(invRevProg, 1.2),
+                    0.68 * invRevProg ** 1.2,
                     this.ctx.currentTime,
                 );
             }
@@ -1770,7 +1770,7 @@ const SoundEngine = {
                     this.ctx.currentTime,
                 );
                 this.musicWetGainEnd.gain.setValueAtTime(
-                    0.68 * Math.pow(revProg, 0.8),
+                    0.68 * revProg ** 0.8,
                     this.ctx.currentTime,
                 );
             }
@@ -1788,7 +1788,7 @@ const SoundEngine = {
                     this.ctx.currentTime,
                 );
                 this.fxWetGainStart.gain.setValueAtTime(
-                    0.2 * Math.pow(invRevProg, 1.2),
+                    0.2 * invRevProg ** 1.2,
                     this.ctx.currentTime,
                 );
             }
@@ -1797,7 +1797,7 @@ const SoundEngine = {
                     this.ctx.currentTime,
                 );
                 this.fxWetGainEnd.gain.setValueAtTime(
-                    0.2 * Math.pow(revProg, 0.8),
+                    0.2 * revProg ** 0.8,
                     this.ctx.currentTime,
                 );
             }
@@ -1871,9 +1871,9 @@ const SoundEngine = {
         const stepDuration = 60 / (bpm * 4);
 
         // Long attack in beginning (~0.35s) smoothly tapering to 8ms over 24 minutes
-        const rawAttack = 0.35 * Math.pow(1 - progress, 1.5) + 0.008;
+        const rawAttack = 0.35 * (1 - progress) ** 1.5 + 0.008;
         const attack = Math.min(rawAttack, stepDuration * 0.6);
-        const sustain = 0.35 * Math.pow(1 - progress, 1.4) + 0.02;
+        const sustain = 0.35 * (1 - progress) ** 1.4 + 0.02;
         const decay = 0.3; // Fixed 0.3s release
 
         const noteParams = [
@@ -2147,8 +2147,8 @@ const SoundEngine = {
             !this.isMuffled &&
             GAME_STATE.current === STATES.GAMEPLAY
         ) {
-            const startWet = 0.68 * Math.pow(invRevProg, 1.2);
-            const endWet = 0.68 * Math.pow(revProg, 0.8);
+            const startWet = 0.68 * invRevProg ** 1.2;
+            const endWet = 0.68 * revProg ** 0.8;
             if (
                 Number.isFinite(startWet) &&
                 Number.isFinite(this.ctx.currentTime)
@@ -2177,8 +2177,8 @@ const SoundEngine = {
             !this.isMuffled &&
             GAME_STATE.current === STATES.GAMEPLAY
         ) {
-            const fxStartWet = 0.2 * Math.pow(invRevProg, 1.2);
-            const fxEndWet = 0.2 * Math.pow(revProg, 0.8);
+            const fxStartWet = 0.2 * invRevProg ** 1.2;
+            const fxEndWet = 0.2 * revProg ** 0.8;
             if (
                 Number.isFinite(fxStartWet) &&
                 Number.isFinite(this.ctx.currentTime)
