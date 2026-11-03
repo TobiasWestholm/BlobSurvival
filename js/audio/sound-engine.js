@@ -269,6 +269,10 @@ const SoundEngine = {
     musicVolume: 0.12,
     FX_VOICE_GAIN: 0.7,
 
+    // Audio context recovery bookkeeping (see resumeIfAllowed/watchContextState)
+    resumeNudged: false,
+    lastResumeAttemptMs: 0,
+
     // Pre-render a lush stereo synthetic impulse response for spatial room convolution
     buildImpulseResponse(duration = 0.5, decay = 2.0) {
         if (!this.ctx) return null;
@@ -682,15 +686,93 @@ const SoundEngine = {
         return buffer;
     },
 
-    // Resuming before any user gesture is rejected and makes Chrome log an autoplay warning.
+    // iOS routes Web Audio to the "ambient" audio session, which the hardware
+    // ring/silent switch hard-mutes (WebKit bug 237322) — media elements keep
+    // playing, so the game looks broken with full volume. Declaring playback
+    // intent moves the graph onto the media channel, which ignores the switch.
+    // Safari 16.4+ only; Chrome/Firefox expose no audioSession, so it no-ops.
+    claimPlaybackAudioSession(force = false) {
+        if (typeof navigator === 'undefined') return;
+        const session = navigator.audioSession;
+        if (!session) return;
+        // Claiming the media channel pauses whatever music the player has
+        // running, so wait until they actually interact with the page.
+        if (!force && navigator.userActivation?.hasBeenActive === false) return;
+        try {
+            if (session.type !== 'playback') session.type = 'playback';
+        } catch {}
+    },
+
+    // Any non-running context is silent output. `suspended` and WebKit's
+    // non-standard `interrupted` state (entered on calls, Siri, backgrounding —
+    // WebKit bugs 276016 / 273511) both need a resume; only resuming
+    // `suspended` leaves an interrupted context dead for the rest of the
+    // session. Resuming before any gesture is rejected and logs an autoplay
+    // warning, so that part stays gated.
     resumeIfAllowed() {
-        if (this.ctx?.state !== 'suspended') return;
+        const state = this.ctx?.state;
+        if (!state || state === 'running' || state === 'closed') return;
         if (navigator.userActivation?.hasBeenActive === false) return;
+        // updateMusic retries this every frame; don't hammer resume() while the
+        // context keeps refusing (interrupted contexts can stay that way).
+        const now = performance.now();
+        if (now - (this.lastResumeAttemptMs || 0) < 250) return;
+        this.lastResumeAttemptMs = now;
         this.ctx.resume().catch(() => {});
     },
 
+    // Repair bookkeeping whenever the context drops out of / returns to
+    // running, so a suspension can't leave the scheduler or the voice pool
+    // holding timestamps from a frozen audio clock.
+    watchContextState() {
+        if (!this.ctx || this.ctx.onstatechange) return;
+        this.resumeNudged = false;
+        this.ctx.onstatechange = () => {
+            const state = this.ctx?.state;
+            if (state === 'running') {
+                this.resumeNudged = false;
+                this.activeVoices = [];
+                this.musicNextNoteTime = this.ctx.currentTime + 0.02;
+                this.musicLastTickTime = performance.now();
+            } else if (state && state !== 'closed' && !this.resumeNudged) {
+                // One nudge per outage: calling resume() while interrupted can
+                // re-enter via statechange, so this must never loop.
+                this.resumeNudged = true;
+                this.resumeIfAllowed();
+            }
+        };
+    },
+
+    // Null every node/buffer left behind by a failed init so the next attempt
+    // rebuilds the graph instead of reusing a context that never reached
+    // destination (which would be silence for the rest of the page's life).
+    teardownContext() {
+        const dead = this.ctx;
+        this.ctx = null;
+        for (const key of Object.keys(this)) {
+            const value = this[key];
+            if (!value || typeof value !== 'object') continue;
+            const isNode =
+                typeof AudioNode !== 'undefined' && value instanceof AudioNode;
+            const isBuffer =
+                typeof AudioBuffer !== 'undefined' &&
+                value instanceof AudioBuffer;
+            if (isNode || isBuffer) this[key] = null;
+        }
+        this.activeVoices = [];
+        this.resumeNudged = false;
+        this.lastResumeAttemptMs = 0;
+        try {
+            if (dead && dead.state !== 'closed') dead.close();
+        } catch {}
+    },
+
     init() {
+        // Must happen before the graph starts producing audio; no-ops outside
+        // Safari where the API is absent.
+        this.claimPlaybackAudioSession();
         if (this.ctx) {
+            this.watchContextState();
             this.resumeIfAllowed();
             return this.ctx;
         }
@@ -1442,9 +1524,13 @@ const SoundEngine = {
                 }
             } catch {}
 
+            this.watchContextState();
             return this.ctx;
         } catch (err) {
             console.warn('AudioContext init failed:', err);
+            // Never hand back a half-built graph: init() short-circuits on an
+            // existing ctx, so a partial one would silence the game for good.
+            this.teardownContext();
             return null;
         }
     },

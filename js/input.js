@@ -403,6 +403,10 @@ function initInputSystem() {
             evt,
             () => {
                 if (typeof SoundEngine !== 'undefined' && SoundEngine.init) {
+                    // Forced: we are inside a gesture, so it is safe to move
+                    // Web Audio off iOS's ambient session (silent switch) and
+                    // onto the media channel (Safari 16.4+).
+                    SoundEngine.claimPlaybackAudioSession?.(true);
                     SoundEngine.init();
                     if (
                         typeof GAME_STATE !== 'undefined' &&
@@ -420,13 +424,14 @@ function initInputSystem() {
         );
     });
 
-    // Auto-suspend audio on tab blur/hide
+    // Freeze audio while the tab is hidden. Resuming is deliberately left to
+    // the gesture handlers above: resuming from a visibilitychange is not a
+    // user gesture, and on iOS it can bounce the context into the non-standard
+    // "interrupted" state, which then never recovers.
     document.addEventListener('visibilitychange', () => {
         if (typeof SoundEngine !== 'undefined' && SoundEngine.ctx) {
             if (document.hidden) {
                 SoundEngine.ctx.suspend().catch(() => {});
-            } else {
-                SoundEngine.ctx.resume().catch(() => {});
             }
         }
     });
